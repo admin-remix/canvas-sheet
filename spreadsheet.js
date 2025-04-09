@@ -71,6 +71,7 @@ class Spreadsheet {
     // Copy/Paste State
     this.copiedValue = null;
     this.copiedValueType = null;
+    this.copiedCell = null; // Tracks the cell coordinates for copy visual feedback
 
     // --- Initialization ---
     this._setupCanvas();
@@ -258,14 +259,15 @@ class Spreadsheet {
   _handleClick(event) {
     // Prevent interfering with drag start
     if (this.isDraggingFillHandle) return;
-
+  
     const { row, col } = this._getCoordsFromEvent(event);
     const isCellClick = row !== null && col !== null;
     const isRowNumberClick =
       row !== null &&
       col === null &&
       event.offsetX < this.options.rowNumberWidth;
-
+    let redrawNeeded = false;
+  
     if (isRowNumberClick) {
       this._handleRowNumberClick(
         row,
@@ -274,7 +276,7 @@ class Spreadsheet {
       );
       this.activeCell = null; // Deselect active cell when selecting rows
       if (this.activeEditor) this._deactivateEditor(true); // Deactivate editor if active
-      this.draw();
+      redrawNeeded = true;
     } else if (isCellClick) {
       // If an editor is active and we click a different cell, save the editor
       if (
@@ -293,20 +295,28 @@ class Spreadsheet {
         this._hideDropdown();
       }
       // Set the new active cell and clear row selection
-      this.activeCell = { row, col };
-      this._clearSelectedRows();
-      this.draw(); // Redraw to show new selection highlight and clear row selection highlight
+      if (!this.activeCell || this.activeCell.row !== row || this.activeCell.col !== col) {
+          this.activeCell = { row, col };
+          this._clearSelectedRows();
+          redrawNeeded = true;
+      }
+  
     } else {
       // Clicked outside cells and row numbers (e.g., header, empty space)
       if (this.activeEditor) {
         this._deactivateEditor(true); // Save if editor was active
+        redrawNeeded = true; // DeactivateEditor calls draw, but set flag just in case
       } else if (this.dropdown.style.display !== "none") {
-        this._hideDropdown(); // Hide dropdown if active
+        this._hideDropdown();
       } else if (this.activeCell || this.selectedRows.size > 0) {
         this.activeCell = null; // Deselect cell
         this._clearSelectedRows(); // Deselect rows
-        this.draw();
+        redrawNeeded = true;
       }
+    }
+  
+    if (redrawNeeded) {
+        this.draw();
     }
   }
 
@@ -456,17 +466,21 @@ class Spreadsheet {
   }
 
   _handleGlobalMouseDown(event) {
-    // ... (same as before)
     if (this.isDraggingFillHandle) return;
     if (!this.container.contains(event.target)) {
+      let needsRedraw = false;
       if (this.activeEditor) {
-        this._deactivateEditor(true);
+        this._deactivateEditor(true); // This calls draw
       } else if (this.dropdown.style.display !== "none") {
         this._hideDropdown();
-      } else if (this.activeCell || this.selectedRows.size > 0) {
+      } else if (this.activeCell || this.selectedRows.size > 0 || this.copiedCell) {
         this.activeCell = null;
         this._clearSelectedRows();
-        this.draw();
+        this.copiedCell = null; // Clear copy indicator
+        needsRedraw = true;
+      }
+      if (needsRedraw) {
+          this.draw();
       }
     }
   }
@@ -487,10 +501,11 @@ class Spreadsheet {
         const colKey = this.columns[col];
         this.copiedValue = this.data[row]?.[colKey];
         this.copiedValueType = this.schema[colKey]?.type;
+        this.copiedCell = { ...this.activeCell }; // Store coords for visual feedback
         console.log(
-          `Copied value: ${this.copiedValue} (Type: ${this.copiedValueType})`
+          `Copied value: ${this.copiedValue} (Type: ${this.copiedValueType}) from cell ${row},${col}`
         );
-        // TODO: Add visual feedback (e.g., flashing border)
+        this.draw(); // Redraw to show dashed border
         event.preventDefault();
       }
     } else if (isCtrl && event.key === "v") {
@@ -520,7 +535,8 @@ class Spreadsheet {
     this._drawRowNumbers(); // Updated to show selection
     this._drawCells();
     this._drawGridLines();
-    this._drawHighlight();
+    this._drawCopiedCellHighlight(); // Draw dashed border for copied cell
+    this._drawHighlight();// Draw solid border for active cell (and fill handle)
     this._drawDragRange();
     this.ctx.restore();
     this._drawCornerBox();
@@ -895,6 +911,30 @@ class Spreadsheet {
     this.ctx.setLineDash([4, 2]);
     this.ctx.strokeRect(x + 0.5, y + 0.5, width - 1, height - 1);
     this.ctx.restore();
+  }
+
+  /**
+ * Draws a dashed border around the copied cell for visual feedback.
+ */
+_drawCopiedCellHighlight() {
+    if (!this.copiedCell) return;
+  
+    const { row, col } = this.copiedCell;
+    const bounds = this.getCellBounds(row, col);
+    if (!bounds) return; // Cell not visible
+  
+    const { highlightBorderColor } = this.options;
+    const { x, y, width, height } = bounds;
+  
+    this.ctx.save();
+    this.ctx.strokeStyle = highlightBorderColor; // Use the same color as active highlight for now
+    this.ctx.lineWidth = 1; // Use a thin line for the dash
+    this.ctx.setLineDash([4, 2]); // Define the dash pattern
+  
+    // Adjust slightly to draw inside the cell boundary like the active highlight
+    this.ctx.strokeRect(x + 0.5, y + 0.5, width - 1, height - 1);
+  
+    this.ctx.restore(); // Restore line dash and other settings
   }
 
   // --- Cell Editing and Dropdown Logic ---
@@ -1359,7 +1399,12 @@ class Spreadsheet {
     if (this.data[targetRow][targetColKey] !== this.copiedValue) {
       this.data[targetRow][targetColKey] = this.copiedValue;
       this._updateDisabledStatesForRow(targetRow); // Update dependent disabled states
+      this.copiedCell = null; // Clear copied cell indicator after paste
       this.draw(); // Redraw to show pasted value and potential disabled state changes
+    } else {
+      // Even if value is the same, clear the indicator on paste attempt
+      this.copiedCell = null;
+      this.draw();
     }
   }
 
@@ -1379,6 +1424,7 @@ class Spreadsheet {
     this.selectedRows.clear();
     this.lastClickedRow = null;
     this.activeCell = null; // Deselect active cell after deleting rows
+    this.copiedCell = null; // Clear copied cell indicator
     this._calculateDimensions(); // Recalculate total height, etc.
     this.draw();
   }
@@ -1388,7 +1434,7 @@ class Spreadsheet {
     const rowData = this.data[rowIndex];
     if (!rowData) return; // Should not happen, but safety check
 
-    // console.log(`Updating disabled states for row ${rowIndex}`);
+    //console.log(`Updating disabled states for row ${rowIndex}`, rowData);
     let changed = false;
     this.columns.forEach((colKey) => {
       const disabledKey = `${this.DISABLED_FIELD_PREFIX}${colKey}`;

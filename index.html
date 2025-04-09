@@ -337,12 +337,10 @@
         },
       ];
 
-      // --- Custom Row Disabling Logic ---
+      // --- Custom Cell Disabling Logic ---
       function customIsCellDisabled(_rowIndex, colKey, rowData) {
-        //=> false
-        // Example: Disable row if 'isRestricted' is true AND location is 'New York' (id: 1)
-        // return rowData.isRestricted === true && rowData.locationId === 1;
-        return colKey === "locationId" && rowData.isRestricted;
+        // Example: Disable the locationId column if 'isRestricted' is true AND location is 'New York' (id: 1)
+        return colKey === "locationId" && rowData.isRestricted && rowData.locationId === 1;
       }
 
       // --- Instantiate the Spreadsheet ---
