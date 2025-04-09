@@ -18,8 +18,12 @@ class Spreadsheet {
 
     // --- Configuration ---
     this.options = {
-      cellWidth: 150,
-      cellHeight: 30,
+      defaultColumnWidth: 150,
+      defaultRowHeight: 30,
+      minColumnWidth: 50,
+      maxColumnWidth: 500,
+      minRowHeight: 20,
+      maxRowHeight: 150,
       headerHeight: 35,
       rowNumberWidth: 50,
       font: "14px Inter, sans-serif",
@@ -36,15 +40,14 @@ class Spreadsheet {
       fillHandleColor: "#3b82f6", // blue-500
       fillHandleSize: 10,
       dragRangeBorderColor: "#6b7280", // gray-500
-      // Renamed from isRowDisabled - checks individual cells now
-      // Should return true if the specific cell should be disabled
-      isCellDisabled: (rowIndex, colKey, rowData) => false, // Default: no cells disabled
-      verbose: false, // New option to control logging
-      ...options,
+      resizeHandleSize: 5,
+      isCellDisabled: (rowIndex, colKey, rowData) => false,
+      verbose: false,
     };
-    // Store the function directly
+    this.options = { ...this.options, ...options };
+
     this.isCellDisabled = this.options.isCellDisabled;
-    this.DISABLED_FIELD_PREFIX = "disabled:"; // Prefix for hidden disabled fields
+    this.DISABLED_FIELD_PREFIX = "disabled:";
 
     // --- State ---
     this.scrollTop = 0;
@@ -61,32 +64,40 @@ class Spreadsheet {
     this.dropdown = null;
     this.dropdownItems = [];
     this.highlightedDropdownIndex = -1;
-    this.activeCell = null; // {row, col}
-    // Row Selection State
-    this.selectedRows = new Set(); // Stores indices of selected rows
-    this.lastClickedRow = null; // For shift-click range selection
-    // Fill Handle Drag State
+    this.activeCell = null;
+    this.selectedRows = new Set();
+    this.lastClickedRow = null;
     this.isDraggingFillHandle = false;
     this.dragStartCell = null;
     this.dragEndRow = null;
-    // Copy/Paste State
     this.copiedValue = null;
     this.copiedValueType = null;
-    this.copiedCell = null; // Tracks the cell coordinates for copy visual feedback
+    this.copiedCell = null;
+
+    // Dynamic Size State
+    this.columnWidths = [];
+    this.rowHeights = [];
+
+    // Resize State
+    this.isResizingColumn = false;
+    this.resizingColumnIndex = null;
+    this.resizeColumnStartX = null;
+    this.isResizingRow = false;
+    this.resizingRowIndex = null;
+    this.resizeRowStartY = null;
 
     // --- Initialization ---
     this._setupCanvas();
     this._setupDropdown();
     this._setupEditorInput();
-    this.setData(data); // Process initial data, calculate dimensions & disabled states
+    this.setData(data);
     this._bindEvents();
-    this.draw(); // Initial draw after setup
+    this.draw();
   }
 
   // --- Setup Methods ---
 
   _setupCanvas() {
-    // ... (same as before)
     this.canvas = document.createElement("canvas");
     this.ctx = this.canvas.getContext("2d");
     this.container.appendChild(this.canvas);
@@ -95,7 +106,6 @@ class Spreadsheet {
   }
 
   _setupDropdown() {
-    // ... (same as before)
     this.dropdown = document.createElement("div");
     this.dropdown.className = "spreadsheet-dropdown";
     const searchContainer = document.createElement("div");
@@ -125,7 +135,6 @@ class Spreadsheet {
   }
 
   _setupEditorInput() {
-    // ... (same as before)
     this.editorInput = document.createElement("input");
     this.editorInput.className = "spreadsheet-editor";
     this.editorInput.style.display = "none";
@@ -143,57 +152,93 @@ class Spreadsheet {
   // --- Dimension and Viewport Calculation ---
 
   _calculateDimensions() {
-    // ... (same as before)
-    this.totalContentWidth =
-      this.options.rowNumberWidth +
-      this.columns.length * this.options.cellWidth;
-    this.totalContentHeight =
-      this.options.headerHeight + this.data.length * this.options.cellHeight;
+    this.totalContentWidth = this._getTotalWidth();
+    this.totalContentHeight = this._getTotalHeight();
     this.viewportWidth = this.container.clientWidth;
     this.viewportHeight = this.container.clientHeight;
+
     this.canvas.width = this.totalContentWidth;
     this.canvas.height = this.totalContentHeight;
+
     this.canvas.style.width = `${this.totalContentWidth}px`;
     this.canvas.style.height = `${this.totalContentHeight}px`;
+
+    this._log("log", "Calculated Dimensions:", {
+      totalContentWidth: this.totalContentWidth,
+      totalContentHeight: this.totalContentHeight,
+      viewportWidth: this.viewportWidth,
+      viewportHeight: this.viewportHeight,
+    });
+
     this._calculateVisibleRange();
   }
 
   _calculateVisibleRange() {
-    // ... (same as before)
-    this.visibleRowStartIndex = Math.max(
-      0,
-      Math.floor(this.scrollTop / this.options.cellHeight)
-    );
-    this.visibleRowEndIndex = Math.min(
-      this.data.length - 1,
-      Math.floor(
-        (this.scrollTop + this.viewportHeight - this.options.headerHeight) /
-          this.options.cellHeight
-      ) + 1
-    );
-    this.visibleColStartIndex = Math.max(
-      0,
-      Math.floor(this.scrollLeft / this.options.cellWidth)
-    );
-    this.visibleColEndIndex = Math.min(
-      this.columns.length - 1,
-      Math.floor(
-        (this.scrollLeft + this.viewportWidth - this.options.rowNumberWidth) /
-          this.options.cellWidth
-      ) + 1
-    );
+    const { headerHeight, rowNumberWidth } = this.options;
+
+    let currentX = rowNumberWidth;
+    this.visibleColStartIndex = -1;
+    this.visibleColEndIndex = this.columns.length - 1;
+    for (let col = 0; col < this.columns.length; col++) {
+      const colWidth = this.columnWidths[col];
+      const colRight = currentX + colWidth;
+      if (
+        colRight > this.scrollLeft &&
+        currentX < this.scrollLeft + this.viewportWidth
+      ) {
+        if (this.visibleColStartIndex === -1) {
+          this.visibleColStartIndex = col;
+        }
+        this.visibleColEndIndex = col;
+      } else if (this.visibleColStartIndex !== -1) {
+        break;
+      }
+      currentX = colRight;
+    }
+    if (this.visibleColStartIndex === -1) {
+      this.visibleColStartIndex = 0;
+      this.visibleColEndIndex = -1;
+    }
+
+    let currentY = headerHeight;
+    this.visibleRowStartIndex = -1;
+    this.visibleRowEndIndex = this.data.length - 1;
+    for (let row = 0; row < this.data.length; row++) {
+      const rowHeight = this.rowHeights[row];
+      const rowBottom = currentY + rowHeight;
+      if (
+        rowBottom > this.scrollTop &&
+        currentY < this.scrollTop + this.viewportHeight
+      ) {
+        if (this.visibleRowStartIndex === -1) {
+          this.visibleRowStartIndex = row;
+        }
+        this.visibleRowEndIndex = row;
+      } else if (this.visibleRowStartIndex !== -1) {
+        break;
+      }
+      currentY = rowBottom;
+    }
+    if (this.visibleRowStartIndex === -1) {
+      this.visibleRowStartIndex = 0;
+      this.visibleRowEndIndex = -1;
+    }
+
+    this._log("log", "Calculated Visible Range:", {
+      rows: `${this.visibleRowStartIndex} - ${this.visibleRowEndIndex}`,
+      cols: `${this.visibleColStartIndex} - ${this.visibleColEndIndex}`,
+    });
   }
 
   // --- Event Binding ---
 
   _bindEvents() {
-    // ... (same as before)
     this.container.addEventListener("scroll", this._handleScroll.bind(this));
     this.canvas.addEventListener(
       "dblclick",
       this._handleDoubleClick.bind(this)
     );
-    this.canvas.addEventListener("click", this._handleClick.bind(this)); // Handles cell clicks AND row number clicks now
+    this.canvas.addEventListener("click", this._handleClick.bind(this));
     this.canvas.addEventListener(
       "mousedown",
       this._handleCanvasMouseDown.bind(this)
@@ -221,7 +266,6 @@ class Spreadsheet {
   // --- Event Handlers ---
 
   _handleScroll(event) {
-    // ... (same as before)
     this.scrollTop = this.container.scrollTop;
     this.scrollLeft = this.container.scrollLeft;
     this._hideDropdown();
@@ -231,7 +275,6 @@ class Spreadsheet {
   }
 
   _handleResize() {
-    // ... (same as before)
     clearTimeout(this.resizeTimeout);
     this.resizeTimeout = setTimeout(() => {
       this._hideDropdown();
@@ -242,24 +285,36 @@ class Spreadsheet {
   }
 
   _handleDoubleClick(event) {
-    // ... (same as before, uses updated _isCellDisabled check implicitly via _activateEditor)
+    if (this.isResizingColumn || this.isResizingRow) {
+      this._log("log", "Double click ignored due to active resize.");
+      return;
+    }
+
     const { row, col } = this._getCoordsFromEvent(event);
     if (row === null || col === null) return;
-    // Check using the pre-calculated field
+
     const rowData = this.data[row] || {};
     const colKey = this.columns[col];
     if (rowData[`${this.DISABLED_FIELD_PREFIX}${colKey}`]) {
       this._log("log", `Edit prevented: Cell ${row},${col} is disabled.`);
       return;
     }
+
+    this.copiedCell = null;
     this.activeCell = { row, col };
-    this._clearSelectedRows(); // Deselect rows when editing a cell
+    this._clearSelectedRows();
     this._activateEditor(row, col);
   }
 
   _handleClick(event) {
-    // Prevent interfering with drag start
-    if (this.isDraggingFillHandle) return;
+    if (
+      this.isDraggingFillHandle ||
+      this.isResizingColumn ||
+      this.isResizingRow
+    ) {
+      this._log("log", "Click ignored due to active drag/resize.");
+      return;
+    }
 
     const { row, col } = this._getCoordsFromEvent(event);
     const isCellClick = row !== null && col !== null;
@@ -269,24 +324,33 @@ class Spreadsheet {
       event.offsetX < this.options.rowNumberWidth;
     let redrawNeeded = false;
 
+    // reset copied cell if clicking on a non-cell area
+    if (this.copiedCell && !isCellClick) {
+      this.copiedCell = null;
+      redrawNeeded = true;
+    }
+
     if (isRowNumberClick) {
       this._handleRowNumberClick(
         row,
         event.shiftKey,
         event.ctrlKey || event.metaKey
       );
-      this.activeCell = null; // Deselect active cell when selecting rows
-      if (this.activeEditor) this._deactivateEditor(true); // Deactivate editor if active
-      redrawNeeded = true;
+      if (this.activeCell) redrawNeeded = true;
+      this.activeCell = null;
+      if (this.activeEditor) {
+        this._deactivateEditor(true);
+        redrawNeeded = true;
+      } else {
+        redrawNeeded = true;
+      }
     } else if (isCellClick) {
-      // If an editor is active and we click a different cell, save the editor
       if (
         this.activeEditor &&
         (this.activeEditor.row !== row || this.activeEditor.col !== col)
       ) {
-        this._deactivateEditor(true); // Save changes
+        this._deactivateEditor(true);
       }
-      // If a dropdown is active and we click a different cell, close it
       if (
         this.dropdown.style.display !== "none" &&
         (!this.activeEditor ||
@@ -295,7 +359,6 @@ class Spreadsheet {
       ) {
         this._hideDropdown();
       }
-      // Set the new active cell and clear row selection
       if (
         !this.activeCell ||
         this.activeCell.row !== row ||
@@ -306,15 +369,14 @@ class Spreadsheet {
         redrawNeeded = true;
       }
     } else {
-      // Clicked outside cells and row numbers (e.g., header, empty space)
       if (this.activeEditor) {
-        this._deactivateEditor(true); // Save if editor was active
-        redrawNeeded = true; // DeactivateEditor calls draw, but set flag just in case
+        this._deactivateEditor(true);
+        redrawNeeded = true;
       } else if (this.dropdown.style.display !== "none") {
         this._hideDropdown();
       } else if (this.activeCell || this.selectedRows.size > 0) {
-        this.activeCell = null; // Deselect cell
-        this._clearSelectedRows(); // Deselect rows
+        this.activeCell = null;
+        this._clearSelectedRows();
         redrawNeeded = true;
       }
     }
@@ -330,8 +392,7 @@ class Spreadsheet {
       `Row ${clickedRow} clicked. Shift: ${isShiftKey}, Ctrl: ${isCtrlKey}`
     );
     if (isShiftKey && this.lastClickedRow !== null) {
-      // Shift + Click: Select range
-      this.selectedRows.clear(); // Clear previous selection for range select
+      this.selectedRows.clear();
       const start = Math.min(this.lastClickedRow, clickedRow);
       const end = Math.max(this.lastClickedRow, clickedRow);
       for (let i = start; i <= end; i++) {
@@ -343,20 +404,18 @@ class Spreadsheet {
         Array.from(this.selectedRows).sort((a, b) => a - b)
       );
     } else if (isCtrlKey) {
-      // Ctrl/Cmd + Click: Toggle selection
       if (this.selectedRows.has(clickedRow)) {
         this.selectedRows.delete(clickedRow);
       } else {
         this.selectedRows.add(clickedRow);
       }
-      this.lastClickedRow = clickedRow; // Update last clicked for potential subsequent shift-click
+      this.lastClickedRow = clickedRow;
       this._log(
         "log",
         "Selected rows (Ctrl):",
         Array.from(this.selectedRows).sort((a, b) => a - b)
       );
     } else {
-      // Simple Click: Select only this row
       this.selectedRows.clear();
       this.selectedRows.add(clickedRow);
       this.lastClickedRow = clickedRow;
@@ -372,53 +431,56 @@ class Spreadsheet {
     if (this.selectedRows.size > 0) {
       this.selectedRows.clear();
       this.lastClickedRow = null;
-      // No redraw here, assumes caller will redraw
     }
   }
 
   _handleCanvasMouseDown(event) {
-    // ... (fill handle logic remains the same)
-    if (!this.activeCell) return;
-    const { row, col } = this._getCoordsFromEvent(event); // Get coords relative to content
-    const handleBounds = this._getFillHandleBounds(
-      this.activeCell.row,
-      this.activeCell.col
-    ); // Gets bounds relative to viewport
-
-    // Need click coords relative to viewport for handle check
     const rect = this.canvas.getBoundingClientRect();
     const viewportX = event.clientX - rect.left;
     const viewportY = event.clientY - rect.top;
+    const contentX = viewportX + this.scrollLeft;
+    const contentY = viewportY + this.scrollTop;
+    const { headerHeight, rowNumberWidth, resizeHandleSize } = this.options;
 
-    if (
-      handleBounds &&
-      viewportX >= handleBounds.x &&
-      viewportX <= handleBounds.x + handleBounds.width &&
-      viewportY >= handleBounds.y &&
-      viewportY <= handleBounds.y + handleBounds.height
-    ) {
-      this.isDraggingFillHandle = true;
-      this.dragStartCell = { ...this.activeCell };
-      this.dragEndRow = this.activeCell.row;
-      this.canvas.style.cursor = "crosshair";
-      event.preventDefault();
-      event.stopPropagation();
-      this._log("log", "Started dragging fill handle from", this.dragStartCell);
+    if (contentY < headerHeight && contentX > rowNumberWidth) {
+      let currentX = rowNumberWidth;
+      for (let col = 0; col < this.columns.length; col++) {
+        const colWidth = this.columnWidths[col];
+        const borderX = currentX + colWidth;
+        if (Math.abs(contentX - borderX) <= resizeHandleSize) {
+          this._log("log", `Starting column resize for index ${col}`);
+          this.isResizingColumn = true;
+          this.resizingColumnIndex = col;
+          this.resizeColumnStartX = event.clientX;
+          this.canvas.style.cursor = "col-resize";
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+        currentX = borderX;
+      }
     }
-  }
 
-  /**
-   * Handles mouse movement over the document.
-   * Primarily used for fill handle dragging and cursor updates.
-   */
-  _handleDocumentMouseMove(event) {
-    const rect = this.canvas.getBoundingClientRect();
-    const viewportX = event.clientX - rect.left;
-    const viewportY = event.clientY - rect.top;
-    let isOnHandle = false;
+    if (contentX < rowNumberWidth && contentY > headerHeight) {
+      let currentY = headerHeight;
+      for (let row = 0; row < this.data.length; row++) {
+        const rowHeight = this.rowHeights[row];
+        const borderY = currentY + rowHeight;
+        if (Math.abs(contentY - borderY) <= resizeHandleSize) {
+          this._log("log", `Starting row resize for index ${row}`);
+          this.isResizingRow = true;
+          this.resizingRowIndex = row;
+          this.resizeRowStartY = event.clientY;
+          this.canvas.style.cursor = "row-resize";
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+        currentY = borderY;
+      }
+    }
 
-    // Check if hovering over the fill handle when not dragging
-    if (!this.isDraggingFillHandle && this.activeCell && !this.activeEditor) {
+    if (this.activeCell && !this.isResizingColumn && !this.isResizingRow) {
       const handleBounds = this._getFillHandleBounds(
         this.activeCell.row,
         this.activeCell.col
@@ -430,50 +492,170 @@ class Spreadsheet {
         viewportY >= handleBounds.y &&
         viewportY <= handleBounds.y + handleBounds.height
       ) {
-        isOnHandle = true;
+        this.isDraggingFillHandle = true;
+        this.dragStartCell = { ...this.activeCell };
+        this.dragEndRow = this.activeCell.row;
+        this.canvas.style.cursor = "crosshair";
+        event.preventDefault();
+        event.stopPropagation();
+        this._log(
+          "log",
+          "Started dragging fill handle from",
+          this.dragStartCell
+        );
+        return;
       }
-    }
-
-    // Set cursor style
-    if (this.isDraggingFillHandle || isOnHandle) {
-      this.canvas.style.cursor = "crosshair";
-    } else {
-      this.canvas.style.cursor = "default"; // Reset cursor if not dragging and not on handle
-    }
-
-    // Handle dragging updates
-    if (this.isDraggingFillHandle) {
-      const { row } = this._getCoordsFromEvent(event); // Get coords relative to content
-      if (row !== null && row >= this.dragStartCell.row) {
-        // Dragging down or staying on the same row
-        if (row !== this.dragEndRow) {
-          this.dragEndRow = row;
-          this.draw(); // Redraw drag range
-        }
-      } else if (row !== null && row < this.dragStartCell.row) {
-        // Dragging upwards beyond the start row - snap back to start row
-        if (this.dragEndRow !== this.dragStartCell.row) {
-          this.dragEndRow = this.dragStartCell.row;
-          this.draw(); // Redraw drag range snapped back
-        }
-      }
-      // If row is null (e.g., mouse moved off canvas), keep the last valid dragEndRow
     }
   }
 
-  /**
-   * Handles mouse up events anywhere on the document.
-   * Primarily used to end fill handle dragging.
-   */
+  _handleDocumentMouseMove(event) {
+    const rect = this.canvas.getBoundingClientRect();
+    const viewportX = event.clientX - rect.left;
+    const viewportY = event.clientY - rect.top;
+    const contentX = viewportX + this.scrollLeft;
+    const contentY = viewportY + this.scrollTop;
+    const {
+      headerHeight,
+      rowNumberWidth,
+      resizeHandleSize,
+      minColumnWidth,
+      maxColumnWidth,
+      minRowHeight,
+      maxRowHeight,
+    } = this.options;
+
+    let newCursor = "default";
+
+    if (this.isResizingColumn) {
+      newCursor = "col-resize";
+      const deltaX = event.clientX - this.resizeColumnStartX;
+      const originalWidth = this.columnWidths[this.resizingColumnIndex];
+      let newWidth = originalWidth + deltaX;
+
+      newWidth = Math.max(minColumnWidth, Math.min(newWidth, maxColumnWidth));
+
+      if (newWidth !== originalWidth) {
+        this.columnWidths[this.resizingColumnIndex] = newWidth;
+        this.resizeColumnStartX = event.clientX;
+        this._calculateDimensions();
+        this.draw();
+      }
+    } else if (this.isResizingRow) {
+      newCursor = "row-resize";
+      const deltaY = event.clientY - this.resizeRowStartY;
+      const originalHeight = this.rowHeights[this.resizingRowIndex];
+      let newHeight = originalHeight + deltaY;
+
+      newHeight = Math.max(minRowHeight, Math.min(newHeight, maxRowHeight));
+
+      if (newHeight !== originalHeight) {
+        this.rowHeights[this.resizingRowIndex] = newHeight;
+        this.resizeRowStartY = event.clientY;
+        this._calculateDimensions();
+        this.draw();
+      }
+    } else {
+      if (contentY < headerHeight && contentX > rowNumberWidth) {
+        let currentX = rowNumberWidth;
+        for (let col = 0; col < this.columns.length; col++) {
+          const borderX = currentX + this.columnWidths[col];
+          if (Math.abs(contentX - borderX) <= resizeHandleSize) {
+            newCursor = "col-resize";
+            break;
+          }
+          currentX = borderX;
+          if (currentX > contentX + resizeHandleSize) break;
+        }
+      } else if (
+        newCursor === "default" &&
+        contentX < rowNumberWidth &&
+        contentY > headerHeight
+      ) {
+        let currentY = headerHeight;
+        for (let row = 0; row < this.data.length; row++) {
+          const borderY = currentY + this.rowHeights[row];
+          if (Math.abs(contentY - borderY) <= resizeHandleSize) {
+            newCursor = "row-resize";
+            break;
+          }
+          currentY = borderY;
+          if (currentY > contentY + resizeHandleSize) break;
+        }
+      } else if (
+        newCursor === "default" &&
+        this.activeCell &&
+        !this.activeEditor
+      ) {
+        const handleBounds = this._getFillHandleBounds(
+          this.activeCell.row,
+          this.activeCell.col
+        );
+        if (
+          handleBounds &&
+          viewportX >= handleBounds.x &&
+          viewportX <= handleBounds.x + handleBounds.width &&
+          viewportY >= handleBounds.y &&
+          viewportY <= handleBounds.y + handleBounds.height
+        ) {
+          newCursor = "crosshair";
+        }
+      }
+    }
+
+    if (this.canvas.style.cursor !== newCursor) {
+      this.canvas.style.cursor = newCursor;
+    }
+
+    if (this.isDraggingFillHandle) {
+      if (this.canvas.style.cursor !== "crosshair") {
+        this.canvas.style.cursor = "crosshair";
+      }
+      const { row } = this._getCoordsFromEvent(event);
+      if (row !== null && row >= this.dragStartCell.row) {
+        if (row !== this.dragEndRow) {
+          this.dragEndRow = row;
+          this.draw();
+        }
+      } else if (row !== null && row < this.dragStartCell.row) {
+        if (this.dragEndRow !== this.dragStartCell.row) {
+          this.dragEndRow = this.dragStartCell.row;
+          this.draw();
+        }
+      }
+    }
+  }
+
   _handleDocumentMouseUp(event) {
+    if (this.isResizingColumn) {
+      this._log(
+        "log",
+        `Finished column resize for index ${
+          this.resizingColumnIndex
+        }. New width: ${this.columnWidths[this.resizingColumnIndex]}`
+      );
+      this.isResizingColumn = false;
+      this.resizingColumnIndex = null;
+      this.resizeColumnStartX = null;
+    }
+
+    if (this.isResizingRow) {
+      this._log(
+        "log",
+        `Finished row resize for index ${this.resizingRowIndex}. New height: ${
+          this.rowHeights[this.resizingRowIndex]
+        }`
+      );
+      this.isResizingRow = false;
+      this.resizingRowIndex = null;
+      this.resizeRowStartY = null;
+    }
+
     if (this.isDraggingFillHandle) {
       this._log("log", "Finished dragging fill handle to row", this.dragEndRow);
       this._performFillDown();
       this.isDraggingFillHandle = false;
       this.dragStartCell = null;
       this.dragEndRow = null;
-      // Cursor will be reset by the next mousemove event based on position
-      // this.canvas.style.cursor = 'default'; // No longer strictly needed here
       this.draw();
     }
   }
@@ -483,7 +665,7 @@ class Spreadsheet {
     if (!this.container.contains(event.target)) {
       let needsRedraw = false;
       if (this.activeEditor) {
-        this._deactivateEditor(true); // This calls draw
+        this._deactivateEditor(true);
       } else if (this.dropdown.style.display !== "none") {
         this._hideDropdown();
       } else if (
@@ -493,7 +675,7 @@ class Spreadsheet {
       ) {
         this.activeCell = null;
         this._clearSelectedRows();
-        this.copiedCell = null; // Clear copy indicator
+        this.copiedCell = null;
         needsRedraw = true;
       }
       if (needsRedraw) {
@@ -505,35 +687,30 @@ class Spreadsheet {
   _handleDocumentKeyDown(event) {
     const isCtrl = event.ctrlKey || event.metaKey;
 
-    // Prioritize editor input if active
     if (this.activeEditor || this.dropdown.style.display !== "none") {
-      // Let editor/dropdown handle their keys (handled in their own keydown listeners)
       return;
     }
 
     if (isCtrl && event.key === "c") {
-      // Copy Cell
       if (this.activeCell) {
         const { row, col } = this.activeCell;
         const colKey = this.columns[col];
         this.copiedValue = this.data[row]?.[colKey];
         this.copiedValueType = this.schema[colKey]?.type;
-        this.copiedCell = { ...this.activeCell }; // Store coords for visual feedback
+        this.copiedCell = { ...this.activeCell };
         this._log(
           "log",
           `Copied value: ${this.copiedValue} (Type: ${this.copiedValueType}) from cell ${row},${col}`
         );
-        this.draw(); // Redraw to show dashed border
+        this.draw();
         event.preventDefault();
       }
     } else if (isCtrl && event.key === "v") {
-      // Paste Cell
       if (this.activeCell && this.copiedValue !== null) {
         this._performPaste();
         event.preventDefault();
       }
     } else if (event.key === "Delete") {
-      // Delete Rows
       if (this.selectedRows.size > 0) {
         this._deleteSelectedRows();
         event.preventDefault();
@@ -544,24 +721,22 @@ class Spreadsheet {
   // --- Drawing Methods ---
 
   draw() {
-    // ... (same structure as before)
     this.ctx.save();
     this.ctx.font = this.options.font;
     this._clearCanvas();
     this.ctx.translate(-this.scrollLeft, -this.scrollTop);
     this._drawHeaders();
-    this._drawRowNumbers(); // Updated to show selection
+    this._drawRowNumbers();
     this._drawCells();
     this._drawGridLines();
-    this._drawCopiedCellHighlight(); // Draw dashed border for copied cell
-    this._drawHighlight(); // Draw solid border for active cell (and fill handle)
+    this._drawCopiedCellHighlight();
+    this._drawHighlight();
     this._drawDragRange();
     this.ctx.restore();
     this._drawCornerBox();
   }
 
   _clearCanvas() {
-    // ... (same as before)
     this.ctx.fillStyle = "#ffffff";
     this.ctx.fillRect(
       this.scrollLeft,
@@ -572,21 +747,20 @@ class Spreadsheet {
   }
 
   _drawCornerBox() {
-    // ... (same as before)
     const { rowNumberWidth, headerHeight, gridLineColor, rowNumberBgColor } =
       this.options;
-    const x = 0;
-    const y = 0;
+    const x = this.scrollLeft;
+    const y = this.scrollTop;
+    this.ctx.save();
     this.ctx.fillStyle = rowNumberBgColor;
     this.ctx.fillRect(x, y, rowNumberWidth, headerHeight);
     this.ctx.strokeStyle = gridLineColor;
     this.ctx.strokeRect(x + 0.5, y + 0.5, rowNumberWidth, headerHeight);
+    this.ctx.restore();
   }
 
   _drawHeaders() {
-    // ... (same as before)
     const {
-      cellWidth,
       headerHeight,
       rowNumberWidth,
       headerFont,
@@ -594,17 +768,23 @@ class Spreadsheet {
       headerTextColor,
       gridLineColor,
     } = this.options;
+
     this.ctx.save();
-    this.ctx.font = headerFont;
-    this.ctx.textAlign = "center";
-    this.ctx.textBaseline = "middle";
+
     const headerAreaX = rowNumberWidth;
     const headerAreaY = 0;
-    const headerAreaWidth = this.totalContentWidth - rowNumberWidth;
+    const headerAreaWidth = this._getTotalWidth() - rowNumberWidth;
     const headerAreaHeight = headerHeight;
+
     this.ctx.beginPath();
-    this.ctx.rect(headerAreaX, headerAreaY, headerAreaWidth, headerAreaHeight);
+    this.ctx.rect(
+      Math.max(headerAreaX, rowNumberWidth + this.scrollLeft),
+      headerAreaY,
+      this.viewportWidth - rowNumberWidth,
+      headerAreaHeight
+    );
     this.ctx.clip();
+
     this.ctx.fillStyle = headerBgColor;
     this.ctx.fillRect(
       headerAreaX,
@@ -612,39 +792,55 @@ class Spreadsheet {
       headerAreaWidth,
       headerAreaHeight
     );
+
+    this.ctx.font = headerFont;
+    this.ctx.textAlign = "center";
+    this.ctx.textBaseline = "middle";
+    this.ctx.fillStyle = headerTextColor;
+
+    let currentX = this._getColumnLeft(this.visibleColStartIndex);
     for (
       let col = this.visibleColStartIndex;
       col <= this.visibleColEndIndex;
       col++
     ) {
-      if (col >= this.columns.length) continue;
+      if (col < 0 || col >= this.columns.length) continue;
+
       const colKey = this.columns[col];
       const schemaCol = this.schema[colKey];
       const headerText = schemaCol?.label || colKey;
-      const x = rowNumberWidth + col * cellWidth;
-      const y = 0;
-      const width = cellWidth;
-      const height = headerHeight;
-      this.ctx.fillStyle = headerTextColor;
-      this.ctx.fillText(headerText, x + width / 2, y + height / 2, width - 10);
+      const colWidth = this.columnWidths[col];
+
+      this.ctx.fillText(
+        headerText,
+        currentX + colWidth / 2,
+        headerAreaY + headerAreaHeight / 2,
+        colWidth - 10
+      );
+
       this.ctx.strokeStyle = gridLineColor;
       this.ctx.beginPath();
-      this.ctx.moveTo(x + width - 0.5, y);
-      this.ctx.lineTo(x + width - 0.5, y + height);
+      this.ctx.moveTo(currentX + colWidth - 0.5, headerAreaY);
+      this.ctx.lineTo(
+        currentX + colWidth - 0.5,
+        headerAreaY + headerAreaHeight
+      );
       this.ctx.stroke();
+
+      currentX += colWidth;
     }
+
     this.ctx.restore();
+
     this.ctx.strokeStyle = gridLineColor;
     this.ctx.beginPath();
     this.ctx.moveTo(rowNumberWidth, headerHeight - 0.5);
-    this.ctx.lineTo(this.totalContentWidth, headerHeight - 0.5);
+    this.ctx.lineTo(this._getTotalWidth(), headerHeight - 0.5);
     this.ctx.stroke();
   }
 
   _drawRowNumbers() {
-    // Assumes context is translated by (-scrollLeft, -scrollTop)
     const {
-      cellHeight,
       headerHeight,
       rowNumberWidth,
       font,
@@ -652,24 +848,24 @@ class Spreadsheet {
       selectedRowNumberBgColor,
       textColor,
       gridLineColor,
-    } = this.options; // Added selectedRowNumberBgColor
-    this.ctx.save();
-    this.ctx.font = font;
-    this.ctx.textAlign = "center";
-    this.ctx.textBaseline = "middle";
+    } = this.options;
 
-    // Define the row number area in CONTENT coordinates for drawing
+    this.ctx.save();
+
     const rowNumAreaX = 0;
     const rowNumAreaY = headerHeight;
     const rowNumAreaWidth = rowNumberWidth;
-    const rowNumAreaHeight = this.totalContentHeight - headerHeight;
+    const rowNumAreaHeight = this._getTotalHeight() - headerHeight;
 
-    // Clip drawing to the row number area (relative to translated origin)
     this.ctx.beginPath();
-    this.ctx.rect(rowNumAreaX, rowNumAreaY, rowNumAreaWidth, rowNumAreaHeight);
+    this.ctx.rect(
+      rowNumAreaX,
+      Math.max(rowNumAreaY, headerHeight + this.scrollTop),
+      rowNumAreaWidth,
+      this.viewportHeight - headerHeight
+    );
     this.ctx.clip();
 
-    // Draw the default background for the entire visible row number area once
     this.ctx.fillStyle = rowNumberBgColor;
     this.ctx.fillRect(
       rowNumAreaX,
@@ -678,53 +874,54 @@ class Spreadsheet {
       rowNumAreaHeight
     );
 
-    // Only iterate over rows potentially visible
+    this.ctx.font = font;
+    this.ctx.textAlign = "center";
+    this.ctx.textBaseline = "middle";
+
+    let currentY = this._getRowTop(this.visibleRowStartIndex);
     for (
       let row = this.visibleRowStartIndex;
       row <= this.visibleRowEndIndex;
       row++
     ) {
-      if (row >= this.data.length) continue; // Skip if index out of bounds
+      if (row < 0 || row >= this.data.length) continue;
 
-      // Calculate position in content coordinates (already translated)
-      const x = 0;
-      const y = headerHeight + row * cellHeight;
-      const width = rowNumberWidth;
-      const height = cellHeight;
+      const rowHeight = this.rowHeights[row];
 
-      // --- Draw Background (Highlight if selected) ---
       if (this.selectedRows.has(row)) {
         this.ctx.fillStyle = selectedRowNumberBgColor;
-        this.ctx.fillRect(x, y, width, height); // Redraw background for selected row
+        this.ctx.fillRect(rowNumAreaX, currentY, rowNumAreaWidth, rowHeight);
       }
-      // else: Default background already drawn
 
-      // --- Draw Text ---
       this.ctx.fillStyle = textColor;
-      this.ctx.fillText((row + 1).toString(), x + width / 2, y + height / 2);
+      this.ctx.fillText(
+        (row + 1).toString(),
+        rowNumAreaX + rowNumAreaWidth / 2,
+        currentY + rowHeight / 2
+      );
 
-      // --- Draw Bottom Border ---
       this.ctx.strokeStyle = gridLineColor;
       this.ctx.beginPath();
-      this.ctx.moveTo(x, y + height - 0.5); // Offset for sharpness
-      this.ctx.lineTo(x + width, y + height - 0.5);
+      this.ctx.moveTo(rowNumAreaX, currentY + rowHeight - 0.5);
+      this.ctx.lineTo(
+        rowNumAreaX + rowNumAreaWidth,
+        currentY + rowHeight - 0.5
+      );
       this.ctx.stroke();
-    }
-    this.ctx.restore(); // Restore clipping
 
-    // Draw right border for the entire row number column (relative to translated origin)
+      currentY += rowHeight;
+    }
+    this.ctx.restore();
+
     this.ctx.strokeStyle = gridLineColor;
     this.ctx.beginPath();
-    this.ctx.moveTo(rowNumberWidth - 0.5, headerHeight); // Offset for sharp line
-    this.ctx.lineTo(rowNumberWidth - 0.5, this.totalContentHeight);
+    this.ctx.moveTo(rowNumberWidth - 0.5, headerHeight);
+    this.ctx.lineTo(rowNumberWidth - 0.5, this._getTotalHeight());
     this.ctx.stroke();
   }
 
   _drawCells() {
-    // Uses pre-calculated disabled state
     const {
-      cellWidth,
-      cellHeight,
       headerHeight,
       rowNumberWidth,
       font,
@@ -732,61 +929,70 @@ class Spreadsheet {
       disabledCellBgColor,
       disabledTextColor,
     } = this.options;
+
     this.ctx.save();
-    this.ctx.font = font;
-    this.ctx.textAlign = "left";
-    this.ctx.textBaseline = "middle";
+
+    const gridAreaX = rowNumberWidth;
+    const gridAreaY = headerHeight;
+    const gridAreaWidth = this._getTotalWidth() - rowNumberWidth;
+    const gridAreaHeight = this._getTotalHeight() - headerHeight;
+
     this.ctx.beginPath();
     this.ctx.rect(
-      rowNumberWidth,
-      headerHeight,
-      this.totalContentWidth - rowNumberWidth,
-      this.totalContentHeight - headerHeight
+      gridAreaX,
+      gridAreaY,
+      this.viewportWidth - rowNumberWidth,
+      this.viewportHeight - headerHeight
     );
     this.ctx.clip();
 
+    this.ctx.font = font;
+    this.ctx.textAlign = "left";
+    this.ctx.textBaseline = "middle";
+
+    let currentY = this._getRowTop(this.visibleRowStartIndex);
     for (
       let row = this.visibleRowStartIndex;
       row <= this.visibleRowEndIndex;
       row++
     ) {
-      if (row >= this.data.length) continue;
+      if (row < 0 || row >= this.data.length) continue;
       const rowData = this.data[row] || {};
+      const rowHeight = this.rowHeights[row];
 
+      let currentX = this._getColumnLeft(this.visibleColStartIndex);
       for (
         let col = this.visibleColStartIndex;
         col <= this.visibleColEndIndex;
         col++
       ) {
-        if (col >= this.columns.length) continue;
+        if (col < 0 || col >= this.columns.length) continue;
+        const colWidth = this.columnWidths[col];
+
         if (
           this.activeEditor &&
           this.activeEditor.row === row &&
           this.activeEditor.col === col
-        )
+        ) {
+          // Skip drawing the cell if the editor is active but move the currentX to the next cell
+          currentX += colWidth;
           continue;
+        }
 
         const colKey = this.columns[col];
         const cellValue = rowData[colKey];
         const schemaCol = this.schema[colKey];
-        const x = rowNumberWidth + col * cellWidth;
-        const y = headerHeight + row * cellHeight;
-        const width = cellWidth;
-        const height = cellHeight;
-
-        // Check pre-calculated disabled state
         const isDisabledCell =
-          !!rowData[`${this.DISABLED_FIELD_PREFIX}${colKey}`]; // Use hidden field
+          !!rowData[`${this.DISABLED_FIELD_PREFIX}${colKey}`];
 
-        // --- Draw Cell Background ---
         this.ctx.fillStyle = isDisabledCell ? disabledCellBgColor : "#ffffff";
-        this.ctx.fillRect(x, y, width, height);
+        this.ctx.fillRect(currentX, currentY, colWidth, rowHeight);
 
-        // --- Draw Cell Content ---
         this.ctx.fillStyle = isDisabledCell ? disabledTextColor : textColor;
-        let displayValue = this._formatValue(cellValue, schemaCol.type);
+        let displayValue = this._formatValue(cellValue, schemaCol?.type);
+
         if (
-          schemaCol.type === "select" &&
+          schemaCol?.type === "select" &&
           schemaCol.values &&
           cellValue !== undefined &&
           cellValue !== null
@@ -795,7 +1001,7 @@ class Spreadsheet {
             (v) => v.id === cellValue
           );
           displayValue = selectedOption ? selectedOption.name : "";
-        } else if (schemaCol.type === "boolean") {
+        } else if (schemaCol?.type === "boolean") {
           displayValue =
             cellValue === true ? "True" : cellValue === false ? "False" : "";
         }
@@ -803,156 +1009,189 @@ class Spreadsheet {
         const textPadding = 5;
         this.ctx.save();
         this.ctx.beginPath();
-        this.ctx.rect(x + textPadding, y, width - textPadding * 2, height);
+        this.ctx.rect(
+          currentX + textPadding,
+          currentY,
+          colWidth - textPadding * 2,
+          rowHeight
+        );
         this.ctx.clip();
-        this.ctx.fillText(displayValue, x + textPadding, y + height / 2);
+        this.ctx.fillText(
+          displayValue,
+          currentX + textPadding,
+          currentY + rowHeight / 2
+        );
         this.ctx.restore();
+
+        currentX += colWidth;
       }
+      currentY += rowHeight;
     }
     this.ctx.restore();
   }
 
   _drawGridLines() {
-    // ... (same as before)
-    const {
-      cellWidth,
-      cellHeight,
-      headerHeight,
-      rowNumberWidth,
-      gridLineColor,
-    } = this.options;
+    const { headerHeight, rowNumberWidth, gridLineColor } = this.options;
+    const totalWidth = this._getTotalWidth();
+    const totalHeight = this._getTotalHeight();
+
     this.ctx.save();
     this.ctx.strokeStyle = gridLineColor;
     this.ctx.lineWidth = 1;
-    const startX = rowNumberWidth;
-    const startY = headerHeight;
-    const gridContentEndX = rowNumberWidth + this.columns.length * cellWidth;
-    const gridContentEndY = headerHeight + this.data.length * cellHeight;
-    for (
-      let col = this.visibleColStartIndex;
-      col <= this.visibleColEndIndex + 1;
-      col++
-    ) {
-      if (col > this.columns.length) continue;
-      const x = Math.round(rowNumberWidth + col * cellWidth);
-      if (x >= startX && x <= gridContentEndX) {
+
+    let currentX = rowNumberWidth;
+    for (let col = 0; col <= this.columns.length; col++) {
+      const lineX = Math.round(currentX) - 0.5;
+      if (
+        lineX >= this.scrollLeft &&
+        lineX <= this.scrollLeft + this.viewportWidth + rowNumberWidth
+      ) {
         this.ctx.beginPath();
-        this.ctx.moveTo(x - 0.5, startY);
-        this.ctx.lineTo(x - 0.5, gridContentEndY);
+        this.ctx.moveTo(lineX, headerHeight);
+        this.ctx.lineTo(lineX, totalHeight);
         this.ctx.stroke();
       }
+      if (col < this.columns.length) {
+        currentX += this.columnWidths[col];
+      }
+      if (currentX > this.scrollLeft + this.viewportWidth + rowNumberWidth)
+        break;
     }
-    for (
-      let row = this.visibleRowStartIndex;
-      row <= this.visibleRowEndIndex + 1;
-      row++
-    ) {
-      if (row > this.data.length) continue;
-      const y = Math.round(headerHeight + row * cellHeight);
-      if (y >= startY && y <= gridContentEndY) {
+
+    let currentY = headerHeight;
+    for (let row = 0; row <= this.data.length; row++) {
+      const lineY = Math.round(currentY) - 0.5;
+      if (
+        lineY >= this.scrollTop &&
+        lineY <= this.scrollTop + this.viewportHeight + headerHeight
+      ) {
         this.ctx.beginPath();
-        this.ctx.moveTo(startX, y - 0.5);
-        this.ctx.lineTo(gridContentEndX, y - 0.5);
+        this.ctx.moveTo(rowNumberWidth, lineY);
+        this.ctx.lineTo(totalWidth, lineY);
         this.ctx.stroke();
       }
+      if (row < this.data.length) {
+        currentY += this.rowHeights[row];
+      }
+      if (currentY > this.scrollTop + this.viewportHeight + headerHeight) break;
     }
+
     this.ctx.restore();
   }
 
   _drawHighlight() {
-    // ... (same as before, draws highlight border and fill handle)
-    if (!this.activeCell || this.isDraggingFillHandle) return;
+    if (
+      !this.activeCell ||
+      this.isDraggingFillHandle ||
+      this.isResizingColumn ||
+      this.isResizingRow
+    )
+      return;
+
     const { row, col } = this.activeCell;
-    const {
-      cellWidth,
-      cellHeight,
-      headerHeight,
-      rowNumberWidth,
-      highlightBorderColor,
-      fillHandleSize,
-      fillHandleColor,
-    } = this.options;
-    const x = rowNumberWidth + col * cellWidth;
-    const y = headerHeight + row * cellHeight;
     const bounds = this.getCellBounds(row, col);
     if (!bounds) return;
+
+    const { highlightBorderColor, fillHandleColor, fillHandleSize } =
+      this.options;
+    const { x, y, width, height } = bounds;
+
     this.ctx.save();
     this.ctx.strokeStyle = highlightBorderColor;
     this.ctx.lineWidth = 2;
-    this.ctx.strokeRect(x + 1, y + 1, cellWidth - 2, cellHeight - 2);
+
+    this.ctx.strokeRect(x + 1, y + 1, width - 2, height - 2);
+
     if (!this.activeEditor) {
-      const handleX = x + cellWidth - 1;
-      const handleY = y + cellHeight - 1;
+      const handleCenterX = x + width - 1;
+      const handleCenterY = y + height - 1;
+
       this.ctx.fillStyle = fillHandleColor;
       this.ctx.beginPath();
-      this.ctx.arc(handleX, handleY, fillHandleSize / 2, 0, Math.PI * 2);
+      this.ctx.arc(
+        handleCenterX,
+        handleCenterY,
+        fillHandleSize / 2,
+        0,
+        Math.PI * 2
+      );
       this.ctx.fill();
+
       this.ctx.strokeStyle = "#ffffff";
       this.ctx.lineWidth = 1;
       this.ctx.stroke();
     }
+
     this.ctx.restore();
   }
 
   _drawDragRange() {
-    // ... (same as before)
     if (
       !this.isDraggingFillHandle ||
       this.dragEndRow === null ||
       this.dragEndRow === this.dragStartCell.row
     )
       return;
-    const {
-      cellWidth,
-      cellHeight,
-      headerHeight,
-      rowNumberWidth,
-      dragRangeBorderColor,
-    } = this.options;
-    const startRow = this.dragStartCell.row;
-    const startCol = this.dragStartCell.col;
+
+    const { dragRangeBorderColor } = this.options;
+    const { row: startRow, col: startCol } = this.dragStartCell;
     const endRow = this.dragEndRow;
-    const x = rowNumberWidth + startCol * cellWidth;
-    const y = headerHeight + (startRow + 1) * cellHeight;
-    const width = cellWidth;
-    const height = (endRow - startRow) * cellHeight;
-    if (height <= 0) return;
+
+    const startColWidth = this.columnWidths[startCol];
+    const startColX = this._getColumnLeft(startCol);
+
+    const startRowY = this._getRowTop(startRow);
+    const dragStartY = startRowY + this.rowHeights[startRow];
+
+    let dragRangeHeight = 0;
+    for (let r = startRow + 1; r <= endRow; r++) {
+      if (r >= this.data.length) break;
+      dragRangeHeight += this.rowHeights[r];
+    }
+
+    if (dragRangeHeight <= 0) return;
+
+    const viewportX = startColX - this.scrollLeft;
+    const viewportY = dragStartY - this.scrollTop;
+
     this.ctx.save();
     this.ctx.strokeStyle = dragRangeBorderColor;
     this.ctx.lineWidth = 1;
     this.ctx.setLineDash([4, 2]);
-    this.ctx.strokeRect(x + 0.5, y + 0.5, width - 1, height - 1);
+
+    this.ctx.strokeRect(
+      viewportX + 0.5,
+      viewportY + 0.5,
+      startColWidth - 1,
+      dragRangeHeight - 1
+    );
+
     this.ctx.restore();
   }
 
-  /**
-   * Draws a dashed border around the copied cell for visual feedback.
-   */
   _drawCopiedCellHighlight() {
     if (!this.copiedCell) return;
 
     const { row, col } = this.copiedCell;
     const bounds = this.getCellBounds(row, col);
-    if (!bounds) return; // Cell not visible
+    if (!bounds) return;
 
     const { highlightBorderColor } = this.options;
     const { x, y, width, height } = bounds;
 
     this.ctx.save();
-    this.ctx.strokeStyle = highlightBorderColor; // Use the same color as active highlight for now
-    this.ctx.lineWidth = 1; // Use a thin line for the dash
-    this.ctx.setLineDash([4, 2]); // Define the dash pattern
+    this.ctx.strokeStyle = highlightBorderColor;
+    this.ctx.lineWidth = 1;
+    this.ctx.setLineDash([4, 2]);
 
-    // Adjust slightly to draw inside the cell boundary like the active highlight
     this.ctx.strokeRect(x + 0.5, y + 0.5, width - 1, height - 1);
 
-    this.ctx.restore(); // Restore line dash and other settings
+    this.ctx.restore();
   }
 
   // --- Cell Editing and Dropdown Logic ---
 
   _activateEditor(rowIndex, colIndex) {
-    // Check pre-calculated disabled state before activating
     const rowData = this.data[rowIndex] || {};
     const colKey = this.columns[colIndex];
     if (rowData[`${this.DISABLED_FIELD_PREFIX}${colKey}`]) {
@@ -963,7 +1202,6 @@ class Spreadsheet {
       return;
     }
 
-    // ... (rest of the logic is same as before)
     if (this.activeEditor) {
       this._deactivateEditor(true);
     }
@@ -971,46 +1209,60 @@ class Spreadsheet {
     const schemaCol = this.schema[colKey];
     const cellValue = this.data[rowIndex]?.[colKey];
     const bounds = this.getCellBounds(rowIndex, colIndex);
-    if (!bounds) return;
+    if (!bounds) {
+      this._log(
+        "warn",
+        `Cannot activate editor: Cell ${rowIndex},${colIndex} bounds not found (likely not visible).`
+      );
+      return;
+    }
+
     this.activeEditor = {
       row: rowIndex,
       col: colIndex,
-      type: schemaCol.type,
+      type: schemaCol?.type,
       originalValue: cellValue,
     };
-    const editorX = bounds.x;
-    const editorY = bounds.y;
 
-    if (schemaCol.type === "select" || schemaCol.type === "boolean") {
+    const {
+      x: editorX,
+      y: editorY,
+      width: editorWidth,
+      height: editorHeight,
+    } = bounds;
+
+    if (schemaCol?.type === "select" || schemaCol?.type === "boolean") {
       this._showDropdown(
         rowIndex,
         colIndex,
         schemaCol,
         editorX,
         editorY,
-        bounds.width,
-        bounds.height
+        editorWidth,
+        editorHeight
       );
     } else {
       this.editorInput.style.display = "block";
       this.editorInput.style.left = `${editorX}px`;
       this.editorInput.style.top = `${editorY}px`;
-      this.editorInput.style.width = `${bounds.width}px`;
-      this.editorInput.style.height = `${bounds.height}px`;
+      this.editorInput.style.width = `${editorWidth}px`;
+      this.editorInput.style.height = `${editorHeight}px`;
       this.editorInput.style.font = this.options.font;
-      if (schemaCol.type === "number") {
+
+      if (schemaCol?.type === "number") {
         this.editorInput.type = "number";
         this.editorInput.step = schemaCol.decimal === false ? "1" : "any";
-      } else if (schemaCol.type === "email") {
+      } else if (schemaCol?.type === "email") {
         this.editorInput.type = "email";
-      } else if (schemaCol.type === "date") {
+      } else if (schemaCol?.type === "date") {
         this.editorInput.type = "date";
       } else {
         this.editorInput.type = "text";
       }
+
       this.editorInput.value = this._formatValueForInput(
         cellValue,
-        schemaCol.type
+        schemaCol?.type
       );
       this.editorInput.focus();
       this.editorInput.select();
@@ -1022,19 +1274,19 @@ class Spreadsheet {
     if (!this.activeEditor) return;
     const { row, col, type, originalValue } = this.activeEditor;
     let valueChanged = false;
+    const colKey = this.columns[col];
 
     if (type === "select" || type === "boolean") {
       this._hideDropdown();
-      // Value change is handled by dropdown click, need to check if it actually changed
-      // The activeEditor state doesn't update on dropdown click, so we check data directly
-      const colKey = this.columns[col];
       valueChanged = this.data[row]?.[colKey] !== originalValue;
     } else {
       if (saveChanges) {
         const newValueRaw = this.editorInput.value;
-        const colKey = this.columns[col];
         const schemaCol = this.schema[colKey];
-        const newValue = this._parseValueFromInput(newValueRaw, schemaCol.type);
+        const newValue = this._parseValueFromInput(
+          newValueRaw,
+          schemaCol?.type
+        );
         let isValid = this._validateInput(newValue, schemaCol, colKey);
         if (isValid && newValue !== originalValue) {
           if (!this.data[row]) {
@@ -1053,19 +1305,17 @@ class Spreadsheet {
       this.editorInput.value = "";
     }
 
-    this.activeEditor = null; // Deactivate editor state *before* updating disabled states
+    this.activeEditor = null;
 
-    // If value changed, update disabled states for the affected row
     if (valueChanged) {
       this._updateDisabledStatesForRow(row);
     }
 
-    this.draw(); // Redraw AFTER potential disabled state updates
+    this.draw();
   }
 
   _validateInput(value, schemaCol, colKey) {
-    // ... (same as before)
-    if (!schemaCol) return true; // No schema, no validation
+    if (!schemaCol) return true;
     if (
       schemaCol.required &&
       (value === null || value === undefined || value === "")
@@ -1100,7 +1350,6 @@ class Spreadsheet {
   }
 
   _handleEditorBlur(event) {
-    // ... (same as before)
     setTimeout(() => {
       if (
         document.activeElement !== this.editorInput &&
@@ -1112,7 +1361,6 @@ class Spreadsheet {
   }
 
   _handleEditorKeyDown(event) {
-    // ... (same as before)
     switch (event.key) {
       case "Enter":
         this._deactivateEditor(true);
@@ -1134,7 +1382,6 @@ class Spreadsheet {
   }
 
   _moveActiveCell(rowDelta, colDelta) {
-    // ... (same as before)
     if (!this.activeCell) return;
     let currentRow = this.activeCell.row;
     let currentCol = this.activeCell.col;
@@ -1165,7 +1412,6 @@ class Spreadsheet {
       const nextRowData = this.data[nextRow] || {};
       const nextColKey = this.columns[nextCol];
       if (!nextRowData[`${this.DISABLED_FIELD_PREFIX}${nextColKey}`]) {
-        // Check target cell disabled state
         targetFound = true;
         this.activeCell = { row: nextRow, col: nextCol };
         this._activateEditor(nextRow, nextCol);
@@ -1195,7 +1441,6 @@ class Spreadsheet {
     boundsWidth,
     boundsHeight
   ) {
-    // ... (same as before)
     this.dropdownItems = [];
     this.dropdownList.innerHTML = "";
     if (schemaCol.type === "boolean") {
@@ -1206,39 +1451,62 @@ class Spreadsheet {
       ];
     } else if (schemaCol.type === "select" && schemaCol.values) {
       this.dropdownItems = [{ id: null, name: "(Blank)" }, ...schemaCol.values];
+    } else {
+      this._log(
+        "warn",
+        `Dropdown requested for non-dropdown type: ${schemaCol.type}`
+      );
+      return;
     }
+
     this.dropdownItems.forEach((item, index) => {
       const li = document.createElement("li");
       li.className = "spreadsheet-dropdown-item";
       li.textContent = item.name;
       li.dataset.index = index;
-      li.dataset.value = String(item.id);
+      li.dataset.value = String(
+        item.id === null || item.id === undefined ? "" : item.id
+      );
       this.dropdownList.appendChild(li);
     });
+
     this.dropdown.style.display = "block";
     this.dropdown.style.left = `${boundsX}px`;
     this.dropdown.style.top = `${boundsY + boundsHeight}px`;
     this.dropdown.style.minWidth = `${boundsWidth}px`;
-    const dropdownRect = this.dropdown.getBoundingClientRect();
-    const containerRect = this.container.getBoundingClientRect();
-    if (
-      dropdownRect.bottom > containerRect.bottom &&
-      boundsY > dropdownRect.height
-    ) {
-      this.dropdown.style.top = `${boundsY - dropdownRect.height}px`;
-    }
-    if (dropdownRect.right > containerRect.right) {
-      const newLeft = containerRect.right - dropdownRect.width - 5;
-      this.dropdown.style.left = `${Math.max(0, newLeft)}px`;
-    }
+
+    requestAnimationFrame(() => {
+      const dropdownRect = this.dropdown.getBoundingClientRect();
+      const containerRect = this.container.getBoundingClientRect();
+
+      if (
+        dropdownRect.bottom > containerRect.bottom &&
+        boundsY >= dropdownRect.height
+      ) {
+        this.dropdown.style.top = `${boundsY - dropdownRect.height}px`;
+      }
+      if (dropdownRect.right > containerRect.right) {
+        const newLeft = containerRect.right - dropdownRect.width - 5;
+        this.dropdown.style.left = `${Math.max(0, newLeft)}px`;
+      }
+      if (dropdownRect.left < containerRect.left) {
+        this.dropdown.style.left = `${containerRect.left}px`;
+      }
+      if (dropdownRect.top < containerRect.top) {
+        this.dropdown.style.top = `${containerRect.top}px`;
+      }
+    });
+
     this.dropdownSearchInput.value = "";
     this._filterDropdown("");
     this.dropdownSearchInput.focus();
     this.highlightedDropdownIndex = -1;
+    this._updateDropdownHighlight(
+      Array.from(this.dropdownList.querySelectorAll("li:not(.hidden)"))
+    );
   }
 
   _hideDropdown() {
-    // ... (same as before)
     if (this.dropdown) {
       this.dropdown.style.display = "none";
       this.highlightedDropdownIndex = -1;
@@ -1246,7 +1514,6 @@ class Spreadsheet {
   }
 
   _handleDropdownSearch() {
-    // ... (same as before)
     const searchTerm = this.dropdownSearchInput.value.toLowerCase();
     this._filterDropdown(searchTerm);
     const firstVisibleItem = this.dropdownList.querySelector("li:not(.hidden)");
@@ -1260,7 +1527,6 @@ class Spreadsheet {
   }
 
   _filterDropdown(searchTerm) {
-    // ... (same as before)
     const items = this.dropdownList.querySelectorAll("li");
     items.forEach((item) => {
       const itemText = item.textContent.toLowerCase();
@@ -1270,7 +1536,6 @@ class Spreadsheet {
   }
 
   _handleDropdownKeyDown(event) {
-    // ... (same as before)
     const visibleItems = Array.from(
       this.dropdownList.querySelectorAll("li:not(.hidden)")
     );
@@ -1309,7 +1574,6 @@ class Spreadsheet {
   }
 
   _updateDropdownHighlight(visibleItems) {
-    // ... (same as before)
     visibleItems.forEach((item, index) => {
       const isHighlighted = index === this.highlightedDropdownIndex;
       item.classList.toggle("highlighted", isHighlighted);
@@ -1320,7 +1584,6 @@ class Spreadsheet {
   }
 
   _handleDropdownItemClick(event) {
-    // Value change detection happens in _deactivateEditor
     if (event.target.tagName === "LI" && this.activeEditor) {
       const clickedItem = event.target;
       const itemIndex = parseInt(clickedItem.dataset.index, 10);
@@ -1331,16 +1594,14 @@ class Spreadsheet {
         this.data[row] = {};
       }
       this.data[row][colKey] = selectedData.id;
-      this._deactivateEditor(false); // Deactivate, let it handle redraw and disabled state update
+      this._deactivateEditor(false);
       this.activeCell = null;
-      // No draw here, _deactivateEditor handles it
     }
   }
 
   // --- Fill Handle, Copy/Paste, Delete, Disable Logic ---
 
   _performFillDown() {
-    // Uses pre-calculated disabled state
     if (
       !this.dragStartCell ||
       this.dragEndRow === null ||
@@ -1359,7 +1620,7 @@ class Spreadsheet {
       if (row >= this.data.length) continue;
       const targetSchema = this.schema[colKey];
       const isDisabledCell =
-        !!this.data[row]?.[`${this.DISABLED_FIELD_PREFIX}${colKey}`]; // Check hidden field
+        !!this.data[row]?.[`${this.DISABLED_FIELD_PREFIX}${colKey}`];
 
       if (isDisabledCell) {
         this._log("log", `Skipping fill for disabled cell ${row},${startCol}`);
@@ -1375,15 +1636,13 @@ class Spreadsheet {
       }
       if (this.data[row][colKey] !== sourceValue) {
         this.data[row][colKey] = sourceValue;
-        this._updateDisabledStatesForRow(row); // Update dependent disabled states *after* changing value
+        this._updateDisabledStatesForRow(row);
         changed = true;
       }
     }
-    // No redraw here, caller (_handleDocumentMouseUp) handles it
   }
 
   _performPaste() {
-    // Uses pre-calculated disabled state
     if (
       !this.activeCell ||
       this.copiedValue === null ||
@@ -1396,7 +1655,7 @@ class Spreadsheet {
     const targetSchema = this.schema[targetColKey];
     const targetType = targetSchema?.type;
     const isDisabledCell =
-      !!this.data[targetRow]?.[`${this.DISABLED_FIELD_PREFIX}${targetColKey}`]; // Check hidden field
+      !!this.data[targetRow]?.[`${this.DISABLED_FIELD_PREFIX}${targetColKey}`];
 
     if (isDisabledCell) {
       this._log(
@@ -1419,11 +1678,10 @@ class Spreadsheet {
     }
     if (this.data[targetRow][targetColKey] !== this.copiedValue) {
       this.data[targetRow][targetColKey] = this.copiedValue;
-      this._updateDisabledStatesForRow(targetRow); // Update dependent disabled states
-      this.copiedCell = null; // Clear copied cell indicator after paste
-      this.draw(); // Redraw to show pasted value and potential disabled state changes
+      this._updateDisabledStatesForRow(targetRow);
+      this.copiedCell = null;
+      this.draw();
     } else {
-      // Even if value is the same, clear the indicator on paste attempt
       this.copiedCell = null;
       this.draw();
     }
@@ -1432,43 +1690,41 @@ class Spreadsheet {
   _deleteSelectedRows() {
     if (this.selectedRows.size === 0) return;
 
-    // Get indices and sort descending to avoid shifting issues during splice
     const rowsToDelete = Array.from(this.selectedRows).sort((a, b) => b - a);
     this._log("log", "Deleting rows:", rowsToDelete);
 
     rowsToDelete.forEach((rowIndex) => {
       if (rowIndex >= 0 && rowIndex < this.data.length) {
         this.data.splice(rowIndex, 1);
+        this.rowHeights.splice(rowIndex, 1);
       }
     });
 
     this.selectedRows.clear();
     this.lastClickedRow = null;
-    this.activeCell = null; // Deselect active cell after deleting rows
-    this.copiedCell = null; // Clear copied cell indicator
-    this._calculateDimensions(); // Recalculate total height, etc.
+    this.activeCell = null;
+    this.copiedCell = null;
+    this._calculateDimensions();
     this.draw();
   }
 
   _updateDisabledStatesForRow(rowIndex) {
     if (rowIndex < 0 || rowIndex >= this.data.length) return;
     const rowData = this.data[rowIndex];
-    if (!rowData) return; // Should not happen, but safety check
+    if (!rowData) return;
 
-    //this._log("log",`Updating disabled states for row ${rowIndex}`, rowData);
     let changed = false;
     this.columns.forEach((colKey) => {
       const disabledKey = `${this.DISABLED_FIELD_PREFIX}${colKey}`;
       const currentDisabledState = !!rowData[disabledKey];
-      const newDisabledState = !!this.isCellDisabled(rowIndex, colKey, rowData); // Call the user-provided function
+      const newDisabledState = !!this.isCellDisabled(rowIndex, colKey, rowData);
 
       if (currentDisabledState !== newDisabledState) {
         rowData[disabledKey] = newDisabledState;
         changed = true;
-        // this._log("log",`  Cell ${rowIndex},${colKey} disabled state set to ${newDisabledState}`);
       }
     });
-    return changed; // Return true if any state changed
+    return changed;
   }
 
   _updateAllDisabledStates() {
@@ -1482,70 +1738,96 @@ class Spreadsheet {
   // --- Utility Methods ---
 
   _getCoordsFromEvent(event) {
-    // ... (same as before)
     const rect = this.canvas.getBoundingClientRect();
     const canvasX = event.clientX - rect.left;
     const canvasY = event.clientY - rect.top;
     const contentX = canvasX + this.scrollLeft;
     const contentY = canvasY + this.scrollTop;
-    const { headerHeight, rowNumberWidth, cellWidth, cellHeight } =
-      this.options;
-    if (contentX < rowNumberWidth || contentY < headerHeight) {
-      // Check if click was specifically in row number area
-      if (contentX < rowNumberWidth && contentY >= headerHeight) {
-        const row = Math.floor((contentY - headerHeight) / cellHeight);
-        if (row >= 0 && row < this.data.length) {
-          return { row, col: null }; // Indicate row number click
+    const { headerHeight, rowNumberWidth } = this.options;
+
+    let targetRow = null;
+    let targetCol = null;
+
+    if (contentY >= headerHeight) {
+      let currentY = headerHeight;
+      for (let i = 0; i < this.data.length; i++) {
+        const rowHeight = this.rowHeights[i];
+        if (contentY >= currentY && contentY < currentY + rowHeight) {
+          targetRow = i;
+          break;
         }
+        currentY += rowHeight;
+        if (currentY > contentY) break;
       }
-      return { row: null, col: null }; // Header or outside
     }
-    const col = Math.floor((contentX - rowNumberWidth) / cellWidth);
-    const row = Math.floor((contentY - headerHeight) / cellHeight);
-    if (
-      row >= 0 &&
-      row < this.data.length &&
-      col >= 0 &&
-      col < this.columns.length
-    )
-      return { row, col };
-    return { row: null, col: null };
+
+    if (targetRow !== null && contentX >= rowNumberWidth) {
+      let currentX = rowNumberWidth;
+      for (let j = 0; j < this.columns.length; j++) {
+        const colWidth = this.columnWidths[j];
+        if (contentX >= currentX && contentX < currentX + colWidth) {
+          targetCol = j;
+          break;
+        }
+        currentX += colWidth;
+        if (currentX > contentX) break;
+      }
+    } else if (targetRow !== null && contentX < rowNumberWidth) {
+      targetCol = null;
+    } else {
+      targetRow = null;
+      targetCol = null;
+    }
+
+    return { row: targetRow, col: targetCol };
   }
 
   getCellBounds(rowIndex, colIndex) {
-    // ... (same as before)
-    const { cellWidth, cellHeight, headerHeight, rowNumberWidth } =
-      this.options;
-    const contentX = rowNumberWidth + colIndex * cellWidth;
-    const contentY = headerHeight + rowIndex * cellHeight;
+    if (
+      rowIndex < 0 ||
+      rowIndex >= this.data.length ||
+      colIndex < 0 ||
+      colIndex >= this.columns.length
+    ) {
+      return null;
+    }
+
+    const cellWidth = this.columnWidths[colIndex];
+    const cellHeight = this.rowHeights[rowIndex];
+    const contentX = this._getColumnLeft(colIndex);
+    const contentY = this._getRowTop(rowIndex);
+
     const viewportX = contentX - this.scrollLeft;
     const viewportY = contentY - this.scrollTop;
-    const isVisible =
+
+    const isPotentiallyVisible =
       viewportX < this.viewportWidth &&
       viewportX + cellWidth > 0 &&
       viewportY < this.viewportHeight &&
       viewportY + cellHeight > 0;
-    if (!isVisible) return null;
+
+    if (!isPotentiallyVisible) return null;
+
     return { x: viewportX, y: viewportY, width: cellWidth, height: cellHeight };
   }
 
   _getFillHandleBounds(rowIndex, colIndex) {
-    // ... (same as before)
     const cellBounds = this.getCellBounds(rowIndex, colIndex);
     if (!cellBounds) return null;
+
     const { fillHandleSize } = this.options;
-    const handleX = cellBounds.x + cellBounds.width - fillHandleSize / 2 - 1;
-    const handleY = cellBounds.y + cellBounds.height - fillHandleSize / 2 - 1;
+    const handleCenterX = cellBounds.x + cellBounds.width - 1;
+    const handleCenterY = cellBounds.y + cellBounds.height - 1;
+
     return {
-      x: handleX - fillHandleSize / 2,
-      y: handleY - fillHandleSize / 2,
+      x: handleCenterX - fillHandleSize / 2,
+      y: handleCenterY - fillHandleSize / 2,
       width: fillHandleSize,
       height: fillHandleSize,
     };
   }
 
   _formatValue(value, type) {
-    // ... (same as before)
     if (value === null || value === undefined) return "";
     if (type === "date" && value) {
       try {
@@ -1560,7 +1842,6 @@ class Spreadsheet {
   }
 
   _formatValueForInput(value, type) {
-    // ... (same as before)
     if (value === null || value === undefined) return "";
     if (type === "date") {
       try {
@@ -1578,7 +1859,6 @@ class Spreadsheet {
   }
 
   _parseValueFromInput(value, type) {
-    // ... (same as before)
     if (value === "") return null;
     switch (type) {
       case "number":
@@ -1593,10 +1873,6 @@ class Spreadsheet {
     }
   }
 
-  /**
-   * Logs messages to the console only if the verbose option is enabled.
-   * @param {...any} args - Arguments to log.
-   */
   _log(type, ...args) {
     if (!this.options.verbose || !["log", "warn", "error"].includes(type))
       return;
@@ -1604,15 +1880,15 @@ class Spreadsheet {
   }
 
   // --- Public API Methods ---
+
   getData() {
-    // Return deep copy excluding hidden disabled fields
     return JSON.parse(
       JSON.stringify(this.data, (key, value) => {
         if (
           typeof key === "string" &&
           key.startsWith(this.DISABLED_FIELD_PREFIX)
         ) {
-          return undefined; // Exclude these fields
+          return undefined;
         }
         return value;
       })
@@ -1620,9 +1896,9 @@ class Spreadsheet {
   }
 
   setData(newData) {
-    // Use deep copy and initialize disabled states
     this.data = JSON.parse(JSON.stringify(newData || []));
-    this._updateAllDisabledStates(); // Calculate initial disabled states
+    this._initializeSizes(this.data.length);
+    this._updateAllDisabledStates();
     this._hideDropdown();
     this._deactivateEditor(false);
     this._calculateDimensions();
@@ -1633,8 +1909,8 @@ class Spreadsheet {
     this._calculateVisibleRange();
     this.draw();
   }
+
   updateCell(rowIndex, colKey, value) {
-    // ... (same as before, includes validation)
     if (rowIndex >= 0 && rowIndex < this.data.length && this.schema[colKey]) {
       if (!this.data[rowIndex]) {
         this.data[rowIndex] = {};
@@ -1653,4 +1929,45 @@ class Spreadsheet {
       this._log("warn", "updateCell: Invalid row index or column key.");
     }
   }
-} // End Spreadsheet Class
+
+  // --- Helper Methods ---
+
+  _getColumnLeft(colIndex) {
+    let left = this.options.rowNumberWidth;
+    for (let i = 0; i < colIndex; i++) {
+      left += this.columnWidths[i] || this.options.defaultColumnWidth;
+    }
+    return left;
+  }
+
+  _getRowTop(rowIndex) {
+    let top = this.options.headerHeight;
+    for (let i = 0; i < rowIndex; i++) {
+      top += this.rowHeights[i] || this.options.defaultRowHeight;
+    }
+    return top;
+  }
+
+  _getTotalWidth() {
+    let totalWidth = this.options.rowNumberWidth;
+    this.columnWidths.forEach((width) => (totalWidth += width));
+    return totalWidth;
+  }
+
+  _getTotalHeight() {
+    let totalHeight = this.options.headerHeight;
+    this.rowHeights.forEach((height) => (totalHeight += height));
+    return totalHeight;
+  }
+
+  _initializeSizes(rowCount) {
+    this.columnWidths = this.columns.map((colKey, index) => {
+      return this.options.defaultColumnWidth;
+    });
+
+    this.rowHeights = Array(rowCount).fill(this.options.defaultRowHeight);
+
+    this._log("log", "Initialized column widths:", this.columnWidths);
+    this._log("log", "Initialized row heights:", this.rowHeights);
+  }
+}
