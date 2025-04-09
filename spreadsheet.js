@@ -39,6 +39,7 @@ class Spreadsheet {
       // Renamed from isRowDisabled - checks individual cells now
       // Should return true if the specific cell should be disabled
       isCellDisabled: (rowIndex, colKey, rowData) => false, // Default: no cells disabled
+      verbose: false, // New option to control logging
       ...options,
     };
     // Store the function directly
@@ -248,7 +249,7 @@ class Spreadsheet {
     const rowData = this.data[row] || {};
     const colKey = this.columns[col];
     if (rowData[`${this.DISABLED_FIELD_PREFIX}${colKey}`]) {
-      console.log(`Edit prevented: Cell ${row},${col} is disabled.`);
+      this._log("log", `Edit prevented: Cell ${row},${col} is disabled.`);
       return;
     }
     this.activeCell = { row, col };
@@ -259,7 +260,7 @@ class Spreadsheet {
   _handleClick(event) {
     // Prevent interfering with drag start
     if (this.isDraggingFillHandle) return;
-  
+
     const { row, col } = this._getCoordsFromEvent(event);
     const isCellClick = row !== null && col !== null;
     const isRowNumberClick =
@@ -267,7 +268,7 @@ class Spreadsheet {
       col === null &&
       event.offsetX < this.options.rowNumberWidth;
     let redrawNeeded = false;
-  
+
     if (isRowNumberClick) {
       this._handleRowNumberClick(
         row,
@@ -295,12 +296,15 @@ class Spreadsheet {
         this._hideDropdown();
       }
       // Set the new active cell and clear row selection
-      if (!this.activeCell || this.activeCell.row !== row || this.activeCell.col !== col) {
-          this.activeCell = { row, col };
-          this._clearSelectedRows();
-          redrawNeeded = true;
+      if (
+        !this.activeCell ||
+        this.activeCell.row !== row ||
+        this.activeCell.col !== col
+      ) {
+        this.activeCell = { row, col };
+        this._clearSelectedRows();
+        redrawNeeded = true;
       }
-  
     } else {
       // Clicked outside cells and row numbers (e.g., header, empty space)
       if (this.activeEditor) {
@@ -314,14 +318,15 @@ class Spreadsheet {
         redrawNeeded = true;
       }
     }
-  
+
     if (redrawNeeded) {
-        this.draw();
+      this.draw();
     }
   }
 
   _handleRowNumberClick(clickedRow, isShiftKey, isCtrlKey) {
-    console.log(
+    this._log(
+      "log",
       `Row ${clickedRow} clicked. Shift: ${isShiftKey}, Ctrl: ${isCtrlKey}`
     );
     if (isShiftKey && this.lastClickedRow !== null) {
@@ -332,7 +337,8 @@ class Spreadsheet {
       for (let i = start; i <= end; i++) {
         this.selectedRows.add(i);
       }
-      console.log(
+      this._log(
+        "log",
         "Selected rows (Shift):",
         Array.from(this.selectedRows).sort((a, b) => a - b)
       );
@@ -344,7 +350,8 @@ class Spreadsheet {
         this.selectedRows.add(clickedRow);
       }
       this.lastClickedRow = clickedRow; // Update last clicked for potential subsequent shift-click
-      console.log(
+      this._log(
+        "log",
         "Selected rows (Ctrl):",
         Array.from(this.selectedRows).sort((a, b) => a - b)
       );
@@ -353,7 +360,8 @@ class Spreadsheet {
       this.selectedRows.clear();
       this.selectedRows.add(clickedRow);
       this.lastClickedRow = clickedRow;
-      console.log(
+      this._log(
+        "log",
         "Selected rows (Single):",
         Array.from(this.selectedRows).sort((a, b) => a - b)
       );
@@ -395,7 +403,7 @@ class Spreadsheet {
       this.canvas.style.cursor = "crosshair";
       event.preventDefault();
       event.stopPropagation();
-      console.log("Started dragging fill handle from", this.dragStartCell);
+      this._log("log", "Started dragging fill handle from", this.dragStartCell);
     }
   }
 
@@ -411,21 +419,26 @@ class Spreadsheet {
 
     // Check if hovering over the fill handle when not dragging
     if (!this.isDraggingFillHandle && this.activeCell && !this.activeEditor) {
-      const handleBounds = this._getFillHandleBounds(this.activeCell.row, this.activeCell.col);
-      if (handleBounds &&
-          viewportX >= handleBounds.x &&
-          viewportX <= handleBounds.x + handleBounds.width &&
-          viewportY >= handleBounds.y &&
-          viewportY <= handleBounds.y + handleBounds.height) {
+      const handleBounds = this._getFillHandleBounds(
+        this.activeCell.row,
+        this.activeCell.col
+      );
+      if (
+        handleBounds &&
+        viewportX >= handleBounds.x &&
+        viewportX <= handleBounds.x + handleBounds.width &&
+        viewportY >= handleBounds.y &&
+        viewportY <= handleBounds.y + handleBounds.height
+      ) {
         isOnHandle = true;
       }
     }
 
     // Set cursor style
     if (this.isDraggingFillHandle || isOnHandle) {
-      this.canvas.style.cursor = 'crosshair';
+      this.canvas.style.cursor = "crosshair";
     } else {
-      this.canvas.style.cursor = 'default'; // Reset cursor if not dragging and not on handle
+      this.canvas.style.cursor = "default"; // Reset cursor if not dragging and not on handle
     }
 
     // Handle dragging updates
@@ -454,7 +467,7 @@ class Spreadsheet {
    */
   _handleDocumentMouseUp(event) {
     if (this.isDraggingFillHandle) {
-      console.log("Finished dragging fill handle to row", this.dragEndRow);
+      this._log("log", "Finished dragging fill handle to row", this.dragEndRow);
       this._performFillDown();
       this.isDraggingFillHandle = false;
       this.dragStartCell = null;
@@ -473,14 +486,18 @@ class Spreadsheet {
         this._deactivateEditor(true); // This calls draw
       } else if (this.dropdown.style.display !== "none") {
         this._hideDropdown();
-      } else if (this.activeCell || this.selectedRows.size > 0 || this.copiedCell) {
+      } else if (
+        this.activeCell ||
+        this.selectedRows.size > 0 ||
+        this.copiedCell
+      ) {
         this.activeCell = null;
         this._clearSelectedRows();
         this.copiedCell = null; // Clear copy indicator
         needsRedraw = true;
       }
       if (needsRedraw) {
-          this.draw();
+        this.draw();
       }
     }
   }
@@ -502,7 +519,8 @@ class Spreadsheet {
         this.copiedValue = this.data[row]?.[colKey];
         this.copiedValueType = this.schema[colKey]?.type;
         this.copiedCell = { ...this.activeCell }; // Store coords for visual feedback
-        console.log(
+        this._log(
+          "log",
           `Copied value: ${this.copiedValue} (Type: ${this.copiedValueType}) from cell ${row},${col}`
         );
         this.draw(); // Redraw to show dashed border
@@ -536,7 +554,7 @@ class Spreadsheet {
     this._drawCells();
     this._drawGridLines();
     this._drawCopiedCellHighlight(); // Draw dashed border for copied cell
-    this._drawHighlight();// Draw solid border for active cell (and fill handle)
+    this._drawHighlight(); // Draw solid border for active cell (and fill handle)
     this._drawDragRange();
     this.ctx.restore();
     this._drawCornerBox();
@@ -867,13 +885,7 @@ class Spreadsheet {
       const handleY = y + cellHeight - 1;
       this.ctx.fillStyle = fillHandleColor;
       this.ctx.beginPath();
-      this.ctx.arc(
-        handleX,
-        handleY,
-        fillHandleSize / 2,
-        0,
-        Math.PI * 2
-      );
+      this.ctx.arc(handleX, handleY, fillHandleSize / 2, 0, Math.PI * 2);
       this.ctx.fill();
       this.ctx.strokeStyle = "#ffffff";
       this.ctx.lineWidth = 1;
@@ -914,26 +926,26 @@ class Spreadsheet {
   }
 
   /**
- * Draws a dashed border around the copied cell for visual feedback.
- */
-_drawCopiedCellHighlight() {
+   * Draws a dashed border around the copied cell for visual feedback.
+   */
+  _drawCopiedCellHighlight() {
     if (!this.copiedCell) return;
-  
+
     const { row, col } = this.copiedCell;
     const bounds = this.getCellBounds(row, col);
     if (!bounds) return; // Cell not visible
-  
+
     const { highlightBorderColor } = this.options;
     const { x, y, width, height } = bounds;
-  
+
     this.ctx.save();
     this.ctx.strokeStyle = highlightBorderColor; // Use the same color as active highlight for now
     this.ctx.lineWidth = 1; // Use a thin line for the dash
     this.ctx.setLineDash([4, 2]); // Define the dash pattern
-  
+
     // Adjust slightly to draw inside the cell boundary like the active highlight
     this.ctx.strokeRect(x + 0.5, y + 0.5, width - 1, height - 1);
-  
+
     this.ctx.restore(); // Restore line dash and other settings
   }
 
@@ -944,7 +956,10 @@ _drawCopiedCellHighlight() {
     const rowData = this.data[rowIndex] || {};
     const colKey = this.columns[colIndex];
     if (rowData[`${this.DISABLED_FIELD_PREFIX}${colKey}`]) {
-      console.log(`Edit prevented: Cell ${rowIndex},${colIndex} is disabled.`);
+      this._log(
+        "log",
+        `Edit prevented: Cell ${rowIndex},${colIndex} is disabled.`
+      );
       return;
     }
 
@@ -1028,7 +1043,10 @@ _drawCopiedCellHighlight() {
           this.data[row][colKey] = newValue;
           valueChanged = true;
         } else if (!isValid) {
-          console.log("Change not saved due to validation error or no change.");
+          this._log(
+            "log",
+            "Change not saved due to validation error or no change."
+          );
         }
       }
       this.editorInput.style.display = "none";
@@ -1052,7 +1070,7 @@ _drawCopiedCellHighlight() {
       schemaCol.required &&
       (value === null || value === undefined || value === "")
     ) {
-      console.warn(`Validation failed: Column "${colKey}" is required.`);
+      this._log("warn", `Validation failed: Column "${colKey}" is required.`);
       return false;
     }
     if (
@@ -1061,7 +1079,8 @@ _drawCopiedCellHighlight() {
       typeof value === "string" &&
       value.length > schemaCol.maxlength
     ) {
-      console.warn(
+      this._log(
+        "warn",
         `Validation failed: Column "${colKey}" exceeds max length of ${schemaCol.maxlength}.`
       );
       return false;
@@ -1071,7 +1090,8 @@ _drawCopiedCellHighlight() {
       value &&
       !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
     ) {
-      console.warn(
+      this._log(
+        "warn",
         `Validation failed: Invalid email format for column "${colKey}".`
       );
       return false;
@@ -1160,7 +1180,7 @@ _drawCopiedCellHighlight() {
       }
     }
     if (!targetFound) {
-      console.warn("Could not find next non-disabled cell in direction.");
+      this._log("warn", "Could not find next non-disabled cell in direction.");
       this.activeCell = null;
       this.draw();
     }
@@ -1342,11 +1362,11 @@ _drawCopiedCellHighlight() {
         !!this.data[row]?.[`${this.DISABLED_FIELD_PREFIX}${colKey}`]; // Check hidden field
 
       if (isDisabledCell) {
-        console.log(`Skipping fill for disabled cell ${row},${startCol}`);
+        this._log("log", `Skipping fill for disabled cell ${row},${startCol}`);
         continue;
       }
       if (targetSchema?.type !== sourceType) {
-        console.log(`Skipping fill for row ${row}: Type mismatch`);
+        this._log("log", `Skipping fill for row ${row}: Type mismatch`);
         continue;
       }
 
@@ -1379,17 +1399,18 @@ _drawCopiedCellHighlight() {
       !!this.data[targetRow]?.[`${this.DISABLED_FIELD_PREFIX}${targetColKey}`]; // Check hidden field
 
     if (isDisabledCell) {
-      console.log(
+      this._log(
+        "log",
         `Paste cancelled: Target cell ${targetRow},${targetCol} is disabled.`
       );
       return;
     }
     if (targetType !== this.copiedValueType) {
-      console.log(`Paste cancelled: Type mismatch`);
+      this._log("log", `Paste cancelled: Type mismatch`);
       return;
     }
     if (!this._validateInput(this.copiedValue, targetSchema, targetColKey)) {
-      console.log(`Paste cancelled: Copied value failed validation.`);
+      this._log("log", `Paste cancelled: Copied value failed validation.`);
       return;
     }
 
@@ -1413,7 +1434,7 @@ _drawCopiedCellHighlight() {
 
     // Get indices and sort descending to avoid shifting issues during splice
     const rowsToDelete = Array.from(this.selectedRows).sort((a, b) => b - a);
-    console.log("Deleting rows:", rowsToDelete);
+    this._log("log", "Deleting rows:", rowsToDelete);
 
     rowsToDelete.forEach((rowIndex) => {
       if (rowIndex >= 0 && rowIndex < this.data.length) {
@@ -1434,7 +1455,7 @@ _drawCopiedCellHighlight() {
     const rowData = this.data[rowIndex];
     if (!rowData) return; // Should not happen, but safety check
 
-    //console.log(`Updating disabled states for row ${rowIndex}`, rowData);
+    //this._log("log",`Updating disabled states for row ${rowIndex}`, rowData);
     let changed = false;
     this.columns.forEach((colKey) => {
       const disabledKey = `${this.DISABLED_FIELD_PREFIX}${colKey}`;
@@ -1444,18 +1465,18 @@ _drawCopiedCellHighlight() {
       if (currentDisabledState !== newDisabledState) {
         rowData[disabledKey] = newDisabledState;
         changed = true;
-        // console.log(`  Cell ${rowIndex},${colKey} disabled state set to ${newDisabledState}`);
+        // this._log("log",`  Cell ${rowIndex},${colKey} disabled state set to ${newDisabledState}`);
       }
     });
     return changed; // Return true if any state changed
   }
 
   _updateAllDisabledStates() {
-    console.log("Updating all disabled states...");
+    this._log("log", "Updating all disabled states...");
     this.data.forEach((_, rowIndex) => {
       this._updateDisabledStatesForRow(rowIndex);
     });
-    console.log("Finished updating all disabled states.");
+    this._log("log", "Finished updating all disabled states.");
   }
 
   // --- Utility Methods ---
@@ -1572,6 +1593,16 @@ _drawCopiedCellHighlight() {
     }
   }
 
+  /**
+   * Logs messages to the console only if the verbose option is enabled.
+   * @param {...any} args - Arguments to log.
+   */
+  _log(type, ...args) {
+    if (!this.options.verbose || !["log", "warn", "error"].includes(type))
+      return;
+    console[type](...args);
+  }
+
   // --- Public API Methods ---
   getData() {
     // Return deep copy excluding hidden disabled fields
@@ -1613,12 +1644,13 @@ _drawCopiedCellHighlight() {
         this.data[rowIndex][colKey] = value;
         this.draw();
       } else {
-        console.warn(
+        this._log(
+          "warn",
           `updateCell: Validation failed for ${colKey}. Value not set.`
         );
       }
     } else {
-      console.warn("updateCell: Invalid row index or column key.");
+      this._log("warn", "updateCell: Invalid row index or column key.");
     }
   }
 } // End Spreadsheet Class
