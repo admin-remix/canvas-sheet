@@ -12,6 +12,7 @@ export interface ColumnSchema {
     label?: string;
     required?: boolean;
     values?: SelectOption[]; // For 'select' type
+    formatOptions?: any;    // e.g., { decimalPlaces: 2, locale: 'en-US' }
     decimal?: boolean;      // For 'number' type (false means integer)
     maxlength?: number;     // For 'text' type
     disabled?: (rowData: DataRow) => boolean; // Optional dynamic disabling
@@ -74,18 +75,24 @@ export interface SpreadsheetOptions {
     font?: string;
     headerFont?: string;
     textColor?: string;
+    cellBgColor?: string; // Default cell background
+    activeCellBgColor?: string; // Background for active (selected) cell
+    selectedRowBgColor?: string; // Background for cells in selected rows
     headerTextColor?: string;
     headerBgColor?: string;
     gridLineColor?: string;
     rowNumberBgColor?: string;
     selectedRowNumberBgColor?: string;
     disabledCellBgColor?: string;
-    disabledTextColor?: string;
+    disabledCellTextColor?: string; // Text color for disabled cells
     highlightBorderColor?: string;
     fillHandleColor?: string;
     fillHandleSize?: number;
     dragRangeBorderColor?: string;
     resizeHandleSize?: number;
+    padding?: number; // Internal padding for cell text
+    textAlign?: 'left' | 'center' | 'right';
+    textBaseline?: 'top' | 'middle' | 'bottom';
     isCellDisabled?: (rowIndex: number, colKey: string, rowData: DataRow) => boolean;
     verbose?: boolean;
 }

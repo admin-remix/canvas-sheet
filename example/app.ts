@@ -318,6 +318,7 @@ document.addEventListener("DOMContentLoaded", () => {
       {
         // Optional: Override default options here
         // cellWidth: 180,
+        selectedRowBgColor: '#e0e7ff', // light-blue
         isCellDisabled: customIsCellDisabled, // Pass the custom disabling function
         verbose: true,
       }

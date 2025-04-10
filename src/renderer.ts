@@ -262,97 +262,104 @@ export class Renderer {
             rowNumberWidth,
             font,
             textColor,
+            textAlign,
+            textBaseline,
+            padding,
+            cellBgColor,         // Default cell background
+            activeCellBgColor,   // Active cell background
+            selectedRowBgColor,  // Selected row background
             disabledCellBgColor,
-            disabledTextColor,
+            disabledCellTextColor // Corrected name
         } = this.options;
         const data = this.stateManager.getData();
         const columns = this.stateManager.getColumns();
         const schema = this.stateManager.getSchema();
-        const columnWidths = this.stateManager.getColumnWidths();
         const rowHeights = this.stateManager.getRowHeights();
+        const columnWidths = this.stateManager.getColumnWidths();
         const visibleRowStart = this.stateManager.getVisibleRowStartIndex();
         const visibleRowEnd = this.stateManager.getVisibleRowEndIndex();
         const visibleColStart = this.stateManager.getVisibleColStartIndex();
         const visibleColEnd = this.stateManager.getVisibleColEndIndex();
-        const activeEditor = this.stateManager.getActiveEditor();
+        const selectedRows = this.stateManager.getSelectedRows();
+        const activeCell = this.stateManager.getActiveCell();
 
         this.ctx.save();
 
-        // Clip drawing to the visible grid cell area
-        const gridVisibleX = rowNumberWidth;
-        const gridVisibleY = headerHeight;
-        const gridVisibleWidth = this.stateManager.getViewportWidth() - rowNumberWidth;
-        const gridVisibleHeight = this.stateManager.getViewportHeight() - headerHeight;
-
+        // Clip drawing to the visible data area
+        const clipX = rowNumberWidth;
+        const clipY = headerHeight;
+        const clipWidth = this.stateManager.getTotalContentWidth() - rowNumberWidth;
+        const clipHeight = this.stateManager.getTotalContentHeight() - headerHeight;
         this.ctx.beginPath();
-        this.ctx.rect(
-            gridVisibleX + this.stateManager.getScrollLeft(),
-            gridVisibleY + this.stateManager.getScrollTop(),
-            gridVisibleWidth,
-            gridVisibleHeight
-        );
+        this.ctx.rect(clipX, clipY, clipWidth, clipHeight);
         this.ctx.clip();
 
-        // Font settings for cell content
+        // Set base text properties
         this.ctx.font = font;
-        this.ctx.textAlign = "left";
-        this.ctx.textBaseline = "middle";
+        this.ctx.textAlign = textAlign as CanvasTextAlign;
+        this.ctx.textBaseline = textBaseline as CanvasTextBaseline;
 
         let currentY = this.dimensionCalculator.getRowTop(visibleRowStart);
 
         for (let row = visibleRowStart; row <= visibleRowEnd; row++) {
             if (row < 0 || row >= data.length) continue;
-            const rowData = data[row] || {};
-            const rowHeight = rowHeights[row];
 
+            const rowHeight = rowHeights[row];
+            const isRowSelected = selectedRows.has(row);
             let currentX = this.dimensionCalculator.getColumnLeft(visibleColStart);
 
             for (let col = visibleColStart; col <= visibleColEnd; col++) {
                 if (col < 0 || col >= columns.length) continue;
-                const colWidth = columnWidths[col];
 
-                // Skip drawing cell background/content if editor is active in this cell
-                if (activeEditor && activeEditor.row === row && activeEditor.col === col) {
-                    currentX += colWidth;
-                    continue;
+                const colWidth = columnWidths[col];
+                const colKey = columns[col];
+                const schemaCol = schema[colKey];
+                const isDisabled = this.stateManager.isCellDisabled(row, col);
+                const isActive = activeCell?.row === row && activeCell?.col === col;
+                const isEditing = this.stateManager.getActiveEditor()?.row === row && this.stateManager.getActiveEditor()?.col === col;
+
+                // Determine cell background color
+                let currentCellBg = cellBgColor; // Start with default
+                if (isRowSelected) {
+                    currentCellBg = selectedRowBgColor;
+                }
+                if (isDisabled) {
+                    currentCellBg = disabledCellBgColor;
+                }
+                 if (isActive && !isEditing) {
+                    // Active cell highlight takes precedence over row/disabled, but not when editing
+                    currentCellBg = activeCellBgColor;
                 }
 
-                const colKey = columns[col];
-                const cellValue = rowData[colKey];
-                const schemaCol = schema[colKey];
-                const isDisabledCell = !!rowData[`${DISABLED_FIELD_PREFIX}${colKey}`];
+                // Fill background if not editing (editor overlays background)
+                if (!isEditing && currentCellBg) {
+                    this.ctx.fillStyle = currentCellBg;
+                    this.ctx.fillRect(currentX, currentY, colWidth, rowHeight);
+                }
 
-                // Draw cell background (white or disabled color)
-                this.ctx.fillStyle = isDisabledCell ? disabledCellBgColor : "#ffffff";
-                this.ctx.fillRect(currentX, currentY, colWidth, rowHeight);
-
-                // Draw cell content
-                this.ctx.fillStyle = isDisabledCell ? disabledTextColor : textColor;
-                let displayValue = formatValue(cellValue, schemaCol?.type, schemaCol?.values);
-
-                const textPadding = 5;
-                // Clip text drawing to cell bounds (minus padding)
-                this.ctx.save();
-                this.ctx.beginPath();
-                this.ctx.rect(
-                    currentX + textPadding,      // Start drawing text after padding
-                    currentY,
-                    colWidth - textPadding * 2, // Available width for text
-                    rowHeight
-                );
-                this.ctx.clip();
-                this.ctx.fillText(
-                    displayValue,
-                    currentX + textPadding,
-                    currentY + rowHeight / 2 // Center text vertically
-                );
-                this.ctx.restore(); // Restore clipping context for the next cell
+                // Cell Text (Skip if editing)
+                if (!isEditing) {
+                    const value = data[row]?.[colKey];
+                    // Correctly call formatValue using schema info (value, type, options)
+                    const formattedValue = formatValue(value, schemaCol?.type, schemaCol?.values);
+                    if (formattedValue !== null && formattedValue !== undefined && formattedValue !== '') {
+                        this.ctx.fillStyle = isDisabled ? disabledCellTextColor : textColor;
+                        let textX = currentX + padding;
+                        if (textAlign === 'center') {
+                            textX = currentX + colWidth / 2;
+                        } else if (textAlign === 'right') {
+                            textX = currentX + colWidth - padding;
+                        }
+                        const textY = currentY + rowHeight / 2; // Assumes textBaseline: 'middle'
+                        this.ctx.fillText(formattedValue, textX, textY, colWidth - 2 * padding);
+                    }
+                }
 
                 currentX += colWidth;
             }
             currentY += rowHeight;
         }
-        this.ctx.restore(); // Restore clipping context for the grid area
+        this.ctx.restore();
     }
 
     private _drawGridLines(): void {
