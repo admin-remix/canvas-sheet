@@ -351,7 +351,7 @@ export class Renderer {
                             textX = currentX + colWidth - padding;
                         }
                         const textY = currentY + rowHeight / 2; // Assumes textBaseline: 'middle'
-                        this.ctx.fillText(formattedValue, textX, textY, colWidth - 2 * padding);
+                        this.ctx.fillText(formattedValue, textX, textY);// clip text to colWidth
                     }
                 }
 
