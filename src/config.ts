@@ -18,6 +18,7 @@ export const DEFAULT_OPTIONS: RequiredSpreadsheetOptions = {
     cellBgColor: "#ffffff", // Default white background for cells
     activeCellBgColor: "#eff6ff", // blue-50 - Background for the actively selected cell
     selectedRowBgColor: "#f3f4f6", // gray-100 - Background for cells in selected rows
+    selectedRangeBgColor: "#e0e7ff", // indigo-100 - Background for non-active cells in selection range
     headerTextColor: "#ffffff", // white
     headerBgColor: "#4b5563", // gray-600
     gridLineColor: "#d1d5db", // gray-300
@@ -29,6 +30,8 @@ export const DEFAULT_OPTIONS: RequiredSpreadsheetOptions = {
     fillHandleColor: "#3b82f6", // blue-500
     fillHandleSize: 10,
     dragRangeBorderColor: "#6b7280", // gray-500
+    copyHighlightBorderColor: "#1f2937", // gray-800
+    copyHighlightBorderDash: [4, 3], // Dash pattern (e.g., [dashLength, gapLength])
     resizeHandleSize: 5,
     isCellDisabled: (_rowIndex, _colKey, _rowData) => false,
     verbose: false,

@@ -22,6 +22,7 @@ export class EventManager {
     private domManager: DomManager;
 
     private resizeTimeout: number | null = null;
+    private _ignoreNextClick = false; // Flag to ignore click after drag mouseup
 
     constructor(
         container: HTMLElement,
@@ -65,6 +66,8 @@ export class EventManager {
         window.addEventListener('resize', this._handleResize.bind(this));
         document.addEventListener('mousedown', this._handleGlobalMouseDown.bind(this), true); // Use capture phase
         document.addEventListener('keydown', this._handleDocumentKeyDown.bind(this));
+        // Add listener for the native paste event on the container
+        this.container.addEventListener('paste', this._handlePaste.bind(this));
 
         // Editing Manager binds its own internal events (blur, keydown on input/dropdown)
         this.editingManager.bindInternalEvents();
@@ -135,8 +138,16 @@ export class EventManager {
     }
 
     private _handleClick(event: MouseEvent): void {
+        // Check and reset the flag first
+        if (this._ignoreNextClick) {
+            this._ignoreNextClick = false;
+            log('log', this.options.verbose, "Click ignored because it followed a drag mouseup.");
+            return;
+        }
+
+        // Ignore clicks during active drag/resize (drag selection handled by the flag above)
         if (this.stateManager.isDraggingFillHandle() || this.stateManager.isResizing()) {
-            log('log', this.options.verbose, "Click ignored due to active drag/resize.");
+            log('log', this.options.verbose, "Click ignored due to active fill handle drag or resize.");
             return;
         }
 
@@ -145,121 +156,161 @@ export class EventManager {
         const isRowNumberClick = coords && coords.row !== null && coords.col === null && this._isRowNumberAreaClick(event);
         let redrawNeeded = false;
 
-        // 1. Handle Editor Deactivation
+        // --- Deactivate Editor/Dropdown (no redraw trigger here) ---
         if (this.editingManager.isEditorActive()) {
             const editor = this.stateManager.getActiveEditor();
             const clickOnActiveEditorCell = isCellClick && coords?.row === editor?.row && coords?.col === editor?.col;
             if (!clickOnActiveEditorCell) {
-                // Deactivate if clicking anywhere else. Editor handles its own redraw on deactivate.
                 this.editingManager.deactivateEditor(true);
             }
-        }
-        // 2. Handle Dropdown Hiding (no redraw needed just for hiding)
-        else if (this.editingManager.isDropdownVisible()) {
+        } else if (this.editingManager.isDropdownVisible()) {
              this.editingManager.hideDropdown();
         }
 
-         // 3. Reset copied cell if needed
-        const currentCopied = this.stateManager.getCopiedCell();
-        if (currentCopied && !isCellClick) {
-            // Clear only if not a cell click
-            redrawNeeded = redrawNeeded || this.interactionManager.clearCopiedCell();
-        }
+         // --- Handle Selections & Clear Other States ---
+        const currentCopied = this.stateManager.isCopyActive(); // Check if any copy state is active
 
-        // 4. Handle Row Number Click
         if (isRowNumberClick && coords && coords.row !== null) {
-            redrawNeeded = redrawNeeded || this.interactionManager.handleRowNumberClick(coords.row, event.shiftKey, event.ctrlKey || event.metaKey);
-            redrawNeeded = redrawNeeded || this.stateManager.setActiveCell(null); // Clear cell selection
+            const rowsChanged = this.interactionManager.handleRowNumberClick(coords.row, event.shiftKey, event.ctrlKey || event.metaKey);
+            // InteractionManager.handleRowNumberClick now handles clearing cell/range state internally
+            const copyCleared = currentCopied ? this.interactionManager.clearCopiedCell() : false;
+            redrawNeeded = rowsChanged || copyCleared;
         }
-        // 5. Handle Cell Click
         else if (isCellClick && coords && coords.row !== null) {
-            const currentActive = this.stateManager.getActiveCell();
-            if (!currentActive || currentActive.row !== coords.row || currentActive.col !== coords.col) {
-                 redrawNeeded = redrawNeeded || this.stateManager.setActiveCell(coords);
-                 redrawNeeded = redrawNeeded || this.interactionManager.clearSelections(); // Clear row selection
+            const cellChanged = this.stateManager.setActiveCell(coords);
+            let rowsCleared = false;
+            let rangeCleared = false;
+            // If cell changed, explicitly clear other selections
+            if (cellChanged) {
+                 rowsCleared = this.interactionManager.clearSelections();
+                 rangeCleared = this.stateManager.clearSelectionRange();
             }
+            //const copyCleared = currentCopied ? this.interactionManager.clearCopiedCell() : false;
+            redrawNeeded = cellChanged || rowsCleared || rangeCleared;// || copyCleared;
         }
-        // 6. Handle Click Outside Cells/Rows
         else {
-             redrawNeeded = redrawNeeded || this.stateManager.setActiveCell(null);
-             redrawNeeded = redrawNeeded || this.interactionManager.clearSelections();
+             // Click outside
+             const cellCleared = this.stateManager.setActiveCell(null);
+             let rowsCleared = false;
+             let rangeCleared = false;
+             if (cellCleared) { // If active cell was cleared, clear others too
+                 rowsCleared = this.interactionManager.clearSelections();
+                 rangeCleared = this.stateManager.clearSelectionRange();
+             }
+             const copyCleared = currentCopied ? this.interactionManager.clearCopiedCell() : false;
+             redrawNeeded = cellCleared || rowsCleared || rangeCleared || copyCleared;
         }
 
-        // 7. Final Redraw if any state changed
+        // Final Redraw
         if (redrawNeeded) {
             this.renderer.draw();
         }
     }
 
     private _handleCanvasMouseDown(event: MouseEvent): void {
-        // Check for resize handle mousedown first
+        this._ignoreNextClick = false;
+         // Prioritize resize/fill handle detection
         const resizeTarget = this.interactionManager.checkResizeHandles(event);
         if (resizeTarget) {
             event.preventDefault();
             event.stopPropagation();
-            return; // InteractionManager starts resize
+            return;
         }
 
-        // Check for fill handle mousedown if a cell is active
         const activeCell = this.stateManager.getActiveCell();
         if (activeCell && activeCell.row !== null && activeCell.col !== null) {
             const fillHandleTarget = this.interactionManager.checkFillHandle(event);
             if (fillHandleTarget) {
                 event.preventDefault();
                 event.stopPropagation();
-                return; // InteractionManager starts fill handle drag
+                return;
             }
         }
 
-        // If not resizing or dragging fill handle, focus container for subsequent keyboard events
-        // _handleClick will handle selection changes
-        this.domManager.focusContainer();
+        // If not resizing or dragging fill handle, check for cell click to start selection drag
+        const coords = this._getCoordsFromEvent(event);
+        if (coords && coords.row !== null && coords.col !== null) {
+             // Deactivate editor if clicking on a different cell
+            if (this.editingManager.isEditorActive()) {
+                 const editor = this.stateManager.getActiveEditor();
+                 if (coords.row !== editor?.row || coords.col !== editor?.col) {
+                     this.editingManager.deactivateEditor(true);
+                 }
+             }
+
+            // Start selection drag
+            const dragStarted = this.interactionManager.startSelectionDrag(coords);
+            // InteractionManager.startSelectionDrag now handles clearing row state internally
+            if (dragStarted) {
+                this.renderer.draw();
+            }
+            event.preventDefault();
+            this.domManager.focusContainer();
+        }
     }
 
     private _handleDocumentMouseMove(event: MouseEvent): void {
         if (this.stateManager.isResizing()) {
-            this.interactionManager.handleResizeMouseMove(event);
-            // handleResizeMouseMove triggers redraws internally
+            this.interactionManager.handleResizeMouseMove(event); // Handles redraw
         } else if (this.stateManager.isDraggingFillHandle()) {
-            this.interactionManager.handleFillHandleMouseMove(event);
-            // handleFillHandleMouseMove triggers redraws internally
+            this.interactionManager.handleFillHandleMouseMove(event); // Handles redraw
+        } else if (this.stateManager.getIsDraggingSelection()) {
+            // Update selection range based on mouse position
+            const coords = this._getCoordsFromEvent(event);
+            if (coords) {
+                const redrawNeeded = this.interactionManager.updateSelectionDrag(coords);
+                if (redrawNeeded) {
+                    this.renderer.draw();
+                }
+            }
         } else {
-            // Update cursor based on hover over resize/fill handles even when not actively dragging
+            // Update cursor style for hover
             this.interactionManager.updateCursorStyle(event);
         }
     }
 
     private _handleDocumentMouseUp(event: MouseEvent): void {
-        let redrawNeeded = false;
+        let wasDraggingSelection = false;
+        // Order matters: check drag selection first
+        if (this.stateManager.getIsDraggingSelection()) {
+            wasDraggingSelection = true;
+            this.interactionManager.endSelectionDrag();
+        }
         if (this.stateManager.isResizing()) {
             this.interactionManager.endResize();
-            // No redraw flag needed, resize mouse move handled draws. Final state is set.
         }
         if (this.stateManager.isDraggingFillHandle()) {
-            this.interactionManager.endFillHandleDrag(); // This performs the fill and triggers draw internally
-             // No redraw flag needed here, endFillHandleDrag calls _performFillDown which draws if changed.
+            this.interactionManager.endFillHandleDrag(); // Handles redraw internally
         }
 
         // Always update cursor style on mouse up
         this.interactionManager.updateCursorStyle(event);
 
-        // Note: Redraws are handled within the resize/drag handlers now or by _performFillDown
+        // If we just finished a drag selection, ignore the next click event
+        if (wasDraggingSelection) {
+            this._ignoreNextClick = true;
+        }
     }
 
     // Handle clicks outside the spreadsheet container
     private _handleGlobalMouseDown(event: MouseEvent): void {
-        if (this.stateManager.isDraggingFillHandle() || this.stateManager.isResizing()) return; // Don't interfere
+        if (this.stateManager.isDraggingFillHandle() || this.stateManager.isResizing() || this.stateManager.getIsDraggingSelection()) return;
 
         if (!this.container.contains(event.target as Node)) {
             let needsRedraw = false;
             if (this.editingManager.isEditorActive() || this.editingManager.isDropdownVisible()) {
-                // Editor handles its own redraw on deactivate
                 this.editingManager.deactivateEditor(true);
             } else {
-                // Clear selection state if clicking outside and not editing
-                needsRedraw = needsRedraw || this.stateManager.setActiveCell(null);
-                needsRedraw = needsRedraw || this.interactionManager.clearSelections();
-                needsRedraw = needsRedraw || this.interactionManager.clearCopiedCell();
+                // Clear all selection state if clicking outside
+                const cellCleared = this.stateManager.setActiveCell(null);
+                let rowsCleared = false;
+                let rangeCleared = false;
+                if (cellCleared) {
+                     rowsCleared = this.interactionManager.clearSelections();
+                     rangeCleared = this.stateManager.clearSelectionRange();
+                }
+                const copyCleared = this.interactionManager.clearCopiedCell();
+                needsRedraw = cellCleared || rowsCleared || rangeCleared || copyCleared;
             }
 
             if (needsRedraw) {
@@ -340,6 +391,52 @@ export class EventManager {
 
         // Redraw if Delete/Backspace on rows caused a state change
         if (redrawNeeded) {
+            this.renderer.draw();
+        }
+    }
+
+    // --- Native Paste Event Handling ---
+    private _handlePaste(event: ClipboardEvent): void {
+        // Only handle paste if editor isn't active and clipboard data exists
+        if (this.editingManager.isEditorActive()) return;
+        if (!event.clipboardData) return;
+
+        const textData = event.clipboardData.getData('text/plain');
+        if (!textData) return;
+
+        const activeCell = this.stateManager.getActiveCell();
+        const selectionRange = this.stateManager.getNormalizedSelectionRange();
+        const targetRange = selectionRange;
+        const targetCell = (!targetRange && activeCell) ? activeCell : null;
+
+        if (!targetRange && !targetCell) {
+            log('log', this.options.verbose, "Clipboard paste ignored: No target cell or range selected.");
+            return;
+        }
+
+        log('log', this.options.verbose, "Handling native paste event.");
+        event.preventDefault(); // Prevent browser's default paste action
+
+        let changed = false;
+
+        // Attempt to parse text data into a 2D array (assuming TSV)
+        const parsedRows = textData.split(/\r\n|\n|\r/).map(row => row.split('\t'));
+        const isSingleValuePaste = parsedRows.length === 1 && parsedRows[0].length === 1;
+
+        if (targetRange) {
+            // Paste to Range (repeat pattern of parsed data)
+            changed = this.interactionManager.pasteRangeToRangeExternal(targetRange, parsedRows);
+        } else if (targetCell && targetCell.row !== null && targetCell.col !== null) {
+            if (isSingleValuePaste) {
+                 // Paste single text value to the active cell (check type)
+                 changed = this.interactionManager.pasteSingleValueExternal(targetCell, parsedRows[0][0]);
+            } else {
+                 // Paste multi-line/tabbed text starting from the active cell
+                 changed = this.interactionManager.pasteRangeFromTopLeftExternal(targetCell, parsedRows);
+            }
+        }
+
+        if (changed) {
             this.renderer.draw();
         }
     }

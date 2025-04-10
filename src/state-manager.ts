@@ -36,13 +36,19 @@ export class StateManager {
     private visibleColEndIndex: number = 0;
 
     // --- Interaction State ---
-    private activeCell: CellCoords | null = null;
+    private activeCell: CellCoords | null = null; // Cell with primary focus, start of selection
+    private selectionStartCell: CellCoords | null = null; // Start cell of a multi-cell selection range
+    private selectionEndCell: CellCoords | null = null;   // End cell of a multi-cell selection range
+    private isDraggingSelection: boolean = false;
+
     private activeEditor: ActiveEditorState | null = null;
     private selectedRows: Set<number> = new Set();
     private lastClickedRow: number | null = null; // For shift-click selection range
-    private copiedValue: any = undefined;
+    private copiedValue: any = undefined; // For single cell copy
     private copiedValueType: DataType | undefined = undefined;
-    private copiedCell: CellCoords | null = null;
+    private copiedCell: CellCoords | null = null; // Tracks the source cell of single copy
+    private copiedRangeData: any[][] | null = null; // For multi-cell copy
+    private copiedSourceRange: { start: CellCoords, end: CellCoords } | null = null; // Source range of multi-cell copy
     private dragState: DragState = { isDragging: false, startCell: null, endRow: null };
     private resizeColumnState: ResizeColumnState = { isResizing: false, columnIndex: null, startX: null };
     private resizeRowState: ResizeRowState = { isResizing: false, rowIndex: null, startY: null };
@@ -258,10 +264,12 @@ export class StateManager {
         return this.activeCell;
     }
 
-    /** Returns true if the active cell changed */
+    /** Sets the active cell. Returns true if the active cell changed. */
     public setActiveCell(coords: CellCoords | null): boolean {
         const changed = JSON.stringify(this.activeCell) !== JSON.stringify(coords);
-        this.activeCell = coords;
+        if (changed) {
+             this.activeCell = coords;
+        }
         return changed;
     }
 
@@ -277,13 +285,17 @@ export class StateManager {
         return this.selectedRows;
     }
 
-    /** Returns true if the selected rows or last clicked row changed */
+    /** Sets selected rows. Returns true if the selected rows or last clicked row changed. */
     public setSelectedRows(rows: Set<number>, lastClicked: number | null): boolean {
         const rowsChanged = JSON.stringify(Array.from(this.selectedRows).sort()) !== JSON.stringify(Array.from(rows).sort());
         const lastClickedChanged = this.lastClickedRow !== lastClicked;
-        this.selectedRows = rows;
-        this.lastClickedRow = lastClicked;
-        return rowsChanged || lastClickedChanged;
+        const stateChanged = rowsChanged || lastClickedChanged;
+
+        if (stateChanged) {
+            this.selectedRows = rows;
+            this.lastClickedRow = lastClicked;
+        }
+        return stateChanged;
     }
 
     public getLastClickedRow(): number | null {
@@ -302,13 +314,51 @@ export class StateManager {
         return this.copiedCell;
     }
 
-    /** Returns true if the copied cell state changed */
+    /** Sets the copied value (for single cell). Clears any copied range. Returns true if state changed. */
     public setCopiedValue(value: any, type: DataType | undefined, cell: CellCoords | null): boolean {
-        const changed = JSON.stringify(this.copiedCell) !== JSON.stringify(cell);
+        const cellChanged = JSON.stringify(this.copiedCell) !== JSON.stringify(cell);
+        const rangeCleared = this.copiedRangeData !== null;
+        const sourceRangeCleared = this.copiedSourceRange !== null;
         this.copiedValue = value;
         this.copiedValueType = type;
         this.copiedCell = cell;
-        return changed;
+        this.copiedRangeData = null; // Clear range data
+        this.copiedSourceRange = null; // Clear source range
+        return cellChanged || rangeCleared || sourceRangeCleared;
+    }
+
+    /** Sets the copied range data and source. Clears any single copied cell. Returns true if state changed. */
+    public setCopiedRange(rangeData: any[][] | null, sourceRange: { start: CellCoords, end: CellCoords } | null ): boolean {
+        const rangeDataChanged = JSON.stringify(this.copiedRangeData) !== JSON.stringify(rangeData);
+        const sourceRangeChanged = JSON.stringify(this.copiedSourceRange) !== JSON.stringify(sourceRange);
+        const cellCleared = this.copiedCell !== null;
+        this.copiedRangeData = rangeData;
+        this.copiedSourceRange = sourceRange;
+        this.copiedValue = undefined;
+        this.copiedValueType = undefined;
+        this.copiedCell = null; // Clear single cell data
+        return rangeDataChanged || sourceRangeChanged || cellCleared;
+    }
+
+    public getCopiedRangeData(): any[][] | null {
+        return this.copiedRangeData;
+    }
+
+    public getCopiedSourceRange(): { start: CellCoords, end: CellCoords } | null {
+        return this.copiedSourceRange;
+    }
+
+    /** Returns true if either a single cell or a range is copied */
+    public isCopyActive(): boolean {
+        return this.copiedCell !== null || this.copiedRangeData !== null;
+    }
+
+    /** Clears all copy state (single cell and range). Returns true if state changed. */
+    public clearCopyState(): boolean {
+        const cellCleared = this.setCopiedValue(undefined, undefined, null);
+        // setCopiedValue already clears range data and source range
+        // const rangeCleared = this.setCopiedRange(null, null); // No longer needed
+        return cellCleared;
     }
 
     public getDragState(): DragState {
@@ -353,12 +403,17 @@ export class StateManager {
 
     public resetInteractionState(): void {
         this.activeCell = null;
+        this.selectionStartCell = null;
+        this.selectionEndCell = null;
+        this.isDraggingSelection = false;
         this.activeEditor = null;
         this.selectedRows = new Set();
         this.lastClickedRow = null;
         this.copiedValue = undefined;
         this.copiedValueType = undefined;
         this.copiedCell = null;
+        this.copiedRangeData = null;
+        this.copiedSourceRange = null; // Reset source range
         this.dragState = { isDragging: false, startCell: null, endRow: null };
         this.resizeColumnState = { isResizing: false, columnIndex: null, startX: null };
         this.resizeRowState = { isResizing: false, rowIndex: null, startY: null };
@@ -403,5 +458,60 @@ export class StateManager {
             this.updateDisabledStatesForRow(rowIndex);
         });
         log('log', this.options.verbose, "Finished updating all disabled states.");
+    }
+
+    // --- Selection Range ---
+
+    public getSelectionStartCell(): CellCoords | null {
+        return this.selectionStartCell;
+    }
+
+    public getSelectionEndCell(): CellCoords | null {
+        return this.selectionEndCell;
+    }
+
+    /** Sets the selection range start and end cells. Returns true if the range changed. */
+    public setSelectionRange(startCell: CellCoords | null, endCell: CellCoords | null): boolean {
+        const startChanged = JSON.stringify(this.selectionStartCell) !== JSON.stringify(startCell);
+        const endChanged = JSON.stringify(this.selectionEndCell) !== JSON.stringify(endCell);
+        const changed = startChanged || endChanged;
+
+        if (changed) {
+            this.selectionStartCell = startCell;
+            this.selectionEndCell = endCell;
+        }
+        return changed;
+    }
+
+    /** Clears the multi-cell selection range */
+    public clearSelectionRange(): boolean {
+        return this.setSelectionRange(null, null);
+    }
+
+    /** Gets the currently selected range, normalized (top-left, bottom-right) */
+    public getNormalizedSelectionRange(): { start: CellCoords, end: CellCoords } | null {
+        if (!this.selectionStartCell || !this.selectionEndCell || this.selectionStartCell.row === null || this.selectionStartCell.col === null || this.selectionEndCell.row === null || this.selectionEndCell.col === null) {
+            return null;
+        }
+        const startRow = Math.min(this.selectionStartCell.row, this.selectionEndCell.row);
+        const startCol = Math.min(this.selectionStartCell.col, this.selectionEndCell.col);
+        const endRow = Math.max(this.selectionStartCell.row, this.selectionEndCell.row);
+        const endCol = Math.max(this.selectionStartCell.col, this.selectionEndCell.col);
+        return {
+            start: { row: startRow, col: startCol },
+            end: { row: endRow, col: endCol },
+        };
+    }
+
+    public isMultiCellSelectionActive(): boolean {
+        return !!this.selectionStartCell && !!this.selectionEndCell;
+    }
+
+    public setDraggingSelection(isDragging: boolean): void {
+        this.isDraggingSelection = isDragging;
+    }
+
+    public getIsDraggingSelection(): boolean {
+        return this.isDraggingSelection;
     }
 } 

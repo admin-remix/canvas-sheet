@@ -265,11 +265,12 @@ export class Renderer {
             textAlign,
             textBaseline,
             padding,
-            cellBgColor,         // Default cell background
-            activeCellBgColor,   // Active cell background
-            selectedRowBgColor,  // Selected row background
+            cellBgColor,
+            activeCellBgColor,
+            selectedRowBgColor,
+            selectedRangeBgColor,
             disabledCellBgColor,
-            disabledCellTextColor // Corrected name
+            disabledCellTextColor
         } = this.options;
         const data = this.stateManager.getData();
         const columns = this.stateManager.getColumns();
@@ -282,6 +283,7 @@ export class Renderer {
         const visibleColEnd = this.stateManager.getVisibleColEndIndex();
         const selectedRows = this.stateManager.getSelectedRows();
         const activeCell = this.stateManager.getActiveCell();
+        const selectionRange = this.stateManager.getNormalizedSelectionRange();
 
         this.ctx.save();
 
@@ -318,20 +320,27 @@ export class Renderer {
                 const isActive = activeCell?.row === row && activeCell?.col === col;
                 const isEditing = this.stateManager.getActiveEditor()?.row === row && this.stateManager.getActiveEditor()?.col === col;
 
-                // Determine cell background color
-                let currentCellBg = cellBgColor; // Start with default
-                if (isRowSelected) {
+                // Check if the current cell is within the selection range
+                const isInSelectionRange = selectionRange &&
+                    row >= selectionRange.start.row! && row <= selectionRange.end.row! &&
+                    col >= selectionRange.start.col! && col <= selectionRange.end.col!;
+
+                // Determine cell background color - Order matters!
+                let currentCellBg = cellBgColor; // 1. Default
+                if (isRowSelected) { // 2. Row selection overrides default
                     currentCellBg = selectedRowBgColor;
                 }
-                if (isDisabled) {
+                if (isInSelectionRange && !isActive) { // 3. Range selection overrides row/default (but not active)
+                    currentCellBg = selectedRangeBgColor;
+                }
+                if (isDisabled) { // 4. Disabled overrides everything except active cell
                     currentCellBg = disabledCellBgColor;
                 }
-                 if (isActive && !isEditing) {
-                    // Active cell highlight takes precedence over row/disabled, but not when editing
+                if (isActive && !isEditing) { // 5. Active cell overrides everything (if not editing)
                     currentCellBg = activeCellBgColor;
                 }
 
-                // Fill background if not editing (editor overlays background)
+                // Fill background if not editing
                 if (!isEditing && currentCellBg) {
                     this.ctx.fillStyle = currentCellBg;
                     this.ctx.fillRect(currentX, currentY, colWidth, rowHeight);
@@ -340,7 +349,6 @@ export class Renderer {
                 // Cell Text (Skip if editing)
                 if (!isEditing) {
                     const value = data[row]?.[colKey];
-                    // Correctly call formatValue using schema info (value, type, options)
                     const formattedValue = formatValue(value, schemaCol?.type, schemaCol?.values);
                     if (formattedValue !== null && formattedValue !== undefined && formattedValue !== '') {
                         this.ctx.fillStyle = isDisabled ? disabledCellTextColor : textColor;
@@ -350,8 +358,9 @@ export class Renderer {
                         } else if (textAlign === 'right') {
                             textX = currentX + colWidth - padding;
                         }
-                        const textY = currentY + rowHeight / 2; // Assumes textBaseline: 'middle'
-                        this.ctx.fillText(formattedValue, textX, textY);// clip text to colWidth
+                        const textY = currentY + rowHeight / 2;
+                        // do not apply maxWidth to fillText
+                        this.ctx.fillText(formattedValue, textX, textY);
                     }
                 }
 
@@ -420,39 +429,71 @@ export class Renderer {
 
     private _drawActiveCellHighlight(): void {
         const activeCell = this.stateManager.getActiveCell();
-        const isDragging = this.stateManager.isDraggingFillHandle();
+        const isDraggingSelection = this.stateManager.getIsDraggingSelection();
+        const isDraggingFill = this.stateManager.isDraggingFillHandle();
         const isResizing = this.stateManager.isResizing();
         const activeEditor = this.stateManager.getActiveEditor();
+        const selectionRange = this.stateManager.getNormalizedSelectionRange();
 
-        if (!activeCell || isDragging || isResizing) return;
-
-        if (activeCell.row === null || activeCell.col === null) return;
-        const bounds = this.getCellBounds(activeCell.row, activeCell.col);
-        if (!bounds) return; // Cell is not visible
+        // Don't draw highlight if resizing, or if dragging fill handle
+        if (isResizing || isDraggingFill) return;
+        // Need an active cell OR a selection range to draw anything
+        if (!activeCell && !selectionRange) return;
 
         const { highlightBorderColor, fillHandleColor, fillHandleSize } = this.options;
-        const { x, y, width, height } = bounds;
-
         this.ctx.save();
         this.ctx.strokeStyle = highlightBorderColor;
         this.ctx.lineWidth = 2;
 
-        // Draw highlight border inside the cell bounds
-        this.ctx.strokeRect(x + 1, y + 1, width - 2, height - 2);
+        let primaryHighlightBounds: CellBounds | null = null;
+        let activeCellBounds: CellBounds | null = null;
 
-        // Draw fill handle only if editor is not active
-        if (!activeEditor) {
+        if (selectionRange) {
+            // Draw border around the entire selection range
+            const startBounds = this.getCellBounds(selectionRange.start.row!, selectionRange.start.col!);
+            const endBounds = this.getCellBounds(selectionRange.end.row!, selectionRange.end.col!);
+
+            if (startBounds && endBounds) {
+                primaryHighlightBounds = {
+                    x: startBounds.x,
+                    y: startBounds.y,
+                    width: (endBounds.x + endBounds.width) - startBounds.x,
+                    height: (endBounds.y + endBounds.height) - startBounds.y,
+                };
+            }
+            // Also need the specific active cell bounds for the fill handle
+            if (activeCell && activeCell.row !== null && activeCell.col !== null) {
+                activeCellBounds = this.getCellBounds(activeCell.row, activeCell.col);
+            }
+        } else if (activeCell && activeCell.row !== null && activeCell.col !== null) {
+            // Single cell selection - highlight is just the active cell
+            activeCellBounds = this.getCellBounds(activeCell.row, activeCell.col);
+            primaryHighlightBounds = activeCellBounds;
+        }
+
+        // Draw the main highlight border
+        if (primaryHighlightBounds) {
+             this.ctx.strokeRect(
+                primaryHighlightBounds.x + 1, // Offset slightly for inside border
+                primaryHighlightBounds.y + 1,
+                primaryHighlightBounds.width - 2,
+                primaryHighlightBounds.height - 2
+            );
+        }
+
+        // Draw fill handle (always relates to the active cell, even in range selection)
+        // Only draw if not editing and the active cell is visible
+        if (!activeEditor && activeCellBounds) {
             const handleRadius = fillHandleSize / 2;
-            const handleCenterX = x + width - handleRadius - 1; // Position slightly inside
-            const handleCenterY = y + height - handleRadius - 1;
+            const handleCenterX = activeCellBounds.x + activeCellBounds.width - handleRadius - 1;
+            const handleCenterY = activeCellBounds.y + activeCellBounds.height - handleRadius - 1;
 
             this.ctx.fillStyle = fillHandleColor;
             this.ctx.beginPath();
             this.ctx.arc(handleCenterX, handleCenterY, handleRadius, 0, Math.PI * 2);
             this.ctx.fill();
 
-            // Optional: Add a white border to the handle for better visibility
-            this.ctx.strokeStyle = "#ffffff";
+            this.ctx.strokeStyle = "#ffffff"; // White border for handle
             this.ctx.lineWidth = 1;
             this.ctx.stroke();
         }
@@ -515,24 +556,45 @@ export class Renderer {
 
     private _drawCopiedCellHighlight(): void {
         const copiedCell = this.stateManager.getCopiedCell();
-        if (!copiedCell) return;
+        const copiedRange = this.stateManager.getCopiedSourceRange(); // Use source range for drawing
 
-        const { row, col } = copiedCell;
-        if (row === null || col === null) return;
+        if (!copiedCell && !copiedRange) return; // Nothing is copied
 
-        const bounds = this.getCellBounds(row, col);
-        if (!bounds) return; // Cell not visible
+        const { copyHighlightBorderColor, copyHighlightBorderDash } = this.options;
 
-        const { highlightBorderColor } = this.options;
-        const { x, y, width, height } = bounds;
+        let highlightBounds: CellBounds | null = null;
+
+        if (copiedRange) {
+            // Highlight copied range
+            const startBounds = this.getCellBounds(copiedRange.start.row!, copiedRange.start.col!); 
+            const endBounds = this.getCellBounds(copiedRange.end.row!, copiedRange.end.col!);     
+            if (startBounds && endBounds) {
+                highlightBounds = {
+                    x: startBounds.x,
+                    y: startBounds.y,
+                    width: (endBounds.x + endBounds.width) - startBounds.x,
+                    height: (endBounds.y + endBounds.height) - startBounds.y,
+                };
+            }
+        } else if (copiedCell && copiedCell.row !== null && copiedCell.col !== null) {
+            // Highlight single copied cell
+             highlightBounds = this.getCellBounds(copiedCell.row, copiedCell.col);
+        }
+
+        if (!highlightBounds) return; // Bounds not visible or invalid
 
         this.ctx.save();
-        this.ctx.strokeStyle = highlightBorderColor;
+        this.ctx.strokeStyle = copyHighlightBorderColor;
         this.ctx.lineWidth = 1;
-        this.ctx.setLineDash([4, 2]); // Dashed line for copy highlight
+        this.ctx.setLineDash(copyHighlightBorderDash);
 
-        // Draw dashed border inside the cell bounds
-        this.ctx.strokeRect(x + 0.5, y + 0.5, width - 1, height - 1);
+        // Draw dashed border slightly inside bounds for better alignment
+        this.ctx.strokeRect(
+            highlightBounds.x + 0.5, 
+            highlightBounds.y + 0.5, 
+            highlightBounds.width - 1, 
+            highlightBounds.height - 1
+        );
 
         this.ctx.restore();
     }

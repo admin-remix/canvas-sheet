@@ -50,33 +50,60 @@ export class InteractionManager {
         log('log', this.options.verbose, `Row ${clickedRow} clicked. Shift: ${isShiftKey}, Ctrl: ${isCtrlKey}`);
         const selectedRows = new Set(this.stateManager.getSelectedRows());
         let lastClickedRow = this.stateManager.getLastClickedRow();
-        const initialSelectedRows = JSON.stringify(Array.from(selectedRows).sort());
-        const initialLastClickedRow = lastClickedRow;
+
+        // Store original state for comparison
+        const originalSelectedRowsJson = JSON.stringify(Array.from(selectedRows).sort());
+        const originalLastClickedRow = lastClickedRow;
 
         if (isShiftKey && lastClickedRow !== null) {
-            selectedRows.clear();
+            console.log('shift click logic =====>');
+            // --- Shift Click Logic ---
             const start = Math.min(lastClickedRow, clickedRow);
             const end = Math.max(lastClickedRow, clickedRow);
+            // Create new set for shift selection
+            const newSelectedRows = new Set<number>();
             for (let i = start; i <= end; i++) {
-                selectedRows.add(i);
+                newSelectedRows.add(i);
             }
-            log('log', this.options.verbose, "Selected rows (Shift):", Array.from(selectedRows).sort((a, b) => a - b));
+            // Update the state ONLY if the set actually changed
+             if (JSON.stringify(Array.from(newSelectedRows).sort()) !== originalSelectedRowsJson) {
+                this.stateManager.setSelectedRows(newSelectedRows, lastClickedRow); // Keep original lastClicked for subsequent shifts
+            }
+            log('log', this.options.verbose, "Selected rows (Shift):", Array.from(newSelectedRows).sort((a, b) => a - b));
+
         } else if (isCtrlKey) {
+            console.log('ctrl click logic =====>');
+            // --- Ctrl Click Logic ---
             if (selectedRows.has(clickedRow)) {
                 selectedRows.delete(clickedRow);
             } else {
                 selectedRows.add(clickedRow);
             }
-            lastClickedRow = clickedRow;
+            lastClickedRow = clickedRow; // Update last clicked for subsequent Ctrl/Shift
+            this.stateManager.setSelectedRows(selectedRows, lastClickedRow);
             log('log', this.options.verbose, "Selected rows (Ctrl):", Array.from(selectedRows).sort((a, b) => a - b));
         } else {
+            console.log('single click logic =====>');
+            // --- Single Click Logic ---
             selectedRows.clear();
             selectedRows.add(clickedRow);
             lastClickedRow = clickedRow;
+            this.stateManager.setSelectedRows(selectedRows, lastClickedRow);
             log('log', this.options.verbose, "Selected rows (Single):", Array.from(selectedRows).sort((a, b) => a - b));
         }
-        // Use the state manager's method to update and check if changed
-        return this.stateManager.setSelectedRows(selectedRows, lastClickedRow);
+
+        // Check if the primary state actually changed
+        const rowsChanged = JSON.stringify(Array.from(this.stateManager.getSelectedRows()).sort()) !== originalSelectedRowsJson;
+        const lastClickChanged = this.stateManager.getLastClickedRow() !== originalLastClickedRow;
+        const changed = rowsChanged || lastClickChanged;
+
+        // If row selection changed, clear other selections
+        if (changed) {
+            this.stateManager.setActiveCell(null);      // Clear active cell
+            this.stateManager.clearSelectionRange();    // Clear cell selection range
+        }
+
+        return changed;
     }
 
     /** Returns true if selections were cleared */
@@ -416,12 +443,48 @@ export class InteractionManager {
         }
     }
 
-    // --- Copy/Paste --- HINT HINT
-    /** Returns true if copy state changed */
+    // --- Copy/Paste ---
+    /** Copies the active cell or selected range. Returns true if copy state changed. */
     public copy(): boolean {
         const activeCell = this.stateManager.getActiveCell();
+        const selectionRange = this.stateManager.getNormalizedSelectionRange();
         let changed = false;
-        if (activeCell && activeCell.row !== null && activeCell.col !== null) {
+
+        if (selectionRange) {
+            // Copy range data
+            const { start, end } = selectionRange;
+            const rangeData: any[][] = [];
+            let allTypesMatch = true;
+            let firstType: DataType | undefined = undefined;
+
+            for (let r = start.row!; r <= end.row!; r++) {
+                const rowData: any[] = [];
+                for (let c = start.col!; c <= end.col!; c++) {
+                    const value = this.stateManager.getCellData(r, c);
+                    rowData.push(value);
+
+                    // Check type consistency
+                    const type = this.stateManager.getSchemaForColumn(c)?.type;
+                    if (r === start.row! && c === start.col!) {
+                        firstType = type;
+                    } else if (type !== firstType) {
+                        allTypesMatch = false;
+                    }
+                }
+                rangeData.push(rowData);
+            }
+
+             if (!allTypesMatch) {
+                log('warn', this.options.verbose, "Copied range contains mixed data types.");
+                // Decide if copy should be prevented or allowed with warning
+            }
+
+            // Store both the data and the source range
+            changed = this.stateManager.setCopiedRange(rangeData, selectionRange);
+            log('log', this.options.verbose, `Copied range data [${rangeData.length}x${rangeData[0]?.length}] from source range [${start.row},${start.col}] -> [${end.row},${end.col}]`);
+
+        } else if (activeCell && activeCell.row !== null && activeCell.col !== null) {
+            // Copy single cell (this already clears range state via setCopiedValue)
             const { row, col } = activeCell;
             const value = this.stateManager.getCellData(row, col);
             const type = this.stateManager.getSchemaForColumn(col)?.type;
@@ -433,60 +496,247 @@ export class InteractionManager {
         return changed;
     }
 
-    /** Returns true if paste occurred and requires redraw */
+    /** Pastes single value or range. Returns true if paste occurred and requires redraw. */
     public paste(): boolean {
         const activeCell = this.stateManager.getActiveCell();
-        const copiedValue = this.stateManager.getCopiedValue();
-        const copiedType = this.stateManager.getCopiedValueType();
+        const selectionRange = this.stateManager.getNormalizedSelectionRange();
 
-        if (!activeCell || activeCell.row === null || activeCell.col === null || copiedValue === undefined || copiedType === undefined) {
-            log('log', this.options.verbose, `Paste cancelled: No active cell or no copied value.`);
-            // Even if paste fails, if there *was* a copied cell, clearing it requires redraw
-            return this.clearCopiedCell();
+        // Determine target: range takes precedence over active cell
+        const targetRange = selectionRange;
+        const targetCell = (!targetRange && activeCell) ? activeCell : null;
+
+        if (!targetRange && !targetCell) {
+            log('log', this.options.verbose, `Paste cancelled: No target cell or range selected.`);
+            return false;
+        }
+        if (targetCell && (targetCell.row === null || targetCell.col === null)){
+            log('log', this.options.verbose, `Paste cancelled: Invalid target cell coordinates.`);
+            return false;
         }
 
-        const targetRow = activeCell.row;
-        const targetCol = activeCell.col;
+        const copiedValue = this.stateManager.getCopiedValue();
+        const copiedType = this.stateManager.getCopiedValueType();
+        const copiedRange = this.stateManager.getCopiedRangeData();
+        let changed = false;
+
+        // --- Determine paste logic based on source (single/range) and target (single/range) ---
+        if (copiedRange) {
+            // Source is Range
+            if (targetRange) {
+                // Case 4: Range -> Range
+                changed = this._pasteRangeToRange(targetRange, copiedRange);
+            } else if (targetCell) {
+                // Case 3: Range -> Single Cell (Top-Left)
+                changed = this._pasteRangeFromTopLeft(targetCell, copiedRange);
+            }
+        } else if (copiedValue !== undefined) {
+            // Source is Single Value
+            if (targetRange) {
+                // Case 2: Single Value -> Range
+                changed = this._pasteSingleValueToRange(targetRange, copiedValue, copiedType);
+            } else if (targetCell) {
+                // Case 1: Single Value -> Single Cell
+                changed = this._pasteSingleValue(targetCell, copiedValue, copiedType);
+            }
+        }
+        // --- End Paste Logic ---
+
+        // Clear copy state (single and range), redraw if copy state was active OR if paste made changes
+        const clearedCopyState = this.clearCopiedCell();
+
+        return changed || clearedCopyState;
+    }
+
+    /** Case 1: Paste single value to single cell */
+    private _pasteSingleValue(targetCell: CellCoords, value: any, valueType: DataType | undefined): boolean {
+        if (targetCell.row === null || targetCell.col === null || valueType === undefined) return false;
+
+        const targetRow = targetCell.row;
+        const targetCol = targetCell.col;
         const targetColKey = this.stateManager.getColumnKey(targetCol);
         const targetSchema = this.stateManager.getSchemaForColumn(targetCol);
-        const targetType = targetSchema?.type;
 
         if (this.stateManager.isCellDisabled(targetRow, targetCol)) {
             log('log', this.options.verbose, `Paste cancelled: Target cell ${targetRow},${targetCol} is disabled.`);
-            return this.clearCopiedCell();
+            return false;
         }
 
-        if (targetType !== copiedType) {
-            log('log', this.options.verbose, `Paste cancelled: Type mismatch (Copied: ${copiedType}, Target: ${targetType})`);
-            return this.clearCopiedCell();
+        if (targetSchema?.type !== valueType) {
+            log('log', this.options.verbose, `Paste cancelled: Type mismatch (Copied: ${valueType}, Target: ${targetSchema?.type})`);
+            return false;
         }
 
-        if (!validateInput(copiedValue, targetSchema, targetColKey, this.options.verbose)) {
+        if (!validateInput(value, targetSchema, targetColKey, this.options.verbose)) {
             log('log', this.options.verbose, `Paste cancelled: Copied value failed validation for target cell.`);
-            return this.clearCopiedCell();
+            return false;
         }
 
         const currentValue = this.stateManager.getCellData(targetRow, targetCol);
-        let pasted = false;
-        if (currentValue !== copiedValue) {
-            this.stateManager.updateCellInternal(targetRow, targetCol, copiedValue);
-            this.stateManager.updateDisabledStatesForRow(targetRow); // Update disabled states after paste
-            log('log', this.options.verbose, `Pasted value ${copiedValue} to cell ${targetRow},${targetCol}`);
-            pasted = true;
-        } else {
-            log('log', this.options.verbose, `Paste skipped: Value already matches in cell ${targetRow},${targetCol}`);
-        }
-
-        const clearedCopy = this.clearCopiedCell(); // Clear copy state regardless
-        return pasted || clearedCopy; // Redraw if pasted OR if copy highlight was cleared
-    }
-
-    /** Returns true if copied cell state was cleared */
-    public clearCopiedCell(): boolean {
-        if (this.stateManager.getCopiedCell()) {
-            return this.stateManager.setCopiedValue(undefined, undefined, null);
+        if (currentValue !== value) {
+            this.stateManager.updateCellInternal(targetRow, targetCol, value);
+            this.stateManager.updateDisabledStatesForRow(targetRow);
+            log('log', this.options.verbose, `Pasted value ${value} to cell ${targetRow},${targetCol}`);
+            return true;
         }
         return false;
+    }
+
+    /** Case 2: Paste single value to a selected range */
+    private _pasteSingleValueToRange(targetRange: { start: CellCoords, end: CellCoords }, value: any, valueType: DataType | undefined): boolean {
+        if (valueType === undefined) return false;
+
+        let changed = false;
+        const affectedRows = new Set<number>();
+
+        for (let r = targetRange.start.row!; r <= targetRange.end.row!; r++) {
+            for (let c = targetRange.start.col!; c <= targetRange.end.col!; c++) {
+                const targetColKey = this.stateManager.getColumnKey(c);
+                const targetSchema = this.stateManager.getSchemaForColumn(c);
+
+                // Skip if disabled or type mismatch
+                if (this.stateManager.isCellDisabled(r, c)) continue;
+                if (targetSchema?.type !== valueType) continue;
+
+                // Validate value for the target cell
+                if (!validateInput(value, targetSchema, targetColKey, this.options.verbose)) {
+                    log('warn', this.options.verbose, `Paste single to range: Value validation failed for cell ${r},${c}. Skipping.`);
+                    continue;
+                }
+
+                const currentValue = this.stateManager.getCellData(r, c);
+                if (currentValue !== value) {
+                    this.stateManager.updateCellInternal(r, c, value);
+                    affectedRows.add(r);
+                    changed = true;
+                }
+            }
+        }
+
+        // Update disabled states for all affected rows
+        affectedRows.forEach(r => this.stateManager.updateDisabledStatesForRow(r));
+
+        if (changed) {
+            log('log', this.options.verbose, `Pasted single value to range [${targetRange.start.row},${targetRange.start.col}] -> [${targetRange.end.row},${targetRange.end.col}]`);
+        }
+        return changed;
+    }
+
+    /** Case 3: Paste range starting from a single top-left cell */
+    private _pasteRangeFromTopLeft(startCell: CellCoords, rangeData: any[][]): boolean {
+        if (startCell.row === null || startCell.col === null || !rangeData || rangeData.length === 0) {
+            return false;
+        }
+        const startRow = startCell.row;
+        const startCol = startCell.col;
+        const numRowsToPaste = rangeData.length;
+        const numColsToPaste = rangeData[0]?.length || 0;
+        let changed = false;
+        const totalRows = this.stateManager.getData().length;
+        const totalCols = this.stateManager.getColumns().length;
+        const affectedRows = new Set<number>();
+
+        for (let rOffset = 0; rOffset < numRowsToPaste; rOffset++) {
+            const targetRow = startRow + rOffset;
+            if (targetRow >= totalRows) break;
+
+            const pastedRowData = rangeData[rOffset];
+            let rowChanged = false;
+
+            for (let cOffset = 0; cOffset < numColsToPaste; cOffset++) {
+                const targetCol = startCol + cOffset;
+                if (targetCol >= totalCols) break;
+
+                const valueToPaste = pastedRowData[cOffset];
+                const targetColKey = this.stateManager.getColumnKey(targetCol);
+                const targetSchema = this.stateManager.getSchemaForColumn(targetCol);
+
+                if (this.stateManager.isCellDisabled(targetRow, targetCol)) continue;
+
+                // TODO: Add better type checking - compare targetSchema.type with the type of the source cell if available
+
+                if (!validateInput(valueToPaste, targetSchema, targetColKey, this.options.verbose)) {
+                    log('warn', this.options.verbose, `Paste range from TL: Value validation failed for cell ${targetRow},${targetCol}. Skipping.`);
+                    continue;
+                }
+
+                const currentValue = this.stateManager.getCellData(targetRow, targetCol);
+                if (currentValue !== valueToPaste) {
+                    this.stateManager.updateCellInternal(targetRow, targetCol, valueToPaste);
+                    rowChanged = true;
+                }
+            }
+
+            if (rowChanged) {
+                affectedRows.add(targetRow);
+                changed = true;
+            }
+        }
+
+        affectedRows.forEach(r => this.stateManager.updateDisabledStatesForRow(r));
+
+        if (changed) {
+            log('log', this.options.verbose, `Pasted range [${numRowsToPaste}x${numColsToPaste}] starting at ${startRow},${startCol}`);
+        }
+
+        return changed;
+    }
+
+    /** Case 4: Paste range into a selected range (repeating pattern) */
+    private _pasteRangeToRange(targetRange: { start: CellCoords, end: CellCoords }, sourceRangeData: any[][]): boolean {
+        if (!sourceRangeData || sourceRangeData.length === 0) return false;
+        const sourceRows = sourceRangeData.length;
+        const sourceCols = sourceRangeData[0]?.length || 0;
+        if (sourceCols === 0) return false;
+
+        let changed = false;
+        const affectedRows = new Set<number>();
+
+        for (let r = targetRange.start.row!; r <= targetRange.end.row!; r++) {
+            let rowChanged = false;
+            for (let c = targetRange.start.col!; c <= targetRange.end.col!; c++) {
+                // Calculate corresponding source cell using modulo for pattern repetition
+                const sourceRowIndex = (r - targetRange.start.row!) % sourceRows;
+                const sourceColIndex = (c - targetRange.start.col!) % sourceCols;
+                const valueToPaste = sourceRangeData[sourceRowIndex][sourceColIndex];
+
+                const targetColKey = this.stateManager.getColumnKey(c);
+                const targetSchema = this.stateManager.getSchemaForColumn(c);
+
+                // Skip if disabled
+                if (this.stateManager.isCellDisabled(r, c)) continue;
+
+                // TODO: Add type checking? Compare targetSchema.type to the type of sourceRangeData[sourceRowIndex][sourceColIndex]
+                // Requires storing type info during copy or inferring type.
+
+                // Validate value
+                if (!validateInput(valueToPaste, targetSchema, targetColKey, this.options.verbose)) {
+                    log('warn', this.options.verbose, `Paste range to range: Value validation failed for cell ${r},${c}. Skipping.`);
+                    continue;
+                }
+
+                const currentValue = this.stateManager.getCellData(r, c);
+                if (currentValue !== valueToPaste) {
+                    this.stateManager.updateCellInternal(r, c, valueToPaste);
+                    rowChanged = true;
+                }
+            }
+            if (rowChanged) {
+                affectedRows.add(r);
+                changed = true;
+            }
+        }
+
+        affectedRows.forEach(r => this.stateManager.updateDisabledStatesForRow(r));
+
+        if (changed) {
+            log('log', this.options.verbose, `Pasted range pattern into target range [${targetRange.start.row},${targetRange.start.col}] -> [${targetRange.end.row},${targetRange.end.col}]`);
+        }
+        return changed;
+    }
+
+    /** Clears all copy state. Returns true if state changed. */
+    public clearCopiedCell(): boolean {
+         return this.stateManager.clearCopyState();
     }
 
     // --- Deletion --- HINT HINT
@@ -512,6 +762,60 @@ export class InteractionManager {
             return true; // Indicate redraw needed
         }
         return false;
+    }
+
+    // --- Selection Drag ---
+
+    /** Starts a cell selection drag. Returns true if state changed */
+    public startSelectionDrag(startCoords: CellCoords): boolean {
+        if (startCoords.row === null || startCoords.col === null) return false;
+
+        let primaryChanged = false;
+        this.stateManager.setDraggingSelection(true);
+
+        // Update primary states
+        const activeChanged = this.stateManager.setActiveCell(startCoords);
+        const rangeChanged = this.stateManager.setSelectionRange(startCoords, startCoords);
+        primaryChanged = activeChanged || rangeChanged;
+
+        // If primary state changed, clear other selection types
+        let rowsCleared = false;
+        if (primaryChanged) {
+            rowsCleared = this.clearSelections();
+        }
+
+        if (primaryChanged || rowsCleared) {
+            log('log', this.options.verbose, `Started selection drag at ${startCoords.row},${startCoords.col}`);
+            return true;
+        }
+        return false;
+    }
+
+    /** Updates the end cell of the selection drag */
+    public updateSelectionDrag(endCoords: CellCoords): boolean {
+        if (!this.stateManager.getIsDraggingSelection() || !this.stateManager.getSelectionStartCell()) {
+            return false;
+        }
+        // Only update if the end cell is valid
+        if (endCoords.row === null || endCoords.col === null) return false;
+
+        // Only redraw if the end cell actually changes
+        const currentEnd = this.stateManager.getSelectionEndCell();
+        if (currentEnd?.row !== endCoords.row || currentEnd?.col !== endCoords.col) {
+            log('log', this.options.verbose, `Updating selection drag to ${endCoords.row},${endCoords.col}`);
+             // Keep the original start cell, only update the end cell
+            return this.stateManager.setSelectionRange(this.stateManager.getSelectionStartCell(), endCoords);
+        }
+        return false;
+    }
+
+    /** Ends the cell selection drag */
+    public endSelectionDrag(): void {
+        if (this.stateManager.getIsDraggingSelection()) {
+            log('log', this.options.verbose, `Ended selection drag. Final range: ${JSON.stringify(this.stateManager.getNormalizedSelectionRange())}`);
+            this.stateManager.setDraggingSelection(false);
+            // Final range is already set by updateSelectionDrag
+        }
     }
 
     // --- Keyboard Navigation/Actions --- HINT HINT
@@ -636,4 +940,139 @@ export class InteractionManager {
         this.editingManager.activateEditor(nextRow, nextCol);
         // activateEditor will handle the redraw
     }
-} 
+
+    // --- External Paste Handlers (Called by EventManager for native paste) ---
+
+    /** Pastes external string data into a single cell */
+    public pasteSingleValueExternal(targetCell: CellCoords, value: string): boolean {
+        // Treat external paste as text, only allow pasting into text cells for simplicity
+        // Could be enhanced to try parsing based on target cell type
+        if (targetCell.row === null || targetCell.col === null) return false;
+        const targetSchema = this.stateManager.getSchemaForColumn(targetCell.col);
+        if (targetSchema?.type !== 'text') {
+             log('log', this.options.verbose, `Clipboard paste cancelled: Target cell ${targetCell.row},${targetCell.col} is not type 'text'.`);
+             return false;
+        }
+        // Use the existing single value paste logic, forcing type 'text'
+        return this._pasteSingleValue(targetCell, value, 'text');
+    }
+
+     /** Pastes external 2D string array starting from a single top-left cell */
+     public pasteRangeFromTopLeftExternal(startCell: CellCoords, rangeData: string[][]): boolean {
+         // Similar to _pasteRangeFromTopLeft, but assumes string data and checks target type
+         if (startCell.row === null || startCell.col === null || !rangeData || rangeData.length === 0) {
+            return false;
+        }
+        const startRow = startCell.row;
+        const startCol = startCell.col;
+        const numRowsToPaste = rangeData.length;
+        const numColsToPaste = rangeData[0]?.length || 0;
+        let changed = false;
+        const totalRows = this.stateManager.getData().length;
+        const totalCols = this.stateManager.getColumns().length;
+        const affectedRows = new Set<number>();
+
+        for (let rOffset = 0; rOffset < numRowsToPaste; rOffset++) {
+            const targetRow = startRow + rOffset;
+            if (targetRow >= totalRows) break;
+
+            const pastedRowData = rangeData[rOffset];
+            let rowChanged = false;
+
+            for (let cOffset = 0; cOffset < numColsToPaste; cOffset++) {
+                const targetCol = startCol + cOffset;
+                if (targetCol >= totalCols) break;
+
+                const valueToPaste = pastedRowData[cOffset]; // Already a string
+                const targetColKey = this.stateManager.getColumnKey(targetCol);
+                const targetSchema = this.stateManager.getSchemaForColumn(targetCol);
+
+                if (this.stateManager.isCellDisabled(targetRow, targetCol)) continue;
+
+                // Only allow pasting string into text cells
+                if (targetSchema?.type !== 'text') {
+                     log('log', this.options.verbose, `Clipboard paste range: Target cell ${targetRow},${targetCol} is not type 'text'. Skipping.`);
+                    continue;
+                }
+
+                if (!validateInput(valueToPaste, targetSchema, targetColKey, this.options.verbose)) {
+                    log('warn', this.options.verbose, `Clipboard paste range TL: Value validation failed for cell ${targetRow},${targetCol}. Skipping.`);
+                    continue;
+                }
+
+                const currentValue = this.stateManager.getCellData(targetRow, targetCol);
+                if (currentValue !== valueToPaste) {
+                    this.stateManager.updateCellInternal(targetRow, targetCol, valueToPaste);
+                    rowChanged = true;
+                }
+            }
+
+            if (rowChanged) {
+                affectedRows.add(targetRow);
+                changed = true;
+            }
+        }
+
+        affectedRows.forEach(r => this.stateManager.updateDisabledStatesForRow(r));
+
+        if (changed) {
+            log('log', this.options.verbose, `Pasted external range [${numRowsToPaste}x${numColsToPaste}] starting at ${startRow},${startCol}`);
+        }
+
+        return changed;
+     }
+
+     /** Pastes external 2D string array into a selected range (repeating pattern) */
+     public pasteRangeToRangeExternal(targetRange: { start: CellCoords, end: CellCoords }, sourceRangeData: string[][]): boolean {
+        // Similar to _pasteRangeToRange, but assumes string data and checks target type
+         if (!sourceRangeData || sourceRangeData.length === 0) return false;
+        const sourceRows = sourceRangeData.length;
+        const sourceCols = sourceRangeData[0]?.length || 0;
+        if (sourceCols === 0) return false;
+
+        let changed = false;
+        const affectedRows = new Set<number>();
+
+        for (let r = targetRange.start.row!; r <= targetRange.end.row!; r++) {
+            let rowChanged = false;
+            for (let c = targetRange.start.col!; c <= targetRange.end.col!; c++) {
+                const sourceRowIndex = (r - targetRange.start.row!) % sourceRows;
+                const sourceColIndex = (c - targetRange.start.col!) % sourceCols;
+                const valueToPaste = sourceRangeData[sourceRowIndex][sourceColIndex]; // Already a string
+
+                const targetColKey = this.stateManager.getColumnKey(c);
+                const targetSchema = this.stateManager.getSchemaForColumn(c);
+
+                if (this.stateManager.isCellDisabled(r, c)) continue;
+
+                // Only allow pasting string into text cells
+                 if (targetSchema?.type !== 'text') {
+                     log('log', this.options.verbose, `Clipboard paste range->range: Target cell ${r},${c} is not type 'text'. Skipping.`);
+                    continue;
+                }
+
+                if (!validateInput(valueToPaste, targetSchema, targetColKey, this.options.verbose)) {
+                    log('warn', this.options.verbose, `Clipboard paste range->range: Value validation failed for cell ${r},${c}. Skipping.`);
+                    continue;
+                }
+
+                const currentValue = this.stateManager.getCellData(r, c);
+                if (currentValue !== valueToPaste) {
+                    this.stateManager.updateCellInternal(r, c, valueToPaste);
+                    rowChanged = true;
+                }
+            }
+            if (rowChanged) {
+                affectedRows.add(r);
+                changed = true;
+            }
+        }
+
+        affectedRows.forEach(r => this.stateManager.updateDisabledStatesForRow(r));
+
+        if (changed) {
+            log('log', this.options.verbose, `Pasted external range pattern into target range [${targetRange.start.row},${targetRange.start.col}] -> [${targetRange.end.row},${targetRange.end.col}]`);
+        }
+        return changed;
+     }
+}

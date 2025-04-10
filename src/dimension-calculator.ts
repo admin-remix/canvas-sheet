@@ -18,8 +18,6 @@ export class DimensionCalculator {
         const rowHeights = Array(rowCount).fill(this.options.defaultRowHeight);
         this.stateManager.setColumnWidths(columnWidths);
         this.stateManager.setRowHeights(rowHeights);
-        console.log("Initialized column widths:", columnWidths);
-        console.log("Initialized row heights:", rowHeights);
         log('log', this.options.verbose, "Initialized column widths:", columnWidths);
         log('log', this.options.verbose, "Initialized row heights:", rowHeights);
         this.calculateTotalSize();

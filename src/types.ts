@@ -78,6 +78,7 @@ export interface SpreadsheetOptions {
     cellBgColor?: string; // Default cell background
     activeCellBgColor?: string; // Background for active (selected) cell
     selectedRowBgColor?: string; // Background for cells in selected rows
+    selectedRangeBgColor?: string; // Background for cells in multi-select range (excluding active)
     headerTextColor?: string;
     headerBgColor?: string;
     gridLineColor?: string;
@@ -93,6 +94,8 @@ export interface SpreadsheetOptions {
     padding?: number; // Internal padding for cell text
     textAlign?: 'left' | 'center' | 'right';
     textBaseline?: 'top' | 'middle' | 'bottom';
+    copyHighlightBorderColor?: string;
+    copyHighlightBorderDash?: number[];
     isCellDisabled?: (rowIndex: number, colKey: string, rowData: DataRow) => boolean;
     verbose?: boolean;
 }
