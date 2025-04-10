@@ -1,0 +1,22 @@
+{
+  "name": "canvas-sheet",
+  "version": "1.0.0",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build:lib": "tsc -p tsconfig.json",
+    "dev": "vite",
+    "build:example": "vite build",
+    "build": "npm run build:lib && npm run build:example",
+    "preview": "vite preview",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "devDependencies": {
+    "typescript": "^5.8.3",
+    "vite": "^6.2.6"
+  }
+}

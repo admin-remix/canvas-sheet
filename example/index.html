@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Canvas Spreadsheet</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      /* Basic styling */
+      body {
+        font-family: "Inter", sans-serif;
+        margin: 0;
+      }
+      .spreadsheet-container {
+        width: 100%;
+        height: 80vh; /* Adjust height as needed */
+        overflow: auto; /* Enable scrolling */
+        position: relative; /* Needed for positioning dropdown */
+        border: 1px solid #d1d5db; /* gray-300 */
+        border-radius: 0.375rem; /* rounded-md */
+      }
+      canvas {
+        display: block; /* Remove extra space below canvas */
+        background-color: #ffffff; /* white */
+        /* Removed fixed width/height styles - container handles viewport */
+      }
+    </style>
+    <link rel="stylesheet" href="spreadsheet.css" />
+  </head>
+  <body class="p-4 bg-gray-100">
+    <h1 class="text-2xl font-bold mb-4">Canvas Spreadsheet Demo</h1>
+
+    <div id="spreadsheet-container" class="spreadsheet-container"></div>
+    <button id="add-row">Add Row</button>
+    <script type="module" src="app.js"></script>
+  </body>
+</html>
