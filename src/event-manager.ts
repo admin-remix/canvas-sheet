@@ -447,8 +447,8 @@ export class EventManager {
         const rect = this.domManager.getCanvasBoundingClientRect();
         const canvasX = event.clientX - rect.left;
         const canvasY = event.clientY - rect.top;
-        const contentX = canvasX + this.stateManager.getScrollLeft();
-        const contentY = canvasY + this.stateManager.getScrollTop();
+        const contentX = canvasX;
+        const contentY = canvasY;
         const { headerHeight, rowNumberWidth } = this.options;
         // Get dimensions directly from state/calculator as needed
         const dataLength = this.stateManager.getData().length; // More efficient than getData()

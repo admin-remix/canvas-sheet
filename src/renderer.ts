@@ -35,9 +35,6 @@ export class Renderer {
         this.ctx.font = this.options.font;
         this._clearCanvas();
 
-        // Translate coordinate system for scrolling
-        this.ctx.translate(-this.stateManager.getScrollLeft(), -this.stateManager.getScrollTop());
-
         this._drawHeaders();
         this._drawRowNumbers();
         this._drawCells();
@@ -55,8 +52,8 @@ export class Renderer {
     private _clearCanvas(): void {
         this.ctx.fillStyle = "#ffffff"; // Assuming white background
         this.ctx.fillRect(
-            this.stateManager.getScrollLeft(),
-            this.stateManager.getScrollTop(),
+            0, // No need to use scrollLeft, canvas is translated in draw()
+            0, // No need to use scrollTop, canvas is translated in draw()
             this.stateManager.getViewportWidth(),
             this.stateManager.getViewportHeight()
         );
@@ -64,9 +61,10 @@ export class Renderer {
 
     private _drawCornerBox(): void {
         const { rowNumberWidth, headerHeight, gridLineColor, rowNumberBgColor } = this.options;
-        // Draw fixed relative to viewport, so use scroll positions
-        const x = this.stateManager.getScrollLeft();
-        const y = this.stateManager.getScrollTop();
+        // Draw fixed relative to viewport - after ctx.restore() so no translation is in effect
+        // No need for scroll position adjustment here
+        const x = 0;
+        const y = 0;
 
         this.ctx.save();
         this.ctx.fillStyle = rowNumberBgColor;
@@ -91,19 +89,18 @@ export class Renderer {
         const columnWidths = this.stateManager.getColumnWidths();
         const visibleColStart = this.stateManager.getVisibleColStartIndex();
         const visibleColEnd = this.stateManager.getVisibleColEndIndex();
-        const scrollLeft = this.stateManager.getScrollLeft();
-
+        const totalContentWidth = this.stateManager.getTotalContentWidth();
         this.ctx.save();
 
-        // Clip drawing to the visible header area (considering scroll)
+        // Clip drawing to the visible header area (canvas is already translated)
         const headerVisibleX = rowNumberWidth; // Content area start X
         const headerVisibleY = 0;
-        const headerVisibleWidth = this.stateManager.getViewportWidth(); // Full viewport width
+        const headerVisibleWidth = totalContentWidth; // Full viewport width
         const headerVisibleHeight = headerHeight;
 
         this.ctx.beginPath();
         this.ctx.rect(
-            headerVisibleX + scrollLeft, // Adjust clipping start based on scroll
+            headerVisibleX, // No need to add scrollLeft, already handled by global translate
             headerVisibleY,
             headerVisibleWidth - rowNumberWidth, // Clip width excludes row numbers
             headerVisibleHeight
@@ -115,7 +112,7 @@ export class Renderer {
         this.ctx.fillRect(
             rowNumberWidth,
             0,
-            this.stateManager.getTotalContentWidth() - rowNumberWidth,
+            totalContentWidth - rowNumberWidth,
             headerHeight
         );
 
@@ -160,8 +157,8 @@ export class Renderer {
         this.ctx.strokeStyle = gridLineColor;
         this.ctx.beginPath();
         const lineY = headerHeight - 0.5;
-        this.ctx.moveTo(rowNumberWidth + scrollLeft, lineY + this.stateManager.getScrollTop());
-        this.ctx.lineTo(this.stateManager.getViewportWidth() + scrollLeft, lineY + this.stateManager.getScrollTop());
+        this.ctx.moveTo(rowNumberWidth, lineY);
+        this.ctx.lineTo(this.stateManager.getViewportWidth(), lineY);
         this.ctx.stroke();
     }
 
@@ -180,20 +177,19 @@ export class Renderer {
         const selectedRows = this.stateManager.getSelectedRows();
         const visibleRowStart = this.stateManager.getVisibleRowStartIndex();
         const visibleRowEnd = this.stateManager.getVisibleRowEndIndex();
-        const scrollTop = this.stateManager.getScrollTop();
-
+        const totalContentHeight = this.stateManager.getTotalContentHeight();
         this.ctx.save();
 
         // Clip drawing to the visible row number area
         const rowNumVisibleX = 0;
         const rowNumVisibleY = headerHeight; // Below header
         const rowNumVisibleWidth = rowNumberWidth;
-        const rowNumVisibleHeight = this.stateManager.getViewportHeight(); // Full viewport height
+        const rowNumVisibleHeight = totalContentHeight; // Full viewport height
 
         this.ctx.beginPath();
         this.ctx.rect(
             rowNumVisibleX, // No horizontal scroll for row numbers
-            rowNumVisibleY + scrollTop, // Adjust clipping start based on scroll
+            rowNumVisibleY, // No need to add scrollTop, already handled by global translate
             rowNumVisibleWidth,
             rowNumVisibleHeight - headerHeight // Clip height excludes header
         );
@@ -205,7 +201,7 @@ export class Renderer {
             0,
             headerHeight,
             rowNumberWidth,
-            this.stateManager.getTotalContentHeight() - headerHeight
+            totalContentHeight - headerHeight
         );
 
         // Draw Row Numbers and Horizontal Lines
@@ -251,8 +247,8 @@ export class Renderer {
         this.ctx.strokeStyle = gridLineColor;
         this.ctx.beginPath();
         const lineX = rowNumberWidth - 0.5;
-        this.ctx.moveTo(lineX, headerHeight + scrollTop);
-        this.ctx.lineTo(lineX, this.stateManager.getViewportHeight() + scrollTop);
+        this.ctx.moveTo(lineX, headerHeight);
+        this.ctx.lineTo(lineX, this.stateManager.getViewportHeight());
         this.ctx.stroke();
     }
 
@@ -379,10 +375,12 @@ export class Renderer {
         const data = this.stateManager.getData();
         const columnWidths = this.stateManager.getColumnWidths();
         const rowHeights = this.stateManager.getRowHeights();
-        const scrollLeft = this.stateManager.getScrollLeft();
-        const scrollTop = this.stateManager.getScrollTop();
         const viewportWidth = this.stateManager.getViewportWidth();
         const viewportHeight = this.stateManager.getViewportHeight();
+
+        // For visibility checks, we still need the scroll positions
+        const scrollLeft = this.stateManager.getScrollLeft();
+        const scrollTop = this.stateManager.getScrollTop();
 
         this.ctx.save();
         this.ctx.strokeStyle = gridLineColor;
@@ -393,7 +391,8 @@ export class Renderer {
         for (let col = 0; col <= columns.length; col++) {
             const lineX = Math.round(currentX) - 0.5; // Align to pixel grid
             // Check if the line is within the visible horizontal range
-            if (lineX >= scrollLeft + rowNumberWidth && lineX <= scrollLeft + viewportWidth) {
+            // Since the canvas is translated, compare against viewport origin (0) and width
+            if (lineX >= rowNumberWidth && lineX <= viewportWidth + scrollLeft) {
                 this.ctx.beginPath();
                 this.ctx.moveTo(lineX, headerHeight); // Start below header
                 this.ctx.lineTo(lineX, totalHeight); // Draw full logical height
@@ -403,7 +402,7 @@ export class Renderer {
                 currentX += columnWidths[col];
             }
             // Optimization: Stop drawing if we've passed the right edge of the viewport
-            if (currentX > scrollLeft + viewportWidth) break;
+            if (currentX > viewportWidth + scrollLeft) break;
         }
 
         // Horizontal lines
@@ -411,7 +410,8 @@ export class Renderer {
         for (let row = 0; row <= data.length; row++) {
             const lineY = Math.round(currentY) - 0.5; // Align to pixel grid
             // Check if the line is within the visible vertical range
-            if (lineY >= scrollTop + headerHeight && lineY <= scrollTop + viewportHeight) {
+            // Since the canvas is translated, compare against viewport origin (0) and height
+            if (lineY >= headerHeight && lineY <= viewportHeight + scrollTop) {
                 this.ctx.beginPath();
                 this.ctx.moveTo(rowNumberWidth, lineY); // Start right of row numbers
                 this.ctx.lineTo(totalWidth, lineY); // Draw full logical width
@@ -421,7 +421,7 @@ export class Renderer {
                 currentY += rowHeights[row];
             }
             // Optimization: Stop drawing if we've passed the bottom edge of the viewport
-            if (currentY > scrollTop + viewportHeight) break;
+            if (currentY > viewportHeight + scrollTop) break;
         }
 
         this.ctx.restore();
@@ -605,10 +605,8 @@ export class Renderer {
         const columns = this.stateManager.getColumns();
         const columnWidths = this.stateManager.getColumnWidths();
         const rowHeights = this.stateManager.getRowHeights();
-        const scrollLeft = this.stateManager.getScrollLeft();
-        const scrollTop = this.stateManager.getScrollTop();
-        const viewportWidth = this.stateManager.getViewportWidth();
-        const viewportHeight = this.stateManager.getViewportHeight();
+        const totalContentWidth = this.stateManager.getTotalContentWidth();
+        const totalContentHeight = this.stateManager.getTotalContentHeight();
 
         if (
             rowIndex < 0 ||
@@ -624,15 +622,16 @@ export class Renderer {
         const contentX = this.dimensionCalculator.getColumnLeft(colIndex);
         const contentY = this.dimensionCalculator.getRowTop(rowIndex);
 
-        // Calculate viewport coordinates
-        const viewportX = contentX - scrollLeft;
-        const viewportY = contentY - scrollTop;
+        // Since the canvas is already translated in the draw method, 
+        // we use content coordinates directly
+        const viewportX = contentX;
+        const viewportY = contentY;
 
         // Check if the cell is at least partially visible within the viewport boundaries
         const isPotentiallyVisible = (
-            viewportX < viewportWidth && // Left edge is before viewport right edge
+            viewportX < totalContentWidth && // Left edge is before viewport right edge
             viewportX + cellWidth > 0 && // Right edge is after viewport left edge
-            viewportY < viewportHeight && // Top edge is before viewport bottom edge
+            viewportY < totalContentHeight && // Top edge is before viewport bottom edge
             viewportY + cellHeight > 0    // Bottom edge is after viewport top edge
         );
 
