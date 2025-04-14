@@ -54,7 +54,7 @@ const sampleData = [
     name: "Bob Smith",
     email: "bob@sample.net",
     dob: "1985-11-22",
-    locationId: 3,
+    locationId: null,
     isRestricted: true,
     salary: 120000,
     notes: "Senior Developer",
@@ -310,8 +310,9 @@ function customIsCellDisabled(_rowIndex: number, colKey: string, rowData: DataRo
 
 // --- Instantiate the Spreadsheet ---
 document.addEventListener("DOMContentLoaded", () => {
+  let spreadsheet: Spreadsheet|null = null;
   try {
-    const spreadsheet = new Spreadsheet(
+    spreadsheet = new Spreadsheet(
       "spreadsheet-container",
       schema as SpreadsheetSchema,
       sampleData,
@@ -336,4 +337,7 @@ document.addEventListener("DOMContentLoaded", () => {
       container.innerHTML = `<p class="p-4 text-red-600">Error initializing spreadsheet: ${error instanceof Error ? error.message : 'Unknown error'}</p>`;
     }
   }
+  document.getElementById("add-row")?.addEventListener("click", () => {
+    spreadsheet?.addRow();
+  });
 });

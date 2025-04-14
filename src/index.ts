@@ -71,6 +71,16 @@ export class Spreadsheet {
         this.renderer.draw();
     }
 
+    private onDataUpdate(top: number = 0, left: number = 0) {
+        // Need to re-initialize sizes, recalculate dimensions, and redraw
+        this.dimensionCalculator.initializeSizes(this.stateManager.getData().length);
+        this.dimensionCalculator.calculateDimensions(this.container.clientWidth, this.container.clientHeight);
+        this.domManager.updateCanvasSize(this.stateManager.getTotalContentWidth(), this.stateManager.getTotalContentHeight());
+        this.container.scrollTop = top;
+        this.container.scrollLeft = left;
+        this.draw();
+    }
+
     // --- Public API Methods (delegated to managers) ---
 
     public getData(): DataRow[] {
@@ -79,15 +89,13 @@ export class Spreadsheet {
 
     public setData(newData: DataRow[]): void {
         this.stateManager.setData(newData);
-        // Need to re-initialize sizes, recalculate dimensions, and redraw
-        this.dimensionCalculator.initializeSizes(newData.length);
-        this.dimensionCalculator.calculateDimensions(this.container.clientWidth, this.container.clientHeight);
-        this.domManager.updateCanvasSize(this.stateManager.getTotalContentWidth(), this.stateManager.getTotalContentHeight());
-        this.container.scrollTop = 0;
-        this.container.scrollLeft = 0;
-        this.stateManager.updateScroll(0, 0);
-        this.dimensionCalculator.calculateVisibleRange();
-        this.draw();
+        this.onDataUpdate();
+    }
+
+    public addRow(): number {
+        const newRowIndex = this.stateManager.addRow();
+        this.onDataUpdate(this.container.scrollHeight, 0);
+        return newRowIndex;
     }
 
     public updateCell(rowIndex: number, colKey: string, value: any): void {

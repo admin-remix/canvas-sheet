@@ -531,4 +531,48 @@ export class StateManager {
     public getIsDraggingSelection(): boolean {
         return this.isDraggingSelection;
     }
+
+    public addRow(): number {
+        // Create an empty row based on the schema
+        const newRow: DataRow = {};
+        
+        // Initialize each column with default values based on data type
+        this.columns.forEach(colKey => {
+            if (colKey.includes(DISABLED_FIELD_PREFIX)) {
+                return;
+            }
+            const columnSchema = this.schema[colKey];
+            let defaultValue = null;
+            
+            // Set appropriate default values based on data type
+            if (columnSchema) {
+                switch (columnSchema.type) {
+                    case 'text':
+                    case 'email':
+                        defaultValue = '';
+                        break;
+                    case 'number':
+                        defaultValue = 0;
+                        break;
+                    case 'boolean':
+                        defaultValue = false;
+                        break;
+                    default:
+                        defaultValue = null;
+                }
+            }
+            
+            newRow[colKey] = defaultValue;
+        });
+        
+        // Add the new row to the data array
+        this.data.push(newRow);
+        
+        // Update disabled states for the new row
+        const newRowIndex = this.data.length - 1;
+        this.updateDisabledStatesForRow(newRowIndex);
+        
+        // Return the index of the newly added row
+        return newRowIndex;
+    }
 } 
