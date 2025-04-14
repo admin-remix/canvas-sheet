@@ -42,6 +42,7 @@ export class Renderer {
         this._drawCopiedCellHighlight();
         this._drawActiveCellHighlight();
         this._drawSelectedColumnHighlight();
+        this._drawSelectedRowsHighlight();
         this._drawDragRange();
 
         this.ctx.restore();
@@ -137,12 +138,12 @@ export class Renderer {
 
             // Highlight selected column headers
             if (isColumnSelected) {
-                this.ctx.fillStyle = this.options.selectedRowNumberBgColor; // Reuse the same color as selected row numbers
+                this.ctx.fillStyle = this.options.selectedHeaderBgColor; // Reuse the same color as selected row numbers
                 this.ctx.fillRect(currentX, 0, colWidth, headerHeight);
             }
 
             // Draw text centered in the column
-            this.ctx.fillStyle = headerTextColor;
+            this.ctx.fillStyle = isColumnSelected ? this.options.selectedHeaderTextColor : headerTextColor;
             this.ctx.fillText(
                 headerText,
                 currentX + colWidth / 2,
@@ -446,7 +447,6 @@ export class Renderer {
 
     private _drawActiveCellHighlight(): void {
         const activeCell = this.stateManager.getActiveCell();
-        const isDraggingSelection = this.stateManager.getIsDraggingSelection();
         const isDraggingFill = this.stateManager.isDraggingFillHandle();
         const isResizing = this.stateManager.isResizing();
         const activeEditor = this.stateManager.getActiveEditor();
@@ -619,7 +619,7 @@ export class Renderer {
     private _drawSelectedColumnHighlight(): void {
         const selectedColumn = this.stateManager.getSelectedColumn();
         if (selectedColumn === null) return; // Only draw when exactly one column is selected
-        const { headerHeight } = this.options;
+        const { highlightBorderColor } = this.options;
         const totalContentHeight = this.stateManager.getTotalContentHeight();
         const columnWidths = this.stateManager.getColumnWidths();
         
@@ -630,17 +630,38 @@ export class Renderer {
         if (!columnWidth) return;
         
         this.ctx.save();
-        this.ctx.strokeStyle = '#1a73e8'; // Blue border color
+        this.ctx.strokeStyle = highlightBorderColor; // Blue border color
         this.ctx.lineWidth = 2;
         
         // Draw border around the entire column
         this.ctx.strokeRect(
             columnLeft + 1,
-            headerHeight + 1,
+            1,
             columnWidth - 2,
-            totalContentHeight - headerHeight - 2
+            totalContentHeight - 2
         );
         
+        this.ctx.restore();
+    }
+
+    private _drawSelectedRowsHighlight(): void {
+        const selectedRows = this.stateManager.getSelectedRows();
+        if (selectedRows.size === 0) return;
+        const { highlightBorderColor } = this.options;
+        const totalContentWidth = this.stateManager.getTotalContentWidth();
+        const rowHeights = this.stateManager.getRowHeights();
+
+        this.ctx.save();
+        this.ctx.strokeStyle = highlightBorderColor;
+        this.ctx.lineWidth = 2;
+
+        for (const row of selectedRows) {
+            const rowHeight = rowHeights[row];
+            const rowY = this.dimensionCalculator.getRowTop(row);
+
+            this.ctx.strokeRect(0, rowY, totalContentWidth, rowHeight);
+        }
+
         this.ctx.restore();
     }
 

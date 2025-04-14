@@ -20,7 +20,9 @@ export const DEFAULT_OPTIONS: RequiredSpreadsheetOptions = {
     selectedRowBgColor: "#f3f4f6", // gray-100 - Background for cells in selected rows
     selectedRangeBgColor: "#e0e7ff", // indigo-100 - Background for non-active cells in selection range
     headerTextColor: "#ffffff", // white
+    selectedHeaderTextColor: "#000000", // black
     headerBgColor: "#4b5563", // gray-600
+    selectedHeaderBgColor: "#dbeafe", // gray-600
     gridLineColor: "#d1d5db", // gray-300
     rowNumberBgColor: "#f3f4f6", // gray-100
     selectedRowNumberBgColor: "#dbeafe", // blue-100

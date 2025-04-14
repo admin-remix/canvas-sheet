@@ -80,7 +80,9 @@ export interface SpreadsheetOptions {
     selectedRowBgColor?: string; // Background for cells in selected rows
     selectedRangeBgColor?: string; // Background for cells in multi-select range (excluding active)
     headerTextColor?: string;
+    selectedHeaderTextColor?: string;
     headerBgColor?: string;
+    selectedHeaderBgColor?: string;
     gridLineColor?: string;
     rowNumberBgColor?: string;
     selectedRowNumberBgColor?: string;
