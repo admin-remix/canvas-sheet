@@ -340,7 +340,6 @@ export class InteractionManager {
 
         const rect = this.domManager.getCanvasBoundingClientRect();
         const viewportY = event.clientY - rect.top;
-        const contentY = viewportY + this.stateManager.getScrollTop();
         const headerHeight = this.options.headerHeight;
         const rowHeights = this.stateManager.getRowHeights();
         const dataLength = this.stateManager.getData().length;
@@ -349,12 +348,12 @@ export class InteractionManager {
         let currentY = headerHeight;
         for (let i = 0; i < dataLength; i++) {
             const rowHeight = rowHeights[i];
-            if (contentY >= currentY && contentY < currentY + rowHeight) {
+            if (viewportY >= currentY && viewportY < currentY + rowHeight) {
                 targetRow = i;
                 break;
             }
             currentY += rowHeight;
-            if (currentY > contentY) break; // Optimization
+            if (currentY > viewportY) break; // Optimization
         }
 
         let newEndRow = this.stateManager.getDragEndRow();

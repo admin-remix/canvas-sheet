@@ -280,16 +280,18 @@ export class Renderer {
         const selectedRows = this.stateManager.getSelectedRows();
         const activeCell = this.stateManager.getActiveCell();
         const selectionRange = this.stateManager.getNormalizedSelectionRange();
+        const scrollLeft = this.stateManager.getScrollLeft();
+        const scrollTop = this.stateManager.getScrollTop();
 
         this.ctx.save();
 
         // Clip drawing to the visible data area
-        const clipX = rowNumberWidth;
-        const clipY = headerHeight;
-        const clipWidth = this.stateManager.getTotalContentWidth() - rowNumberWidth;
-        const clipHeight = this.stateManager.getTotalContentHeight() - headerHeight;
+        const clipX = Math.max(0, rowNumberWidth - scrollLeft);
+        const clipY = Math.max(0, headerHeight - scrollTop);
+        const clipWidth = this.stateManager.getViewportWidth() - clipX;
+        const clipHeight = this.stateManager.getViewportHeight() - clipY;
         this.ctx.beginPath();
-        this.ctx.rect(clipX, clipY, clipWidth, clipHeight);
+        this.ctx.rect(clipX + scrollLeft, clipY + scrollTop, clipWidth, clipHeight);
         this.ctx.clip();
 
         // Set base text properties
