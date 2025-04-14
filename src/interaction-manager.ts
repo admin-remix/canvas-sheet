@@ -23,6 +23,7 @@ export class InteractionManager {
     private dimensionCalculator: DimensionCalculator;
     private domManager: DomManager;
     private editingManager!: EditingManager; // Use definite assignment assertion
+    private lastPasteHandledAt:Date|null = null;// used to prevent multiple pastes in a row
 
     constructor(
         options: RequiredSpreadsheetOptions,
@@ -56,7 +57,6 @@ export class InteractionManager {
         const originalLastClickedRow = lastClickedRow;
 
         if (isShiftKey && lastClickedRow !== null) {
-            console.log('shift click logic =====>');
             // --- Shift Click Logic ---
             const start = Math.min(lastClickedRow, clickedRow);
             const end = Math.max(lastClickedRow, clickedRow);
@@ -72,7 +72,6 @@ export class InteractionManager {
             log('log', this.options.verbose, "Selected rows (Shift):", Array.from(newSelectedRows).sort((a, b) => a - b));
 
         } else if (isCtrlKey) {
-            console.log('ctrl click logic =====>');
             // --- Ctrl Click Logic ---
             if (selectedRows.has(clickedRow)) {
                 selectedRows.delete(clickedRow);
@@ -83,7 +82,6 @@ export class InteractionManager {
             this.stateManager.setSelectedRows(selectedRows, lastClickedRow);
             log('log', this.options.verbose, "Selected rows (Ctrl):", Array.from(selectedRows).sort((a, b) => a - b));
         } else {
-            console.log('single click logic =====>');
             // --- Single Click Logic ---
             selectedRows.clear();
             selectedRows.add(clickedRow);
@@ -101,6 +99,25 @@ export class InteractionManager {
         if (changed) {
             this.stateManager.setActiveCell(null);      // Clear active cell
             this.stateManager.clearSelectionRange();    // Clear cell selection range
+            this.stateManager.setSelectedColumn(null); // Clear column selection
+        }
+
+        return changed;
+    }
+
+    /** Returns true if selection state changed */
+    public handleHeaderClick(clickedCol: number): boolean {
+        log('log', this.options.verbose, `Column ${clickedCol} clicked.`);
+        const selectedColumn = this.stateManager.getSelectedColumn();
+        
+        this.stateManager.setSelectedColumn(clickedCol);
+        
+        const changed = selectedColumn !== clickedCol;
+        // If column selection changed, clear other selections
+        if (changed) {
+            this.stateManager.setActiveCell(null);      // Clear active cell
+            this.stateManager.clearSelectionRange();    // Clear cell selection range
+            this.stateManager.setSelectedRows(new Set(), null); // Clear row selection
         }
 
         return changed;
@@ -108,10 +125,14 @@ export class InteractionManager {
 
     /** Returns true if selections were cleared */
     public clearSelections(): boolean {
+        let changed = false;
         if (this.stateManager.getSelectedRows().size > 0) {
-            return this.stateManager.setSelectedRows(new Set(), null);
+            changed = this.stateManager.setSelectedRows(new Set(), null) || changed;
         }
-        return false;
+        if (this.stateManager.getSelectedColumn() !== null) {
+            changed = this.stateManager.setSelectedColumn(null) || changed;
+        }
+        return changed;
     }
 
     // --- Resizing --- HINT HINT
@@ -497,93 +518,56 @@ export class InteractionManager {
 
     /** Pastes single value or range. Returns true if paste occurred and requires redraw. */
     public paste(): boolean {
+        if(this.lastPasteHandledAt && (Date.now() - this.lastPasteHandledAt.getTime() < 1000)) {
+            return false;
+        }
+        this.lastPasteHandledAt = new Date();
+
+        log('log', this.options.verbose, "Paste requested by keyboard shortcut");
+        // Check if we have anything to paste
         const activeCell = this.stateManager.getActiveCell();
         const selectionRange = this.stateManager.getNormalizedSelectionRange();
+        const copiedValue = this.stateManager.getCopiedValue();
+        const copiedValueType = this.stateManager.getCopiedValueType();
+        const copiedRangeData = this.stateManager.getCopiedRangeData();
 
-        // Determine target: range takes precedence over active cell
+
+        // TODO: Handle row selection paste
+        // const selectedRows = this.stateManager.getSelectedRows();
+        
+        // Regular paste to cell or range
         const targetRange = selectionRange;
         const targetCell = (!targetRange && activeCell) ? activeCell : null;
 
         if (!targetRange && !targetCell) {
-            log('log', this.options.verbose, `Paste cancelled: No target cell or range selected.`);
-            return false;
-        }
-        if (targetCell && (targetCell.row === null || targetCell.col === null)){
-            log('log', this.options.verbose, `Paste cancelled: Invalid target cell coordinates.`);
+            log('log', this.options.verbose, "Paste ignored: No target cell or range selected.");
             return false;
         }
 
-        const copiedValue = this.stateManager.getCopiedValue();
-        const copiedType = this.stateManager.getCopiedValueType();
-        const copiedRange = this.stateManager.getCopiedRangeData();
-        let changed = false;
-
-        // --- Determine paste logic based on source (single/range) and target (single/range) ---
-        if (copiedRange) {
-            // Source is Range
+        if (copiedRangeData) {
+            log('log', this.options.verbose, "Pasting range data");
+            // Always paste range data into range (if targetRange) or from top-left (if activeCell)
             if (targetRange) {
-                // Case 4: Range -> Range
-                changed = this._pasteRangeToRange(targetRange, copiedRange);
-            } else if (targetCell) {
-                // Case 3: Range -> Single Cell (Top-Left)
-                changed = this._pasteRangeFromTopLeft(targetCell, copiedRange);
+                return this._pasteRangeToRange(targetRange, copiedRangeData);
+            } else if (targetCell && targetCell.row !== null && targetCell.col !== null) {
+                return this._pasteRangeFromTopLeft(targetCell, copiedRangeData);
+            } else {
+                return false;
             }
         } else if (copiedValue !== undefined) {
-            // Source is Single Value
+            log('log', this.options.verbose, "Pasting single value");
+            // Always paste the single value into range (if targetRange) or cell (if activeCell)
             if (targetRange) {
-                // Case 2: Single Value -> Range
-                changed = this._pasteSingleValueToRange(targetRange, copiedValue, copiedType);
-            } else if (targetCell) {
-                // Case 1: Single Value -> Single Cell
-                changed = this._pasteSingleValue(targetCell, copiedValue, copiedType);
+                return this._pasteSingleValueToRange(targetRange, copiedValue, copiedValueType);
+            } else if (targetCell && targetCell.row !== null && targetCell.col !== null) {
+                return this._pasteSingleValue(targetCell, copiedValue, copiedValueType);
+            } else {
+                return false;
             }
         } else {
-            // No internal copy state available - attempt to use clipboard API as fallback
-            try {
-                navigator.clipboard.readText()
-                    .then(clipboardText => {
-                        let fallbackChanged = false;
-                        
-                        // Process clipboard text (might be multiline, tab-delimited, etc.)
-                        if (clipboardText.includes('\n') || clipboardText.includes('\t')) {
-                            // Multi-cell data in clipboard - parse as 2D array
-                            const rows = clipboardText.trim().split(/\r?\n/);
-                            const clipboardRange = rows.map(row => row.split('\t'));
-                            
-                            if (targetRange) {
-                                // Paste range to range
-                                fallbackChanged = this._pasteExternalRangeToRange(targetRange, clipboardRange);
-                            } else if (targetCell) {
-                                // Paste range from top-left
-                                fallbackChanged = this._pasteExternalRangeFromTopLeft(targetCell, clipboardRange);
-                            }
-                        } else if (clipboardText.trim()) {
-                            // Single value in clipboard
-                            if (targetRange) {
-                                fallbackChanged = this._pasteExternalSingleValueToRange(targetRange, clipboardText);
-                            } else if (targetCell) {
-                                fallbackChanged = this._pasteExternalSingleValue(targetCell, clipboardText);
-                            }
-                        }
-                        
-                        if (fallbackChanged) {
-                            // Need to request a redraw since we're in an async context
-                            this.renderer.draw();
-                        }
-                    })
-                    .catch(err => {
-                        log('warn', this.options.verbose, 'Failed to read clipboard:', err);
-                    });
-            } catch (err) {
-                log('warn', this.options.verbose, 'Clipboard API not available or permission denied:', err);
-            }
+            log('log', this.options.verbose, "Nothing to paste.");
+            return false;
         }
-        // --- End Paste Logic ---
-
-        // Clear copy state (single and range), redraw if copy state was active OR if paste made changes
-        const clearedCopyState = this.clearCopiedCell();
-
-        return changed || clearedCopyState;
     }
 
     /** Case 1: Paste single value to single cell */
@@ -603,7 +587,7 @@ export class InteractionManager {
         if (targetSchema?.type !== valueType && value !== null) {
             log('log', this.options.verbose, `Type mismatch (Copied: ${valueType}, Target: ${targetSchema?.type}) - attempting conversion.`);
             // We'll try to convert the value to match the target schema
-            const convertedValue = this._convertValueForTargetType(value, targetSchema?.type);
+            const convertedValue = this._convertValueForTargetType(value, targetSchema);
             if (convertedValue === null) {
                 log('log', this.options.verbose, `Paste cancelled: Cannot convert value between types.`);
                 return false;
@@ -642,7 +626,7 @@ export class InteractionManager {
                 // Handle type conversion if needed
                 let valueToUse = value;
                 if (targetSchema?.type !== valueType && value !== null) {
-                    valueToUse = this._convertValueForTargetType(value, targetSchema?.type);
+                    valueToUse = this._convertValueForTargetType(value, targetSchema);
                     if (valueToUse === null) continue; // Skip if conversion not possible
                 }
 
@@ -671,7 +655,8 @@ export class InteractionManager {
     }
 
     /** Helper method to convert values between different data types */
-    private _convertValueForTargetType(value: any, targetType?: DataType): any {
+    private _convertValueForTargetType(value: any, schema?: ColumnSchema): any {
+        const targetType = schema?.type;
         if (value === null || value === undefined || targetType === undefined) {
             return null;
         }
@@ -710,7 +695,6 @@ export class InteractionManager {
                 
             case 'select':
                 // For select, we need to check if the value matches any option id or name
-                const schema = this.stateManager.getSchemaForColumn(this.stateManager.getActiveCell()?.col || 0);
                 if (schema?.values) {
                     // Try to match by id
                     let option = schema.values.find(opt => String(opt.id) === stringValue);
@@ -735,7 +719,7 @@ export class InteractionManager {
         if (targetCell.row === null || targetCell.col === null) return false;
         
         const targetSchema = this.stateManager.getSchemaForColumn(targetCell.col);
-        const convertedValue = this._convertValueForTargetType(value, targetSchema?.type);
+        const convertedValue = this._convertValueForTargetType(value, targetSchema);
         
         if (convertedValue === null) {
             log('log', this.options.verbose, `External paste cancelled: Cannot convert value for target cell type.`);
@@ -760,7 +744,7 @@ export class InteractionManager {
                 if (this.stateManager.isCellDisabled(r, c)) continue;
 
                 // Convert value for this cell's type
-                const convertedValue = this._convertValueForTargetType(value, targetSchema?.type);
+                const convertedValue = this._convertValueForTargetType(value, targetSchema);
                 if (convertedValue === null) continue; // Skip if conversion not possible
 
                 // Validate value for the target cell
@@ -821,7 +805,7 @@ export class InteractionManager {
                 // Handle type conversion if needed
                 let valueToUse = valueToPaste;
                 if (valueToUse !== null) {
-                    valueToUse = this._convertValueForTargetType(valueToPaste, targetSchema?.type);
+                    valueToUse = this._convertValueForTargetType(valueToPaste, targetSchema);
                     if (valueToUse === null) continue; // Skip if conversion not possible
                 }
 
@@ -879,7 +863,7 @@ export class InteractionManager {
                 // Handle type conversion if needed
                 let valueToUse = valueToPaste;
                 if (valueToUse !== null) {
-                    valueToUse = this._convertValueForTargetType(valueToPaste, targetSchema?.type);
+                    valueToUse = this._convertValueForTargetType(valueToPaste, targetSchema);
                     if (valueToUse === null) continue; // Skip if conversion not possible
                 }
 
@@ -942,7 +926,7 @@ export class InteractionManager {
                 if (this.stateManager.isCellDisabled(targetRow, targetCol)) continue;
 
                 // Convert value based on target cell type
-                const convertedValue = this._convertValueForTargetType(stringValue, targetSchema?.type);
+                const convertedValue = this._convertValueForTargetType(stringValue, targetSchema);
                 if (convertedValue === null) continue; // Skip if conversion not possible
 
                 if (!validateInput(convertedValue, targetSchema, targetColKey, this.options.verbose)) {
@@ -995,7 +979,7 @@ export class InteractionManager {
                 if (this.stateManager.isCellDisabled(r, c)) continue;
 
                 // Convert based on target cell type
-                const convertedValue = this._convertValueForTargetType(stringValue, targetSchema?.type);
+                const convertedValue = this._convertValueForTargetType(stringValue, targetSchema);
                 if (convertedValue === null) continue; // Skip if conversion not possible
 
                 if (!validateInput(convertedValue, targetSchema, targetColKey, this.options.verbose)) {
@@ -1105,48 +1089,6 @@ export class InteractionManager {
             this.stateManager.setDraggingSelection(false);
             // Final range is already set by updateSelectionDrag
         }
-    }
-
-    // --- Keyboard Navigation/Actions --- HINT HINT
-    public handleKeyDown(event: KeyboardEvent): void {
-        const isCtrl = event.ctrlKey || event.metaKey; // Meta for Mac
-        let redrawNeeded = false;
-
-        if (isCtrl && event.key === 'c') {
-            this.copy();
-            event.preventDefault();
-            // `copy()` handles redraw
-        } else if (isCtrl && event.key === 'v') {
-            this.paste();
-            event.preventDefault();
-            // `paste()` handles redraw
-        } else if (event.key === 'Delete' || event.key === 'Backspace') {
-            if (this.stateManager.getSelectedRows().size > 0) {
-                this.deleteSelectedRows();
-                event.preventDefault();
-                // `deleteSelectedRows()` handles redraw
-            } else if (this.stateManager.getActiveCell()) {
-                // TODO: Implement clearing active cell content (if not disabled)
-                log('log', this.options.verbose, "Delete key pressed on active cell - clearing content not yet implemented.");
-                 event.preventDefault();
-            }
-        } else if (event.key.startsWith('Arrow')) {
-            // TODO: Implement arrow key navigation for active cell
-             log('log', this.options.verbose, "Arrow key navigation not yet implemented.");
-            event.preventDefault();
-        } else if (event.key === 'Enter' && this.stateManager.getActiveCell()) {
-             // TODO: Maybe move down and activate editor?
-             const activeCell = this.stateManager.getActiveCell();
-             if(activeCell && activeCell.row !== null && activeCell.col !== null && this.editingManager){
-                this.editingManager.activateEditor(activeCell.row, activeCell.col);
-                event.preventDefault();
-             }
-        } else if (event.key === 'Tab' && this.stateManager.getActiveCell()){
-            this.moveActiveCell(0, event.shiftKey ? -1 : 1);
-            event.preventDefault();
-        }
-
-        // No general redraw needed here as specific actions handle their own redraws
     }
 
     // --- Cell Navigation (used by editing manager on Enter/Tab) ---
@@ -1335,7 +1277,7 @@ export class InteractionManager {
                 if (this.stateManager.isCellDisabled(r, c)) continue;
 
                 // Convert based on target cell type
-                const convertedValue = this._convertValueForTargetType(valueToPaste, targetSchema?.type);
+                const convertedValue = this._convertValueForTargetType(valueToPaste, targetSchema);
                 if (convertedValue === null) continue; // Skip if conversion not possible
 
                 if (!validateInput(convertedValue, targetSchema, targetColKey, this.options.verbose)) {
@@ -1362,4 +1304,46 @@ export class InteractionManager {
         }
         return changed;
      }
+
+    /**
+     * Handle external paste to entire column
+     * @param columnIndex The index of the column to paste to
+     * @param value The string value from clipboard
+     * @returns true if any cell was changed
+     */
+    public pasteToColumnExternal(columnIndex: number, value: string): boolean {
+        log('log', this.options.verbose, `External paste to entire column ${columnIndex}`);
+        const schemaColumn = this.stateManager.getSchemaForColumn(columnIndex);
+        const data = this.stateManager.getData();
+        let changedAny = false;
+        
+        if (value === undefined || value === null) {
+            log('log', this.options.verbose, "No value to paste to column");
+            return false;
+        }
+        
+        // Convert value to correct type for the column
+        const convertedValue = this._convertValueForTargetType(value, schemaColumn);
+        // Apply to all cells in the column
+        for (let rowIndex = 0; rowIndex < data.length; rowIndex++) {
+            // Skip disabled cells
+            if (this.stateManager.isCellDisabled(rowIndex, columnIndex)) continue;
+            
+            const currentValue = this.stateManager.getCellData(rowIndex, columnIndex);
+            if (currentValue !== convertedValue) {
+                this.stateManager.updateCellInternal(rowIndex, columnIndex, convertedValue);
+                changedAny = true;
+            }
+        }
+        
+        // Update disabled states after all changes
+        if (changedAny) {
+            for (let rowIndex = 0; rowIndex < data.length; rowIndex++) {
+                this.stateManager.updateDisabledStatesForRow(rowIndex);
+            }
+            this.renderer.draw();
+        }
+        
+        return changedAny;
+    }
 }

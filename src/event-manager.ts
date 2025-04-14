@@ -65,7 +65,7 @@ export class EventManager {
         document.addEventListener('mouseup', this._handleDocumentMouseUp.bind(this));
         window.addEventListener('resize', this._handleResize.bind(this));
         document.addEventListener('mousedown', this._handleGlobalMouseDown.bind(this), true); // Use capture phase
-        document.addEventListener('keydown', this._handleDocumentKeyDown.bind(this));
+        document.addEventListener('keyup', this._handleDocumentKeyUp.bind(this));
         // Add listener for the native paste event on the container
         this.container.addEventListener('paste', this._handlePaste.bind(this));
 
@@ -138,14 +138,13 @@ export class EventManager {
     }
 
     private _handleClick(event: MouseEvent): void {
-        // Check and reset the flag first
+        // Ignore click if it should be ignored (e.g. right after drag)
         if (this._ignoreNextClick) {
             this._ignoreNextClick = false;
-            log('log', this.options.verbose, "Click ignored because it followed a drag mouseup.");
             return;
         }
 
-        // Ignore clicks during active drag/resize (drag selection handled by the flag above)
+        // Ignore clicks if currently dragging the fill handle or resizing
         if (this.stateManager.isDraggingFillHandle() || this.stateManager.isResizing()) {
             log('log', this.options.verbose, "Click ignored due to active fill handle drag or resize.");
             return;
@@ -154,6 +153,7 @@ export class EventManager {
         const coords = this._getCoordsFromEvent(event);
         const isCellClick = coords && coords.row !== null && coords.col !== null;
         const isRowNumberClick = coords && coords.row !== null && coords.col === null && this._isRowNumberAreaClick(event);
+        const isHeaderClick = this._isHeaderAreaClick(event);
         let redrawNeeded = false;
 
         // --- Deactivate Editor/Dropdown (no redraw trigger here) ---
@@ -176,10 +176,19 @@ export class EventManager {
             const copyCleared = currentCopied ? this.interactionManager.clearCopiedCell() : false;
             redrawNeeded = rowsChanged || copyCleared;
         }
+        else if (isHeaderClick) {
+            const column = this._getColumnFromEvent(event);
+            if (column !== null) {
+                const columnsChanged = this.interactionManager.handleHeaderClick(column);
+                const copyCleared = currentCopied ? this.interactionManager.clearCopiedCell() : false;
+                redrawNeeded = columnsChanged || copyCleared;
+            }
+        }
         else if (isCellClick && coords && coords.row !== null) {
             const cellChanged = this.stateManager.setActiveCell(coords);
             let rowsCleared = false;
             let rangeCleared = false;
+            let columnsCleared = false;
             // If cell changed, explicitly clear other selections
             if (cellChanged) {
                  rowsCleared = this.interactionManager.clearSelections();
@@ -319,9 +328,14 @@ export class EventManager {
         }
     }
 
-    private _handleDocumentKeyDown(event: KeyboardEvent): void {
+    private _handleDocumentKeyUp(event: KeyboardEvent): void {
         const isCtrl = event.ctrlKey || event.metaKey; // Meta for Mac
         let redrawNeeded = false;
+
+        // --- Actions only when editor is INACTIVE ---
+        if (this.editingManager.isEditorActive() || this.editingManager.isDropdownVisible()) {
+            return; // Let editor handle its events
+        }
 
         // --- Global Shortcuts ---
         if (isCtrl && event.key === 'c') {
@@ -335,11 +349,6 @@ export class EventManager {
             event.preventDefault();
             if (redrawNeeded) this.renderer.draw();
             return;
-        }
-
-        // --- Actions only when editor is INACTIVE ---
-        if (this.editingManager.isEditorActive() || this.editingManager.isDropdownVisible()) {
-            return; // Let editor handle its events
         }
 
         if (event.key === 'Delete' || event.key === 'Backspace') {
@@ -404,8 +413,33 @@ export class EventManager {
         const textData = event.clipboardData.getData('text/plain');
         if (!textData) return;
 
+        if(this.interactionManager.paste()) {
+            event.preventDefault();
+            this.renderer.draw();
+            return;
+        }
+
         const activeCell = this.stateManager.getActiveCell();
         const selectionRange = this.stateManager.getNormalizedSelectionRange();
+        const selectedColumn = this.stateManager.getSelectedColumn();
+        
+        // Check for selected column paste - this takes precedence
+        if (selectedColumn !== null) {
+            // For external paste to column, we'll just use the first value from the clipboard
+            const value = textData.split(/\r\n|\n|\r/)[0].split('\t')[0];
+            if (value) {
+                log('log', this.options.verbose, "Handling column paste from clipboard");
+                event.preventDefault();
+                
+                // Convert and paste using the interaction manager
+                const changed = this.interactionManager.pasteToColumnExternal(selectedColumn, value);
+                if (changed) {
+                    this.renderer.draw();
+                }
+            }
+            return;
+        }
+        
         const targetRange = selectionRange;
         const targetCell = (!targetRange && activeCell) ? activeCell : null;
 
@@ -509,9 +543,38 @@ export class EventManager {
         return targetRow !== null ? { row: targetRow, col: targetCol } : null;
     }
 
+    private _getColumnFromEvent(event: MouseEvent): number | null {
+        const rect = this.domManager.getCanvasBoundingClientRect();
+        const canvasX = event.clientX - rect.left;
+        const { rowNumberWidth } = this.options;
+        const columns = this.stateManager.getColumns();
+        const columnWidths = this.stateManager.getColumnWidths();
+
+        if (canvasX < rowNumberWidth) {
+            return null; // Not in the header area
+        }
+
+        let currentX = rowNumberWidth;
+        for (let j = 0; j < columns.length; j++) {
+            const colWidth = columnWidths[j] || this.options.defaultColumnWidth;
+            if (canvasX >= currentX && canvasX < currentX + colWidth) {
+                return j;
+            }
+            currentX += colWidth;
+        }
+
+        return null; // No column found
+    }
+
     private _isRowNumberAreaClick(event: MouseEvent): boolean {
         const rect = this.domManager.getCanvasBoundingClientRect();
         const canvasX = event.clientX - rect.left;
         return canvasX < this.options.rowNumberWidth;
+    }
+
+    private _isHeaderAreaClick(event: MouseEvent): boolean {
+        const rect = this.domManager.getCanvasBoundingClientRect();
+        const canvasY = event.clientY - rect.top;
+        return canvasY < this.options.headerHeight;
     }
 }

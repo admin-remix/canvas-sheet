@@ -44,6 +44,7 @@ export class StateManager {
     private activeEditor: ActiveEditorState | null = null;
     private selectedRows: Set<number> = new Set();
     private lastClickedRow: number | null = null; // For shift-click selection range
+    private selectedColumn:number|null=null; // For column selection
     private copiedValue: any = undefined; // For single cell copy
     private copiedValueType: DataType | undefined = undefined;
     private copiedCell: CellCoords | null = null; // Tracks the source cell of single copy
@@ -287,19 +288,34 @@ export class StateManager {
 
     /** Sets selected rows. Returns true if the selected rows or last clicked row changed. */
     public setSelectedRows(rows: Set<number>, lastClicked: number | null): boolean {
-        const rowsChanged = JSON.stringify(Array.from(this.selectedRows).sort()) !== JSON.stringify(Array.from(rows).sort());
+        // Only update if the selection state actually changed
+        const currentJson = JSON.stringify(Array.from(this.selectedRows).sort((a, b) => a - b));
+        const newJson = JSON.stringify(Array.from(rows).sort((a, b) => a - b));
+        const selectedChanged = currentJson !== newJson;
         const lastClickedChanged = this.lastClickedRow !== lastClicked;
-        const stateChanged = rowsChanged || lastClickedChanged;
+        const changed = selectedChanged || lastClickedChanged;
 
-        if (stateChanged) {
-            this.selectedRows = rows;
+        if (changed) {
+            this.selectedRows = new Set(rows);
             this.lastClickedRow = lastClicked;
         }
-        return stateChanged;
+        return changed;
     }
 
     public getLastClickedRow(): number | null {
         return this.lastClickedRow;
+    }
+
+    public getSelectedColumn(): number | null {
+        return this.selectedColumn;
+    }
+
+    public setSelectedColumn(column: number | null): boolean {
+        const changed = this.selectedColumn !== column;
+        if (changed) {
+            this.selectedColumn = column;
+        }
+        return changed;
     }
 
     public getCopiedValue(): any {
@@ -408,12 +424,13 @@ export class StateManager {
         this.isDraggingSelection = false;
         this.activeEditor = null;
         this.selectedRows = new Set();
+        this.selectedColumn = null;
         this.lastClickedRow = null;
         this.copiedValue = undefined;
         this.copiedValueType = undefined;
         this.copiedCell = null;
         this.copiedRangeData = null;
-        this.copiedSourceRange = null; // Reset source range
+        this.copiedSourceRange = null;
         this.dragState = { isDragging: false, startCell: null, endRow: null };
         this.resizeColumnState = { isResizing: false, columnIndex: null, startX: null };
         this.resizeRowState = { isResizing: false, rowIndex: null, startY: null };

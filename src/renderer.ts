@@ -41,6 +41,7 @@ export class Renderer {
         this._drawGridLines();
         this._drawCopiedCellHighlight();
         this._drawActiveCellHighlight();
+        this._drawSelectedColumnHighlight();
         this._drawDragRange();
 
         this.ctx.restore();
@@ -90,6 +91,7 @@ export class Renderer {
         const visibleColStart = this.stateManager.getVisibleColStartIndex();
         const visibleColEnd = this.stateManager.getVisibleColEndIndex();
         const totalContentWidth = this.stateManager.getTotalContentWidth();
+        const selectedColumn = this.stateManager.getSelectedColumn();
         this.ctx.save();
 
         // Clip drawing to the visible header area (canvas is already translated)
@@ -120,7 +122,7 @@ export class Renderer {
         this.ctx.font = headerFont;
         this.ctx.textAlign = "center";
         this.ctx.textBaseline = "middle";
-        this.ctx.fillStyle = headerTextColor;
+        
 
         let currentX = this.dimensionCalculator.getColumnLeft(visibleColStart);
 
@@ -131,8 +133,16 @@ export class Renderer {
             const schemaCol = schema[colKey];
             const headerText = schemaCol?.label || colKey;
             const colWidth = columnWidths[col];
+            const isColumnSelected = selectedColumn === col;
+
+            // Highlight selected column headers
+            if (isColumnSelected) {
+                this.ctx.fillStyle = this.options.selectedRowNumberBgColor; // Reuse the same color as selected row numbers
+                this.ctx.fillRect(currentX, 0, colWidth, headerHeight);
+            }
 
             // Draw text centered in the column
+            this.ctx.fillStyle = headerTextColor;
             this.ctx.fillText(
                 headerText,
                 currentX + colWidth / 2,
@@ -278,6 +288,7 @@ export class Renderer {
         const visibleColStart = this.stateManager.getVisibleColStartIndex();
         const visibleColEnd = this.stateManager.getVisibleColEndIndex();
         const selectedRows = this.stateManager.getSelectedRows();
+        const selectedColumn = this.stateManager.getSelectedColumn();
         const activeCell = this.stateManager.getActiveCell();
         const selectionRange = this.stateManager.getNormalizedSelectionRange();
         const scrollLeft = this.stateManager.getScrollLeft();
@@ -317,6 +328,7 @@ export class Renderer {
                 const isDisabled = this.stateManager.isCellDisabled(row, col);
                 const isActive = activeCell?.row === row && activeCell?.col === col;
                 const isEditing = this.stateManager.getActiveEditor()?.row === row && this.stateManager.getActiveEditor()?.col === col;
+                const isColumnSelected = selectedColumn === col;
 
                 // Check if the current cell is within the selection range
                 const isInSelectionRange = selectionRange &&
@@ -328,13 +340,16 @@ export class Renderer {
                 if (isRowSelected) { // 2. Row selection overrides default
                     currentCellBg = selectedRowBgColor;
                 }
-                if (isInSelectionRange && !isActive) { // 3. Range selection overrides row/default (but not active)
+                if (isColumnSelected) { // 3. Column selection overrides row selection
+                    currentCellBg = selectedRowBgColor; // Reuse row selection color for consistency
+                }
+                if (isInSelectionRange && !isActive) { // 4. Range selection overrides row/column/default (but not active)
                     currentCellBg = selectedRangeBgColor;
                 }
-                if (isDisabled) { // 4. Disabled overrides everything except active cell
+                if (isDisabled) { // 5. Disabled overrides everything except active cell
                     currentCellBg = disabledCellBgColor;
                 }
-                if (isActive && !isEditing) { // 5. Active cell overrides everything (if not editing)
+                if (isActive && !isEditing) { // 6. Active cell overrides everything (if not editing)
                     currentCellBg = activeCellBgColor;
                 }
 
@@ -598,6 +613,34 @@ export class Renderer {
             highlightBounds.height - 1
         );
 
+        this.ctx.restore();
+    }
+
+    private _drawSelectedColumnHighlight(): void {
+        const selectedColumn = this.stateManager.getSelectedColumn();
+        if (selectedColumn === null) return; // Only draw when exactly one column is selected
+        const { headerHeight } = this.options;
+        const totalContentHeight = this.stateManager.getTotalContentHeight();
+        const columnWidths = this.stateManager.getColumnWidths();
+        
+        // Get column position and width
+        const columnLeft = this.dimensionCalculator.getColumnLeft(selectedColumn);
+        const columnWidth = columnWidths[selectedColumn];
+        
+        if (!columnWidth) return;
+        
+        this.ctx.save();
+        this.ctx.strokeStyle = '#1a73e8'; // Blue border color
+        this.ctx.lineWidth = 2;
+        
+        // Draw border around the entire column
+        this.ctx.strokeRect(
+            columnLeft + 1,
+            headerHeight + 1,
+            columnWidth - 2,
+            totalContentHeight - headerHeight - 2
+        );
+        
         this.ctx.restore();
     }
 
