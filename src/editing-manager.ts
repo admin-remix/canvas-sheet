@@ -75,7 +75,7 @@ export class EditingManager {
         return this.dropdown.style.display !== 'none';
     }
 
-    public activateEditor(rowIndex: number, colIndex: number): void {
+    public activateEditor(rowIndex: number, colIndex: number, initialChar?: string): void {
         const cellValue = this.stateManager.getCellData(rowIndex, colIndex);
         const schema = this.stateManager.getSchemaForColumn(colIndex);
         const colKey = this.stateManager.getColumnKey(colIndex);
@@ -131,7 +131,11 @@ export class EditingManager {
 
             this.editorInput.value = formatValueForInput(cellValue, schema?.type);
             this.editorInput.focus();
-            this.editorInput.select();
+            if (initialChar && (['text', 'email'].includes(schema?.type as string) || (schema?.type === 'number' && initialChar.match(/^\d*\.?\d*$/)))) {
+                this.editorInput.value = initialChar;
+            } else {
+                this.editorInput.select();
+            }
         }
 
         // Redraw to hide the cell content under the editor

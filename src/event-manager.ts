@@ -23,6 +23,7 @@ export class EventManager {
 
     private resizeTimeout: number | null = null;
     private _ignoreNextClick = false; // Flag to ignore click after drag mouseup
+    private isCtrl = false;
 
     constructor(
         container: HTMLElement,
@@ -65,6 +66,7 @@ export class EventManager {
         document.addEventListener('mouseup', this._handleDocumentMouseUp.bind(this));
         window.addEventListener('resize', this._handleResize.bind(this));
         document.addEventListener('mousedown', this._handleGlobalMouseDown.bind(this), true); // Use capture phase
+        document.addEventListener('keydown', this._handleDocumentKeyDown.bind(this));
         document.addEventListener('keyup', this._handleDocumentKeyUp.bind(this));
         // Add listener for the native paste event on the container
         this.container.addEventListener('paste', this._handlePaste.bind(this));
@@ -328,8 +330,12 @@ export class EventManager {
         }
     }
 
+    private _handleDocumentKeyDown(event: KeyboardEvent): void {
+        this.isCtrl = event.ctrlKey || event.metaKey;
+    }
     private _handleDocumentKeyUp(event: KeyboardEvent): void {
-        const isCtrl = event.ctrlKey || event.metaKey; // Meta for Mac
+        const isCtrl = this.isCtrl;
+        this.isCtrl = false;
         let redrawNeeded = false;
 
         // --- Actions only when editor is INACTIVE ---
@@ -350,16 +356,17 @@ export class EventManager {
             if (redrawNeeded) this.renderer.draw();
             return;
         }
+        const activeCell = this.stateManager.getActiveCell();
+        const isCellDisabled = activeCell && activeCell.row !== null && activeCell.col !== null && this.stateManager.isCellDisabled(activeCell.row, activeCell.col);
 
         if (event.key === 'Delete' || event.key === 'Backspace') {
             if (this.stateManager.getSelectedRows().size > 0) {
                 redrawNeeded = this.interactionManager.deleteSelectedRows();
                 event.preventDefault();
                 // deleteSelectedRows handles recalculations internally
-            } else if (this.stateManager.getActiveCell()) {
+            } else if (activeCell) {
                 // TODO: Implement clearing active cell content & return redraw flag
-                const activeCell = this.stateManager.getActiveCell();
-                if(activeCell && activeCell.row !== null && activeCell.col !== null && !this.stateManager.isCellDisabled(activeCell.row, activeCell.col)){
+                if(!isCellDisabled){
                     // Example: Set cell value to null
                     // const cleared = this.stateManager.updateCell(activeCell.row, this.stateManager.getColumnKey(activeCell.col), null);
                     // redrawNeeded = cleared;
@@ -368,7 +375,6 @@ export class EventManager {
                 event.preventDefault();
             }
         } else if (event.key.startsWith('Arrow')) {
-            const activeCell = this.stateManager.getActiveCell();
              if (activeCell) {
                  let rowDelta = 0;
                  let colDelta = 0;
@@ -383,19 +389,21 @@ export class EventManager {
                      event.preventDefault();
                  }
              }
-        } else if (event.key === 'Enter' && this.stateManager.getActiveCell()) {
-            const activeCell = this.stateManager.getActiveCell();
-            if (activeCell && activeCell.row !== null && activeCell.col !== null) {
-                if (!this.stateManager.isCellDisabled(activeCell.row, activeCell.col)) {
-                    this.editingManager.activateEditor(activeCell.row, activeCell.col);
-                    event.preventDefault();
-                    // activateEditor handles redraw/focus
-                }
+        } else if (event.key === 'Enter' && activeCell) {
+            if (!isCellDisabled && activeCell.row !== null && activeCell.col !== null) {
+                this.editingManager.activateEditor(activeCell.row, activeCell.col);
+                // activateEditor handles redraw/focus
+                event.preventDefault();
             }
-        } else if (event.key === 'Tab' && this.stateManager.getActiveCell()) {
+        } else if (event.key === 'Tab' && activeCell) {
             // moveActiveCell handles finding next cell, setting state, and activating editor (which redraws)
             this.interactionManager.moveActiveCell(0, event.shiftKey ? -1 : 1);
             event.preventDefault();
+        } else if (!isCtrl && !event.ctrlKey && event.key.length === 1) {
+            // user is typing a new value into a cell
+            if (activeCell && activeCell.row !== null && activeCell.col !== null && !isCellDisabled) {
+                this.editingManager.activateEditor(activeCell.row, activeCell.col, event.key);
+            }
         }
 
         // Redraw if Delete/Backspace on rows caused a state change
