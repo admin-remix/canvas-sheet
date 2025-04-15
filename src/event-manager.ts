@@ -352,11 +352,15 @@ export class EventManager {
     }
 
     private _handleDocumentKeyDown(event: KeyboardEvent): void {
-        this.isCtrl = event.ctrlKey || event.metaKey;
+        if (event.ctrlKey || event.metaKey) {
+            this.isCtrl = true;
+        }
     }
     private _handleDocumentKeyUp(event: KeyboardEvent): void {
         const isCtrl = this.isCtrl;
-        this.isCtrl = false;
+        if (event.ctrlKey || event.metaKey) {
+            this.isCtrl = false;
+        }
         let redrawNeeded = false;
 
         // --- Actions only when editor is INACTIVE ---
