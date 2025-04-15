@@ -39,13 +39,12 @@ export class Spreadsheet {
         // Instantiate managers
         this.stateManager = new StateManager(schema, data, this.options);
         this.domManager = new DomManager(this.container);
-        this.dimensionCalculator = new DimensionCalculator(this.options, this.stateManager);
+        this.dimensionCalculator = new DimensionCalculator(this.options, this.stateManager, this.domManager);
         this.renderer = new Renderer(this.domManager.getContext(), this.options, this.stateManager, this.dimensionCalculator);
         this.interactionManager = new InteractionManager(this.options, this.stateManager, this.renderer, this.dimensionCalculator, this.domManager);
         this.editingManager = new EditingManager(this.container, this.options, this.stateManager, this.domManager, this.renderer, this.interactionManager);
         this.eventManager = new EventManager(
             this.container,
-            this.domManager.getCanvas(),
             this.editingManager,
             this.interactionManager,
             this.stateManager,
@@ -66,7 +65,7 @@ export class Spreadsheet {
     }
 
     public draw(): void {
-        this.stateManager.updateScroll(this.container.scrollTop, this.container.scrollLeft);
+        this.stateManager.updateScroll(this.domManager.getVScrollPosition(), this.domManager.getHScrollPosition());
         this.dimensionCalculator.calculateVisibleRange(); // Recalculate visible range based on scroll
         this.renderer.draw();
     }
@@ -74,10 +73,9 @@ export class Spreadsheet {
     private onDataUpdate(top: number = 0, left: number = 0) {
         // Need to re-initialize sizes, recalculate dimensions, and redraw
         this.dimensionCalculator.initializeSizes(this.stateManager.getData().length);
-        this.dimensionCalculator.calculateDimensions(this.container.clientWidth, this.container.clientHeight);
         this.domManager.updateCanvasSize(this.stateManager.getTotalContentWidth(), this.stateManager.getTotalContentHeight());
-        this.container.scrollTop = top;
-        this.container.scrollLeft = left;
+        this.dimensionCalculator.calculateDimensions(this.container.clientWidth, this.container.clientHeight);
+        this.interactionManager.moveScroll(left, top, true);
         this.draw();
     }
 

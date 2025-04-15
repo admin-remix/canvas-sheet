@@ -35,6 +35,8 @@ export class Renderer {
         this.ctx.font = this.options.font;
         this._clearCanvas();
 
+        this.ctx.translate(-this.stateManager.getScrollLeft(), -this.stateManager.getScrollTop());
+        
         this._drawHeaders();
         this._drawRowNumbers();
         this._drawCells();
@@ -45,10 +47,9 @@ export class Renderer {
         this._drawSelectedRowsHighlight();
         this._drawDragRange();
 
-        this.ctx.restore();
-
-        // Draw the corner box fixed relative to the viewport
+        // // Draw the corner box fixed relative to the viewport
         this._drawCornerBox();
+        this.ctx.restore();
     }
 
     private _clearCanvas(): void {
@@ -91,14 +92,14 @@ export class Renderer {
         const columnWidths = this.stateManager.getColumnWidths();
         const visibleColStart = this.stateManager.getVisibleColStartIndex();
         const visibleColEnd = this.stateManager.getVisibleColEndIndex();
-        const totalContentWidth = this.stateManager.getTotalContentWidth();
+        const width = this.stateManager.getTotalContentWidth();
         const selectedColumn = this.stateManager.getSelectedColumn();
         this.ctx.save();
 
         // Clip drawing to the visible header area (canvas is already translated)
         const headerVisibleX = rowNumberWidth; // Content area start X
         const headerVisibleY = 0;
-        const headerVisibleWidth = totalContentWidth; // Full viewport width
+        const headerVisibleWidth = width; // Full viewport width
         const headerVisibleHeight = headerHeight;
 
         this.ctx.beginPath();
@@ -115,7 +116,7 @@ export class Renderer {
         this.ctx.fillRect(
             rowNumberWidth,
             0,
-            totalContentWidth - rowNumberWidth,
+            width - rowNumberWidth,
             headerHeight
         );
 
@@ -169,7 +170,7 @@ export class Renderer {
         this.ctx.beginPath();
         const lineY = headerHeight - 0.5;
         this.ctx.moveTo(rowNumberWidth, lineY);
-        this.ctx.lineTo(this.stateManager.getViewportWidth(), lineY);
+        this.ctx.lineTo(this.stateManager.getTotalContentWidth(), lineY);
         this.ctx.stroke();
     }
 
@@ -300,8 +301,8 @@ export class Renderer {
         // Clip drawing to the visible data area
         const clipX = Math.max(0, rowNumberWidth - scrollLeft);
         const clipY = Math.max(0, headerHeight - scrollTop);
-        const clipWidth = this.stateManager.getViewportWidth() - clipX;
-        const clipHeight = this.stateManager.getViewportHeight() - clipY;
+        const clipWidth = this.stateManager.getTotalContentWidth() - clipX;
+        const clipHeight = this.stateManager.getTotalContentHeight() - clipY;
         this.ctx.beginPath();
         this.ctx.rect(clipX + scrollLeft, clipY + scrollTop, clipWidth, clipHeight);
         this.ctx.clip();

@@ -78,7 +78,6 @@ export class EditingManager {
     public activateEditor(rowIndex: number, colIndex: number, initialChar?: string): void {
         const cellValue = this.stateManager.getCellData(rowIndex, colIndex);
         const schema = this.stateManager.getSchemaForColumn(colIndex);
-        const colKey = this.stateManager.getColumnKey(colIndex);
 
         // Should already be checked by event handler, but double-check
         if (this.stateManager.isCellDisabled(rowIndex, colIndex)) {
@@ -104,7 +103,10 @@ export class EditingManager {
             originalValue: cellValue,
         });
 
-        const { x: editorX, y: editorY, width: editorWidth, height: editorHeight } = bounds;
+        const { x, y, width: editorWidth, height: editorHeight } = bounds;
+        // because the canvas is translated, we need to subtract the scroll position
+        const editorX = x - this.stateManager.getScrollLeft();
+        const editorY = y - this.stateManager.getScrollTop();
 
         if (schema?.type === 'select' || schema?.type === 'boolean') {
             this._showDropdown(rowIndex, colIndex, schema, editorX, editorY, editorWidth, editorHeight);

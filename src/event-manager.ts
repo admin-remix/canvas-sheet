@@ -21,13 +21,15 @@ export class EventManager {
     private options: RequiredSpreadsheetOptions;
     private domManager: DomManager;
 
+    private hScrollbar: HTMLDivElement;
+    private vScrollbar: HTMLDivElement;
+
     private resizeTimeout: number | null = null;
     private _ignoreNextClick = false; // Flag to ignore click after drag mouseup
     private isCtrl = false;
 
     constructor(
         container: HTMLElement,
-        canvas: HTMLCanvasElement,
         editingManager: EditingManager,
         interactionManager: InteractionManager,
         stateManager: StateManager,
@@ -37,7 +39,6 @@ export class EventManager {
         domManager: DomManager
     ) {
         this.container = container;
-        this.canvas = canvas;
         this.editingManager = editingManager;
         this.interactionManager = interactionManager;
         this.stateManager = stateManager;
@@ -45,6 +46,9 @@ export class EventManager {
         this.renderer = renderer;
         this.options = options;
         this.domManager = domManager;
+        this.canvas = this.domManager.getCanvas();
+        this.hScrollbar = this.domManager.getHScrollbar();
+        this.vScrollbar = this.domManager.getVScrollbar();
 
         // Manually set circular dependency for InteractionManager
         // This should ideally be handled by a dependency injection container
@@ -53,7 +57,9 @@ export class EventManager {
 
     public bindEvents(): void {
         // Container Events
-        this.container.addEventListener('scroll', this._handleScroll.bind(this));
+        this.container.addEventListener('wheel', this._handleWheel.bind(this));
+        this.hScrollbar.addEventListener('scroll', this._handleHScroll.bind(this));
+        this.vScrollbar.addEventListener('scroll', this._handleVScroll.bind(this));
 
         // Canvas Events
         this.canvas.addEventListener('dblclick', this._handleDoubleClick.bind(this));
@@ -76,10 +82,7 @@ export class EventManager {
     }
 
     // --- Event Handlers ---
-
-    private _handleScroll(event: Event): void {
-        const target = event.target as HTMLElement;
-        this.stateManager.updateScroll(target.scrollTop, target.scrollLeft);
+    private _handleScroll() {
         // Deactivate editor/dropdown immediately on scroll
         this.editingManager.deactivateEditor(false); // Don't save changes on scroll
         this.editingManager.hideDropdown();
@@ -87,7 +90,25 @@ export class EventManager {
         this.dimensionCalculator.calculateVisibleRange();
         this.renderer.draw();
     }
-
+    private _handleWheel(event: WheelEvent): void {
+        const amount = event.deltaY;
+        event.preventDefault();
+        const { scrollTop, scrollLeft } = this.interactionManager.moveScroll(event.shiftKey ? amount: 0, event.shiftKey ? 0 : amount);
+        this.stateManager.updateScroll(scrollTop, scrollLeft);
+        this._handleScroll();
+    }
+    private _handleHScroll(event: Event) {
+        const target = event.target as HTMLElement;
+        const scrollLeft = target.scrollLeft;
+        this.stateManager.updateScroll(this.stateManager.getScrollTop(), scrollLeft);
+        this._handleScroll();
+    }
+    private _handleVScroll(event: Event) {
+        const target = event.target as HTMLElement;
+        const scrollTop = target.scrollTop;
+        this.stateManager.updateScroll(scrollTop, this.stateManager.getScrollLeft());
+        this._handleScroll();
+    }
     private _handleResize(): void {
         if (this.resizeTimeout) {
             clearTimeout(this.resizeTimeout);
@@ -489,8 +510,8 @@ export class EventManager {
         const rect = this.domManager.getCanvasBoundingClientRect();
         const canvasX = event.clientX - rect.left;
         const canvasY = event.clientY - rect.top;
-        const contentX = canvasX;
-        const contentY = canvasY;
+        const contentX = canvasX + this.stateManager.getScrollLeft();
+        const contentY = canvasY + this.stateManager.getScrollTop();
         const { headerHeight, rowNumberWidth } = this.options;
         // Get dimensions directly from state/calculator as needed
         const dataLength = this.stateManager.getData().length; // More efficient than getData()

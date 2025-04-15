@@ -3,14 +3,17 @@
 import { RequiredSpreadsheetOptions } from './types';
 import { StateManager } from './state-manager';
 import { log } from './utils';
+import { DomManager } from 'dom-manager';
 
 export class DimensionCalculator {
     private options: RequiredSpreadsheetOptions;
     private stateManager: StateManager;
+    private domManager: DomManager;
 
-    constructor(options: RequiredSpreadsheetOptions, stateManager: StateManager) {
+    constructor(options: RequiredSpreadsheetOptions, stateManager: StateManager, domManager: DomManager) {
         this.options = options;
         this.stateManager = stateManager;
+        this.domManager = domManager;
     }
 
     public initializeSizes(rowCount: number): void {
@@ -24,7 +27,8 @@ export class DimensionCalculator {
     }
 
     public calculateDimensions(viewportWidth: number, viewportHeight: number): void {
-        this.stateManager.updateViewportSize(viewportWidth, viewportHeight);
+        const systemScrollbarWidth = this.domManager.getSystemScrollbarWidth();
+        this.stateManager.updateViewportSize(viewportWidth - systemScrollbarWidth, viewportHeight - systemScrollbarWidth);
         this.calculateTotalSize(); // Ensure total size is up-to-date
         log('log', this.options.verbose, "Calculated Dimensions:", {
             totalContentWidth: this.stateManager.getTotalContentWidth(),

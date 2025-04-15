@@ -45,6 +45,13 @@ export class InteractionManager {
         this.editingManager = editingManager;
     }
 
+    public moveScroll(deltaX: number, deltaY: number, setScroll: boolean = false) {
+        return {
+            scrollTop: this.domManager.setVScrollPosition( setScroll ? deltaY : this.domManager.getVScrollPosition() + deltaY),
+            scrollLeft: this.domManager.setHScrollPosition(setScroll ? deltaX : this.domManager.getHScrollPosition() + deltaX)
+        };
+    }
+
     // --- Row Selection ---
     /** Returns true if selection state changed */
     public handleRowNumberClick(clickedRow: number, isShiftKey: boolean, isCtrlKey: boolean): boolean {
@@ -263,12 +270,13 @@ export class InteractionManager {
 
     public updateCursorStyle(event: MouseEvent): void {
         if (this.stateManager.isResizing() || this.stateManager.isDraggingFillHandle()) return; // Don't change cursor during active drag/resize
-
+        const scrollTop = this.stateManager.getScrollTop();
+        const scrollLeft = this.stateManager.getScrollLeft();
         const rect = this.domManager.getCanvasBoundingClientRect();
         const viewportX = event.clientX - rect.left;
         const viewportY = event.clientY - rect.top;
-        const contentX = viewportX + this.stateManager.getScrollLeft();
-        const contentY = viewportY + this.stateManager.getScrollTop();
+        const contentX = viewportX + scrollLeft;
+        const contentY = viewportY + scrollTop;
         const { headerHeight, rowNumberWidth, resizeHandleSize } = this.options;
         const columns = this.stateManager.getColumns();
         const data = this.stateManager.getData();
@@ -278,7 +286,7 @@ export class InteractionManager {
         let newCursor = 'default';
 
         // Check Column Resize Handles
-        if (contentY < headerHeight && contentX > rowNumberWidth) {
+        if (contentY < headerHeight && contentX > rowNumberWidth && scrollTop<headerHeight) {
             let currentX = rowNumberWidth;
             for (let col = 0; col < columns.length; col++) {
                 const borderX = currentX + columnWidths[col];
@@ -292,7 +300,7 @@ export class InteractionManager {
         }
 
         // Check Row Resize Handles
-        if (newCursor === 'default' && contentX < rowNumberWidth && contentY > headerHeight) {
+        if (newCursor === 'default' && contentX < rowNumberWidth && contentY > headerHeight && scrollLeft<rowNumberWidth) {
             let currentY = headerHeight;
             for (let row = 0; row < data.length; row++) {
                 const borderY = currentY + rowHeights[row];
@@ -310,8 +318,8 @@ export class InteractionManager {
         if (newCursor === 'default' && activeCell && activeCell.row !== null && activeCell.col !== null && !this.stateManager.getActiveEditor()) {
             const handleBounds = this.renderer.getFillHandleBounds(activeCell.row, activeCell.col);
             if (handleBounds &&
-                viewportX >= handleBounds.x && viewportX <= handleBounds.x + handleBounds.width &&
-                viewportY >= handleBounds.y && viewportY <= handleBounds.y + handleBounds.height) {
+                contentX >= handleBounds.x && contentX <= handleBounds.x + handleBounds.width &&
+                contentY >= handleBounds.y && contentY <= handleBounds.y + handleBounds.height) {
                 newCursor = 'crosshair';
             }
         }
@@ -331,8 +339,8 @@ export class InteractionManager {
         if (!handleBounds) return false;
 
         const rect = this.domManager.getCanvasBoundingClientRect();
-        const viewportX = event.clientX - rect.left;
-        const viewportY = event.clientY - rect.top;
+        const viewportX = event.clientX - rect.left + this.stateManager.getScrollLeft();
+        const viewportY = event.clientY - rect.top + this.stateManager.getScrollTop();
 
         if (viewportX >= handleBounds.x && viewportX <= handleBounds.x + handleBounds.width &&
             viewportY >= handleBounds.y && viewportY <= handleBounds.y + handleBounds.height) {
@@ -360,7 +368,7 @@ export class InteractionManager {
         if (!startCell || startCell.row === null) return;
 
         const rect = this.domManager.getCanvasBoundingClientRect();
-        const viewportY = event.clientY - rect.top;
+        const viewportY = event.clientY - rect.top + this.stateManager.getScrollTop();
         const headerHeight = this.options.headerHeight;
         const rowHeights = this.stateManager.getRowHeights();
         const dataLength = this.stateManager.getData().length;

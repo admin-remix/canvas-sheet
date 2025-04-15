@@ -37,8 +37,22 @@ const schema: SpreadsheetSchema = {
   notes: { type: "text", label: "Notes" },
 };
 
+function generateRandomData(numRows: number): DataRow[] {
+  return Array.from({ length: numRows }, (_, i) => ({
+    id: i + 1,
+    name: `Person ${i + 1}`,
+    email: `person${i + 1}@example.com`,
+    dob: Math.random() < 0.5 ? null : new Date(Math.floor(Math.random() * 10000000000)).toISOString().split('T')[0],
+    locationId: Math.random() < 0.5 ? null : Math.floor(Math.random() * 10) + 1,
+    isRestricted: Math.random() < 0.5,
+    salary: Math.floor(Math.random() * 100000) + 50000,
+    notes: `Notes for Person ${i + 1}`,
+  }));
+}
+
+
 // --- Sample Data ---
-const sampleData = [
+const sampleData = !window.location.search.includes('bigdata') ? [
   {
     id: 1,
     name: "Alice Johnson",
@@ -300,7 +314,7 @@ const sampleData = [
     salary: 100000,
     notes: "Actor",
   },
-];
+] : generateRandomData(20000);
 
 // --- Custom Cell Disabling Logic ---
 function customIsCellDisabled(_rowIndex: number, colKey: string, rowData: DataRow) {
@@ -310,6 +324,7 @@ function customIsCellDisabled(_rowIndex: number, colKey: string, rowData: DataRo
 
 // --- Instantiate the Spreadsheet ---
 document.addEventListener("DOMContentLoaded", () => {
+  document.getElementById('data-size')!.textContent = sampleData.length.toString();
   let spreadsheet: Spreadsheet|null = null;
   try {
     spreadsheet = new Spreadsheet(
