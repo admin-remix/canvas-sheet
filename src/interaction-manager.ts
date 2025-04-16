@@ -387,12 +387,15 @@ export class InteractionManager {
 
         let newEndRow = this.stateManager.getDragEndRow();
 
-        if (targetRow !== null && targetRow >= startCell.row) {
-            // Dragging down or at the same level
+        if (targetRow !== null) {
+            // Allow dragging in any direction (up or down)
             newEndRow = targetRow;
+        } else if (viewportY < headerHeight) {
+            // Mouse is above the header, clamp to first row
+            newEndRow = 0;
         } else {
-            // Mouse is above the start row or outside grid vertically
-            newEndRow = startCell.row; // Clamp to start row
+            // Mouse is below the last row, clamp to last row
+            newEndRow = dataLength - 1;
         }
 
         if (newEndRow !== this.stateManager.getDragEndRow()) {
@@ -411,17 +414,17 @@ export class InteractionManager {
         const dragEndRow = this.stateManager.getDragEndRow();
         log('log', this.options.verbose, "Finished dragging fill handle to row", dragEndRow);
 
-        this._performFillDown();
+        this._performFill();
 
         this.stateManager.setDragState({ isDragging: false, startCell: null, endRow: null });
         // Cursor update handled by general mouse up handler
         // Redraw happens because state changed and is needed after fill
     }
 
-    private _performFillDown(): void {
+    private _performFill(): void {
         const dragState = this.stateManager.getDragState();
         // Add explicit checks for startCell and endRow being non-null
-        if (!dragState.isDragging || !dragState.startCell || dragState.endRow === null || dragState.startCell.row === null || dragState.endRow <= dragState.startCell.row) {
+        if (!dragState.isDragging || !dragState.startCell || dragState.endRow === null || dragState.startCell.row === null) {
             return;
         }
 
@@ -438,8 +441,12 @@ export class InteractionManager {
         let changed = false;
         const dataLength = this.stateManager.getData().length; // Cache length
 
-        for (let row = startRow + 1; row <= endRow; row++) {
-            if (row >= dataLength) continue; // Ensure row index is valid
+        // Determine direction and set proper loop bounds
+        const isFillingDown = endRow >= startRow;
+        const firstRow = isFillingDown ? startRow + 1 : endRow;
+        const lastRow = isFillingDown ? endRow : startRow - 1;
+        for (let row = firstRow; row <= lastRow; row++) {
+            if (row < 0 || row >= dataLength) continue; // Ensure row index is valid
 
             const targetSchema = this.stateManager.getSchemaForColumn(startCol);
             const isDisabledCell = this.stateManager.isCellDisabled(row, startCol);
@@ -456,7 +463,6 @@ export class InteractionManager {
             }
 
             const currentValue = this.stateManager.getCellData(row, startCol);
-
             if (currentValue !== sourceValue) {
                 // Use StateManager to update the cell value internally
                 this.stateManager.updateCellInternal(row, startCol, sourceValue);

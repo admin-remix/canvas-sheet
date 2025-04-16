@@ -554,40 +554,57 @@ export class Renderer {
         const dragEndRow = this.stateManager.getDragEndRow();
 
         if (!isDragging || !dragStartCell || dragEndRow === null || dragEndRow === dragStartCell.row) return;
-
-        const { dragRangeBorderColor } = this.options;
         const { row: startRow, col: startCol } = dragStartCell;
         if (startRow === null || startCol === null) return;
+
+        const { dragRangeBorderColor } = this.options;
         const endRow = dragEndRow;
         const columnWidths = this.stateManager.getColumnWidths();
         const rowHeights = this.stateManager.getRowHeights();
 
         // Ensure startCol is valid
-        if (startCol === null || startCol < 0 || startCol >= columnWidths.length) return;
+        if (startCol < 0 || startCol >= columnWidths.length) return;
 
         const startColWidth = columnWidths[startCol];
         const startColX = this.dimensionCalculator.getColumnLeft(startCol);
 
-        // Calculate the Y position of the bottom of the start cell
-        const startRowY = this.dimensionCalculator.getRowTop(startRow);
-        const dragStartY = startRowY + (rowHeights[startRow] || this.options.defaultRowHeight);
-
-        // Calculate the total height of the dragged range (from startRow+1 to endRow)
-        let dragRangeHeight = 0;
-        for (let r = startRow + 1; r <= endRow; r++) {
-            if (r >= rowHeights.length) break; // Stop if going beyond data bounds
-            dragRangeHeight += rowHeights[r] || this.options.defaultRowHeight;
+        // Determine if we're dragging down or up
+        const isDraggingDown = endRow >= startRow;
+        
+        let dragStartY, dragRangeHeight;
+        
+        if (isDraggingDown) {
+            // Dragging downward - start from bottom of start cell
+            const startRowY = this.dimensionCalculator.getRowTop(startRow);
+            dragStartY = startRowY + rowHeights[startRow];
+            
+            // Calculate height from rows after start row to end row (inclusive)
+            dragRangeHeight = 0;
+            for (let r = startRow + 1; r <= endRow; r++) {
+                if (r >= rowHeights.length) break;
+                dragRangeHeight += rowHeights[r] || this.options.defaultRowHeight;
+            }
+        } else {
+            // Dragging upward - start from top of end row
+            dragStartY = this.dimensionCalculator.getRowTop(endRow);
+            
+            // Calculate height from end row to the row before start row (inclusive)
+            dragRangeHeight = 0;
+            for (let r = endRow; r < startRow; r++) {
+                if (r >= rowHeights.length) break;
+                dragRangeHeight += rowHeights[r] || this.options.defaultRowHeight;
+            }
         }
 
         if (dragRangeHeight <= 0) return; // No actual range to draw
 
         // Convert content coordinates to viewport coordinates
-        const viewportX = startColX; // No need to subtract scrollLeft here, already done by global translate
+        const viewportX = startColX;
         const viewportY = dragStartY;
 
         this.ctx.save();
         this.ctx.strokeStyle = dragRangeBorderColor;
-        this.ctx.lineWidth = 1;
+        this.ctx.lineWidth = 2;
         this.ctx.setLineDash([4, 2]); // Dashed line
 
         // Draw the rectangle relative to the translated context

@@ -288,6 +288,7 @@ export class EventManager {
             this.interactionManager.handleResizeMouseMove(event); // Handles redraw
         } else if (this.stateManager.isDraggingFillHandle()) {
             this.interactionManager.handleFillHandleMouseMove(event); // Handles redraw
+            this._ignoreNextClick = true;
         } else if (this.stateManager.getIsDraggingSelection()) {
             // Update selection range based on mouse position
             const coords = this._getCoordsFromEvent(event);
