@@ -92,6 +92,19 @@ export class StateManager {
         // Recalculation of sizes, dimensions, and redraw is handled by Spreadsheet class
     }
 
+    public clearAllSelections():void {
+        this.activeCell = null;
+        this.selectionStartCell = null;
+        this.selectionEndCell = null;
+        this.isDraggingSelection = false;
+        this.selectedRows = new Set();
+        this.selectedColumn = null;
+        this.lastClickedRow = null;
+        this.copiedValue = undefined;
+        this.copiedValueType = undefined;
+        this.copiedCell = null;
+    }
+
     /** Internal method to update a single cell's value without validation (validation happens before) */
     public updateCellInternal(rowIndex: number, colIndex: number, value: any): void {
         if (rowIndex >= 0 && rowIndex < this.data.length && colIndex >= 0 && colIndex < this.columns.length) {
@@ -574,5 +587,28 @@ export class StateManager {
         
         // Return the index of the newly added row
         return newRowIndex;
+    }
+
+    public addColumn(fieldName: string, colSchema: ColumnSchema): number {
+        const newField = `custom:${fieldName}`;
+        if (this.schema[newField]) {
+            throw new Error(`Column ${fieldName} already exists`);
+        }
+        const newColIndex = this.columns.length;
+        this.columns.push(newField);
+        this.columnWidths.push(this.options.defaultColumnWidth);
+        this.schema[newField] = colSchema;
+        return newColIndex;
+    }
+
+    public removeColumn(colIndex: number): void {
+        const colKey = this.columns[colIndex];
+        this.clearAllSelections();
+        delete this.schema[colKey];
+        this.columns.splice(colIndex, 1);
+        this.columnWidths.splice(colIndex, 1);
+        this.data.forEach(row => {
+            delete row[colKey];
+        });
     }
 } 

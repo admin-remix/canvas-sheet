@@ -27,6 +27,7 @@ export class EventManager {
     private resizeTimeout: number | null = null;
     private _ignoreNextClick = false; // Flag to ignore click after drag mouseup
     private isCtrl = false;
+    private _customEventHandler: ((event: Event) => void)|null = null;
 
     constructor(
         container: HTMLElement,
@@ -55,7 +56,8 @@ export class EventManager {
         this.interactionManager.setEditingManager(this.editingManager);
     }
 
-    public bindEvents(): void {
+    public bindEvents(customEventHandler: ((event: Event) => void)|null = null): void {
+        this._customEventHandler = customEventHandler;
         // Container Events
         this.container.addEventListener('wheel', this._handleWheel.bind(this));
         this.hScrollbar.addEventListener('scroll', this._handleHScroll.bind(this));
@@ -362,6 +364,7 @@ export class EventManager {
             this.isCtrl = false;
         }
         let redrawNeeded = false;
+        let resizeNeeded = false;
 
         // --- Actions only when editor is INACTIVE ---
         if (this.editingManager.isEditorActive() || this.editingManager.isDropdownVisible()) {
@@ -385,18 +388,21 @@ export class EventManager {
         const isCellDisabled = activeCell && activeCell.row !== null && activeCell.col !== null && this.stateManager.isCellDisabled(activeCell.row, activeCell.col);
 
         if (event.key === 'Delete' || event.key === 'Backspace') {
+            const selectedColumn = this.stateManager.getSelectedColumn();
             if (this.stateManager.getSelectedRows().size > 0) {
                 redrawNeeded = this.interactionManager.deleteSelectedRows();
                 event.preventDefault();
                 // deleteSelectedRows handles recalculations internally
-            } else if (activeCell) {
-                // TODO: Implement clearing active cell content & return redraw flag
+            } else if (activeCell && activeCell.row !== null && activeCell.col !== null) {
                 if(!isCellDisabled){
-                    // Example: Set cell value to null
-                    // const cleared = this.stateManager.updateCell(activeCell.row, this.stateManager.getColumnKey(activeCell.col), null);
-                    // redrawNeeded = cleared;
-                    log('log', this.options.verbose, `Delete key on cell ${activeCell.row},${activeCell.col} - clearing not implemented.`);
+                    const cleared = this.stateManager.updateCell(activeCell.row, this.stateManager.getColumnKey(activeCell.col), null);
+                    redrawNeeded = cleared;
                 }
+                event.preventDefault();
+            } else if (event.key === 'Delete' && selectedColumn !== null && this.stateManager.getColumnKey(selectedColumn)?.startsWith('custom:')) {
+                this.stateManager.removeColumn(selectedColumn);
+                redrawNeeded = true;
+                resizeNeeded = true;
                 event.preventDefault();
             }
         } else if (event.key.startsWith('Arrow')) {
@@ -432,7 +438,10 @@ export class EventManager {
         }
 
         // Redraw if Delete/Backspace on rows caused a state change
-        if (redrawNeeded) {
+        if (resizeNeeded) {
+            this._customEventHandler?.call(this, new CustomEvent('resize'));
+            // no need to redraw here, resize will trigger a redraw
+        }else if (redrawNeeded) {
             this.renderer.draw();
         }
     }
@@ -578,7 +587,7 @@ export class EventManager {
 
     private _getColumnFromEvent(event: MouseEvent): number | null {
         const rect = this.domManager.getCanvasBoundingClientRect();
-        const canvasX = event.clientX - rect.left;
+        const canvasX = event.clientX - rect.left + this.stateManager.getScrollLeft();
         const { rowNumberWidth } = this.options;
         const columns = this.stateManager.getColumns();
         const columnWidths = this.stateManager.getColumnWidths();

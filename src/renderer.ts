@@ -86,6 +86,9 @@ export class Renderer {
             headerBgColor,
             headerTextColor,
             gridLineColor,
+            headerClipText,
+            headerTextAlign,
+            padding
         } = this.options;
         const columns = this.stateManager.getColumns();
         const schema = this.stateManager.getSchema();
@@ -122,7 +125,7 @@ export class Renderer {
 
         // Draw Header Text and Vertical Lines
         this.ctx.font = headerFont;
-        this.ctx.textAlign = "center";
+        this.ctx.textAlign = headerTextAlign;
         this.ctx.textBaseline = "middle";
         
 
@@ -137,20 +140,45 @@ export class Renderer {
             const colWidth = columnWidths[col];
             const isColumnSelected = selectedColumn === col;
 
-            // Highlight selected column headers
+            let customBgColor:string|null = null;
+            // Highlight selected column headers or if custom column
             if (isColumnSelected) {
-                this.ctx.fillStyle = this.options.selectedHeaderBgColor; // Reuse the same color as selected row numbers
+                customBgColor = this.options.selectedHeaderBgColor; // Reuse the same color as selected row numbers
+            } else if (colKey.startsWith('custom:')) {
+                customBgColor = this.options.customHeaderBgColor;
+            }
+            if(customBgColor) {
+                this.ctx.fillStyle = customBgColor;
                 this.ctx.fillRect(currentX, 0, colWidth, headerHeight);
             }
 
             // Draw text centered in the column
             this.ctx.fillStyle = isColumnSelected ? this.options.selectedHeaderTextColor : headerTextColor;
-            this.ctx.fillText(
-                headerText,
-                currentX + colWidth / 2,
-                headerHeight / 2,
-                colWidth - 10 // Max width to prevent text overflow
-            );
+            let textX = currentX + padding;
+            if(headerTextAlign === 'center') {
+                textX = currentX + colWidth / 2;
+            } else if(headerTextAlign === 'right') {
+                textX = currentX + colWidth - padding;
+            }
+            if(!headerClipText) {
+                this.ctx.fillText(
+                    headerText,
+                    textX,
+                    headerHeight / 2,
+                    colWidth - padding * 2 // Max width to prevent text overflow
+                );
+            } else {
+                this.ctx.save();
+                this.ctx.beginPath();
+                this.ctx.rect(currentX, 0, colWidth, headerHeight);
+                this.ctx.clip();
+                this.ctx.fillText(
+                    headerText,
+                    textX,
+                    headerHeight / 2
+                );
+                this.ctx.restore();
+            }
 
             // Draw vertical separator line
             this.ctx.strokeStyle = gridLineColor;
@@ -376,6 +404,7 @@ export class Renderer {
                         const textY = currentY + rowHeight / 2;
                         // do not apply maxWidth to fillText
                         this.ctx.fillText(formattedValue, textX, textY);
+                        // this.wrapText(formattedValue, textX, textY, colWidth - padding * 2);
                     }
                 }
 
@@ -665,6 +694,48 @@ export class Renderer {
 
         this.ctx.restore();
     }
+
+    // TODO: Implement proper text wrapping
+    /*private wrapText(text: string, x: number, y: number, maxWidth: number, lineHeight: number = 16) {
+        if (!text) return;
+        // The following is the text wrapping logic, but it's not fully implemented
+        // TODO: align text vertically depending on the height of the cell and its own height
+        if (this.ctx.measureText(text).width <= maxWidth) {
+            this.ctx.fillText(text, x, y);
+            return;
+        }
+        let words = text.split(/[ \n]/);
+        let currentLine = '';
+        let testLine = '';
+        let metrics;
+        let currentY = y;
+
+        for (let i = 0; i < words.length; i++) {
+            let word = words[i];
+            // Add space only if currentLine is not empty
+            testLine = currentLine ? currentLine + ' ' + word : word;
+
+            // Measure the width of the potential line
+            metrics = this.ctx.measureText(testLine);
+            let testWidth = metrics.width;
+
+            // If the potential line fits or it's the only word and still too long
+            if (testWidth <= maxWidth || !currentLine) {
+                 currentLine = testLine;
+            } else {
+                // Draw the previous line that fit
+                this.ctx.fillText(currentLine, x, currentY);
+                // Start new line with the current word
+                currentLine = word;
+                // Move to the next line
+                currentY += lineHeight;
+            }
+        }
+        // Draw the last line of the current paragraph
+        if (currentLine.trim().length) {
+            this.ctx.fillText(currentLine, x, currentY);
+        }
+    }*/
 
     // --- Helper to get cell bounds in VIEWPORT coordinates --- HINT HINT
     public getCellBounds(rowIndex: number, colIndex: number): CellBounds | null {

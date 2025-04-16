@@ -355,4 +355,7 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("add-row")?.addEventListener("click", () => {
     spreadsheet?.addRow();
   });
+  document.getElementById("add-column")?.addEventListener("click", () => {
+    spreadsheet?.addColumn("new-column", { type: "text", label: "New Column" });
+  });
 });

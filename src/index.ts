@@ -3,7 +3,8 @@
 import {
     SpreadsheetSchema,
     DataRow,
-    SpreadsheetOptions
+    SpreadsheetOptions,
+    ColumnSchema
 } from './types';
 import { DEFAULT_OPTIONS } from './config';
 import { DomManager } from './dom-manager';
@@ -14,7 +15,7 @@ import { EditingManager } from './editing-manager';
 import { InteractionManager } from './interaction-manager';
 import { StateManager } from './state-manager';
 import { log } from './utils';
-export type { SpreadsheetSchema, DataRow, SpreadsheetOptions } from './types';
+export type { SpreadsheetSchema, DataRow, SpreadsheetOptions, ColumnSchema } from './types';
 
 export class Spreadsheet {
     private container: HTMLElement;
@@ -58,7 +59,11 @@ export class Spreadsheet {
         this.dimensionCalculator.initializeSizes(data.length);
         this.domManager.setup(this.stateManager.getTotalContentWidth(), this.stateManager.getTotalContentHeight());
         this.dimensionCalculator.calculateDimensions(this.container.clientWidth, this.container.clientHeight);
-        this.eventManager.bindEvents();
+        this.eventManager.bindEvents((event: Event) => {
+            if (event.type === 'resize') {
+                this.onDataUpdate();
+            }
+        });
         this.draw();
 
         log('log', this.options.verbose, "Spreadsheet initialized");
@@ -94,6 +99,11 @@ export class Spreadsheet {
         const newRowIndex = this.stateManager.addRow();
         this.onDataUpdate(this.container.scrollHeight, 0);
         return newRowIndex;
+    }
+    public addColumn(fieldName: string, colSchema: ColumnSchema): number {
+        const newColIndex = this.stateManager.addColumn(fieldName, colSchema);
+        this.onDataUpdate(0, this.container.scrollWidth);
+        return newColIndex;
     }
 
     public updateCell(rowIndex: number, colKey: string, value: any): void {

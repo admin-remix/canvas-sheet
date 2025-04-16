@@ -81,8 +81,11 @@ export interface SpreadsheetOptions {
     selectedRangeBgColor?: string; // Background for cells in multi-select range (excluding active)
     headerTextColor?: string;
     selectedHeaderTextColor?: string;
+    customHeaderBgColor?: string;
     headerBgColor?: string;
     selectedHeaderBgColor?: string;
+    headerClipText?: boolean; // Clip text or adjust(squish) text width to fit the header
+    headerTextAlign?: 'left' | 'center' | 'right';
     gridLineColor?: string;
     rowNumberBgColor?: string;
     selectedRowNumberBgColor?: string;
