@@ -1,18 +1,13 @@
-// src/editing-manager.ts
-
 import {
     RequiredSpreadsheetOptions,
     ColumnSchema,
-    DataRow,
     DropdownItem,
-    CellCoords
 } from './types';
 import { StateManager } from './state-manager';
 import { DomManager } from './dom-manager';
 import { Renderer } from './renderer';
 import { InteractionManager } from './interaction-manager';
 import { formatValueForInput, parseValueFromInput, validateInput, log } from './utils';
-import { DISABLED_FIELD_PREFIX } from './config';
 
 export class EditingManager {
     private container: HTMLElement;
@@ -195,6 +190,10 @@ export class EditingManager {
         }
     }
 
+    public hasEditorSelection(): boolean {
+        return this.highlightedDropdownIndex>=0;
+    }
+
     private _handleEditorBlur(event: FocusEvent): void {
         // Use setTimeout to allow clicks on dropdown items before blur deactivates
         setTimeout(() => {
@@ -207,17 +206,18 @@ export class EditingManager {
     }
 
     private _handleEditorKeyDown(event: KeyboardEvent): void {
+        let redrawNeeded = false;
         switch (event.key) {
             case 'Enter':
                 this.deactivateEditor(true);
-                this.interactionManager.moveActiveCell(1, 0); // Move down
+                redrawNeeded = this.interactionManager.moveActiveCell(1, 0); // Move down
                 event.preventDefault();
                 break;
             case 'Escape':
                 this.deactivateEditor(false); // Discard changes
                  // Optionally clear active cell as well
                 this.stateManager.setActiveCell(null);
-                this.renderer.draw(); // Redraw after clearing active cell
+                redrawNeeded = true; // Redraw after clearing active cell
                 event.preventDefault();
                 break;
             case 'Tab':
@@ -225,6 +225,9 @@ export class EditingManager {
                 this.interactionManager.moveActiveCell(0, event.shiftKey ? -1 : 1); // Move left/right
                 event.preventDefault();
                 break;
+        }
+        if (redrawNeeded) {
+            this.renderer.draw();
         }
     }
 
@@ -359,11 +362,15 @@ export class EditingManager {
                 break;
             case 'Enter':
                 event.preventDefault();
+                let simulateClickIndex = -1;
                 if (currentHighlight >= 0 && currentHighlight < visibleItems.length) {
-                    visibleItems[currentHighlight].click(); // Simulate click on highlighted item
+                    simulateClickIndex = currentHighlight;
                 } else if (visibleItems.length === 1) {
-                     visibleItems[0].click(); // Auto-select if only one item visible
-                 }
+                    simulateClickIndex = 0;
+                }
+                if (simulateClickIndex >= 0) {
+                    visibleItems[simulateClickIndex].click(); // Simulate click on highlighted item
+                }
                 return; // Handled by click handler
             case 'Escape':
                 event.preventDefault();
@@ -417,10 +424,13 @@ export class EditingManager {
             this.stateManager.updateCellInternal(row, col, valueToSet);
             this.stateManager.updateDisabledStatesForRow(row); // Update disabled states after change
 
-            this.deactivateEditor(false); // Deactivate editor (changes already saved)
-            // Optionally move to the next cell after selection
-            // this.interactionManager.moveActiveCell(1, 0);
-             this.domManager.focusContainer(); // Return focus to the main grid container
+            // delay the dropdown deactivation to stop the same keyup event from reopening the dropdown
+            setTimeout(() => {
+                this.deactivateEditor(false); // Deactivate editor (changes already saved)
+                // Optionally move to the next cell after selection
+                // this.interactionManager.moveActiveCell(1, 0);
+                this.domManager.focusContainer(); // Return focus to the main grid container
+            }, 200);
         }
     }
 } 

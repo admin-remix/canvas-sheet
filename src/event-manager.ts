@@ -417,7 +417,11 @@ export class EventManager {
 
                  if (rowDelta !== 0 || colDelta !== 0) {
                      // moveActiveCell handles finding next cell, setting state, and activating editor (which redraws)
-                     this.interactionManager.moveActiveCell(rowDelta, colDelta);
+                     redrawNeeded = this.interactionManager.moveActiveCell(rowDelta, colDelta, false);
+                     if (redrawNeeded) {
+                        this.interactionManager.clearSelections();
+                        this.stateManager.clearSelectionRange();
+                     }
                      event.preventDefault();
                  }
              }
@@ -429,7 +433,7 @@ export class EventManager {
             }
         } else if (event.key === 'Tab' && activeCell) {
             // moveActiveCell handles finding next cell, setting state, and activating editor (which redraws)
-            this.interactionManager.moveActiveCell(0, event.shiftKey ? -1 : 1);
+            redrawNeeded = this.interactionManager.moveActiveCell(0, event.shiftKey ? -1 : 1);
             event.preventDefault();
         } else if (!isCtrl && !event.ctrlKey && event.key.length === 1) {
             // user is typing a new value into a cell

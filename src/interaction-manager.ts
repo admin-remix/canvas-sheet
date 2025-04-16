@@ -1106,13 +1106,14 @@ export class InteractionManager {
     }
 
     // --- Cell Navigation (used by editing manager on Enter/Tab) ---
-    public moveActiveCell(rowDelta: number, colDelta: number): void {
+    // returns true if redraw is needed
+    public moveActiveCell(rowDelta: number, colDelta: number, activateEditor = true): boolean {
         if (!this.editingManager) {
             log('warn', this.options.verbose, "EditingManager not set, cannot move active cell.");
-            return;
+            return false;
         }
         const currentActiveCell = this.stateManager.getActiveCell();
-        if (!currentActiveCell || currentActiveCell.row === null || currentActiveCell.col === null) return;
+        if (!currentActiveCell || currentActiveCell.row === null || currentActiveCell.col === null) return false;
 
         let currentRow = currentActiveCell.row;
         let currentCol = currentActiveCell.col;
@@ -1137,9 +1138,8 @@ export class InteractionManager {
             // Reached top/bottom edge, deactivate editing and don't move
             this.editingManager.deactivateEditor(true); // Save previous cell
             this.stateManager.setActiveCell(null);
-            this.renderer.draw();
             log('log', this.options.verbose, "Reached grid boundary, deactivating editor.");
-            return;
+            return true;
         }
 
         // Find the next *editable* cell in the specified direction
@@ -1165,9 +1165,8 @@ export class InteractionManager {
             if (nextRow < 0 || nextRow >= numRows) {
                 this.editingManager.deactivateEditor(true); // Save previous cell
                 this.stateManager.setActiveCell(null);
-                this.renderer.draw();
                 log('warn', this.options.verbose, "Could not find next editable cell in direction.");
-                return;
+                return true;
             }
         }
 
@@ -1175,15 +1174,17 @@ export class InteractionManager {
              log('warn', this.options.verbose, "Max search limit reached while finding next editable cell.");
              this.editingManager.deactivateEditor(true);
              this.stateManager.setActiveCell(null);
-             this.renderer.draw();
-             return;
+             return true;
         }
 
         // Found the next editable cell
         this.stateManager.setActiveCell({ row: nextRow, col: nextCol });
-        // Activate the editor in the new cell
-        this.editingManager.activateEditor(nextRow, nextCol);
-        // activateEditor will handle the redraw
+        if (activateEditor) {
+            // Activate the editor in the new cell
+            this.editingManager.activateEditor(nextRow, nextCol);
+            // activateEditor will handle the redraw
+        }
+        return true;
     }
 
     // --- External Paste Handlers (Called by EventManager for native paste) ---
