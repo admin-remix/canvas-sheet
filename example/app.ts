@@ -1,4 +1,4 @@
-import { DataRow, Spreadsheet, SpreadsheetSchema } from "canvas-sheet";
+import { DataRow, Spreadsheet, SpreadsheetSchema, CellUpdateEvent } from "canvas-sheet";
 // --- Schema Definition ---
 const schema: SpreadsheetSchema = {
   id: { type: "number", decimal: false, label: "ID" },
@@ -77,6 +77,7 @@ const sampleData = !window.location.search.includes('bigdata') ? [
     id: 3,
     name: "Charlie Brown",
     email: "charlie@testing.org",
+    ["error:email"]: "Invalid email",
     dob: "1998-02-10",
     locationId: 2,
     isRestricted: false,
@@ -336,15 +337,24 @@ document.addEventListener("DOMContentLoaded", () => {
         // cellWidth: 180,
         selectedRowBgColor: '#e0e7ff', // light-blue
         isCellDisabled: customIsCellDisabled, // Pass the custom disabling function
+        // onCellsUpdate: (rows: CellUpdateEvent[]) => {
+        //   console.log("onCellUpdate", rows);
+        //   if (rows[0].index === 10) {
+        //     spreadsheet?.updateCell(10, 'loading:email', true);
+        //     setTimeout(() => {
+        //       spreadsheet?.updateCell(10, 'loading:email', null);
+        //       spreadsheet?.updateCell(10, 'error:email', "error");
+        //     }, 2000);
+        //   }
+        // },
         verbose: true,
       }
     );
 
     // Example of using the API after instantiation
     setTimeout(() => {
-        console.log("Getting spreadsheet data:", spreadsheet.getData());
-        // spreadsheet.updateCell(2, 'name', 'Charlie Brown Updated');
-    }, 5000);
+      console.log("data", spreadsheet?.getData());
+    }, 2000);
   } catch (error) {
     console.error("Failed to initialize spreadsheet:", error);
     const container = document.getElementById("spreadsheet-container");

@@ -122,23 +122,31 @@ export class StateManager {
 
     /** Public method to update a cell, includes validation */
     public updateCell(rowIndex: number, colKey: string, value: any): boolean {
+        if (rowIndex < 0 || rowIndex >= this.data.length) {
+            log('warn', this.options.verbose, `updateCell: Invalid row index (${rowIndex}).`);
+            return false;
+        }
+        if (colKey.includes(':')) {
+            this.data[rowIndex][colKey] = value; // No validation for custom fields
+            return true; // update occurred
+        }
         const colIndex = this.columns.indexOf(colKey);
-        if (rowIndex >= 0 && rowIndex < this.data.length && colIndex !== -1) {
-            const schemaCol = this.schema[colKey];
-            if (validateInput(value, schemaCol, colKey, this.options.verbose)) {
-                 if (!this.data[rowIndex]) {
-                     this.data[rowIndex] = {};
-                 }
-                 if (this.data[rowIndex][colKey] !== value) {
-                    this.data[rowIndex][colKey] = value;
-                    this.updateDisabledStatesForRow(rowIndex); // Update disabled states after change
-                    return true; // Indicate that an update occurred
-                 }
-            } else {
-                log('warn', this.options.verbose, `updateCell: Validation failed for ${colKey}. Value not set.`);
+        if (colIndex < 0) {
+            log('warn', this.options.verbose, `updateCell: Invalid column key (${colKey}).`);
+            return false;
+        }
+        const schemaCol = this.schema[colKey];
+        if (validateInput(value, schemaCol, colKey, this.options.verbose)) {
+            if (!this.data[rowIndex]) {
+                this.data[rowIndex] = {};
+            }
+            if (this.data[rowIndex][colKey] !== value) {
+                this.data[rowIndex][colKey] = value;
+                this.updateDisabledStatesForRow(rowIndex); // Update disabled states after change
+                return true; // Indicate that an update occurred
             }
         } else {
-            log('warn', this.options.verbose, `updateCell: Invalid row index (${rowIndex}) or column key (${colKey}).`);
+            log('warn', this.options.verbose, `updateCell: Validation failed for ${colKey}. Value not set.`);
         }
         return false; // No update occurred
     }
@@ -471,7 +479,7 @@ export class StateManager {
             const disabledKey = `${DISABLED_FIELD_PREFIX}${colKey}`;
             const currentDisabledState = !!rowData[disabledKey];
             // Use the user-provided function to determine the new state
-            const newDisabledState = !!this.options.isCellDisabled(rowIndex, colKey, rowData);
+            const newDisabledState = this.options.isCellDisabled ? this.options.isCellDisabled(rowIndex, colKey, rowData) : false;
 
             if (currentDisabledState !== newDisabledState) {
                 rowData[disabledKey] = newDisabledState;

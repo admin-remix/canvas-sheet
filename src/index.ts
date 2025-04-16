@@ -4,7 +4,8 @@ import {
     SpreadsheetSchema,
     DataRow,
     SpreadsheetOptions,
-    ColumnSchema
+    ColumnSchema,
+    CellUpdateEvent
 } from './types';
 import { DEFAULT_OPTIONS } from './config';
 import { DomManager } from './dom-manager';
@@ -15,7 +16,7 @@ import { EditingManager } from './editing-manager';
 import { InteractionManager } from './interaction-manager';
 import { StateManager } from './state-manager';
 import { log } from './utils';
-export type { SpreadsheetSchema, DataRow, SpreadsheetOptions, ColumnSchema } from './types';
+export type { SpreadsheetSchema, DataRow, SpreadsheetOptions, ColumnSchema, CellUpdateEvent } from './types';
 
 export class Spreadsheet {
     private container: HTMLElement;

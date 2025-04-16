@@ -16,6 +16,8 @@ export interface ColumnSchema {
     decimal?: boolean;      // For 'number' type (false means integer)
     maxlength?: number;     // For 'text' type
     disabled?: (rowData: DataRow) => boolean; // Optional dynamic disabling
+    error?: string;
+    loading?: boolean;
 }
 
 export interface SpreadsheetSchema {
@@ -75,8 +77,11 @@ export interface SpreadsheetOptions {
     font?: string;
     headerFont?: string;
     textColor?: string;
+    loadingTextColor?: string;
+    errorTextColor?: string;
     cellBgColor?: string; // Default cell background
     activeCellBgColor?: string; // Background for active (selected) cell
+    errorCellBgColor?: string;
     selectedRowBgColor?: string; // Background for cells in selected rows
     selectedRangeBgColor?: string; // Background for cells in multi-select range (excluding active)
     headerTextColor?: string;
@@ -101,12 +106,21 @@ export interface SpreadsheetOptions {
     textBaseline?: 'top' | 'middle' | 'bottom';
     copyHighlightBorderColor?: string;
     copyHighlightBorderDash?: number[];
-    isCellDisabled?: (rowIndex: number, colKey: string, rowData: DataRow) => boolean;
     verbose?: boolean;
 }
 
+export interface CellUpdateEvent {
+    index: number;
+    data: any;
+}
+
+interface SpreadsheetEvents {
+    isCellDisabled?: (rowIndex: number, colKey: string, rowData: DataRow) => boolean;
+    onCellsUpdate?: (rows: CellUpdateEvent[]) => void;
+}
+
 // Required version of options for internal use
-export type RequiredSpreadsheetOptions = Required<SpreadsheetOptions>;
+export type RequiredSpreadsheetOptions = Required<SpreadsheetOptions> & SpreadsheetEvents;
 
 export interface DropdownItem {
     id: any;

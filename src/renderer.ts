@@ -306,7 +306,10 @@ export class Renderer {
             selectedRowBgColor,
             selectedRangeBgColor,
             disabledCellBgColor,
-            disabledCellTextColor
+            disabledCellTextColor,
+            errorCellBgColor,
+            errorTextColor,
+            loadingTextColor
         } = this.options;
         const data = this.stateManager.getData();
         const columns = this.stateManager.getColumns();
@@ -355,10 +358,12 @@ export class Renderer {
                 const colWidth = columnWidths[col];
                 const colKey = columns[col];
                 const schemaCol = schema[colKey];
+                const currentCellError = data[row]?.[`error:${colKey}`];
                 const isDisabled = this.stateManager.isCellDisabled(row, col);
                 const isActive = activeCell?.row === row && activeCell?.col === col;
                 const isEditing = this.stateManager.getActiveEditor()?.row === row && this.stateManager.getActiveEditor()?.col === col;
                 const isColumnSelected = selectedColumn === col;
+                const isCellLoading = data[row]?.[`loading:${colKey}`];
 
                 // Check if the current cell is within the selection range
                 const isInSelectionRange = selectionRange &&
@@ -382,6 +387,9 @@ export class Renderer {
                 if (isActive && !isEditing) { // 6. Active cell overrides everything (if not editing)
                     currentCellBg = activeCellBgColor;
                 }
+                if (currentCellError) { // 7. Error overrides everything
+                    currentCellBg = errorCellBgColor;
+                }
 
                 // Fill background if not editing
                 if (!isEditing && currentCellBg) {
@@ -391,20 +399,25 @@ export class Renderer {
 
                 // Cell Text (Skip if editing)
                 if (!isEditing) {
-                    const value = data[row]?.[colKey];
-                    const formattedValue = formatValue(value, schemaCol?.type, schemaCol?.values);
-                    if (formattedValue !== null && formattedValue !== undefined && formattedValue !== '') {
-                        this.ctx.fillStyle = isDisabled ? disabledCellTextColor : textColor;
-                        let textX = currentX + padding;
-                        if (textAlign === 'center') {
-                            textX = currentX + colWidth / 2;
-                        } else if (textAlign === 'right') {
-                            textX = currentX + colWidth - padding;
+                    const textY = currentY + rowHeight / 2;
+                    let textX = currentX + padding;
+                    if (isCellLoading) {
+                        this.ctx.fillStyle = loadingTextColor;
+                        this.ctx.fillText("(Loading...)", textX, textY, colWidth - padding * 2);
+                    }else{
+                        const value = data[row]?.[colKey];
+                        const formattedValue = formatValue(value, schemaCol?.type, schemaCol?.values);
+                        if (formattedValue !== null && formattedValue !== undefined && formattedValue !== '') {
+                            this.ctx.fillStyle = isDisabled ? disabledCellTextColor : currentCellError ? errorTextColor : textColor;
+                            if (textAlign === 'center') {
+                                textX = currentX + colWidth / 2;
+                            } else if (textAlign === 'right') {
+                                textX = currentX + colWidth - padding;
+                            }
+                            // do not apply maxWidth to fillText
+                            this.ctx.fillText(formattedValue, textX, textY);
+                            // this.wrapText(formattedValue, textX, textY, colWidth - padding * 2);
                         }
-                        const textY = currentY + rowHeight / 2;
-                        // do not apply maxWidth to fillText
-                        this.ctx.fillText(formattedValue, textX, textY);
-                        // this.wrapText(formattedValue, textX, textY, colWidth - padding * 2);
                     }
                 }
 

@@ -434,7 +434,6 @@ export class InteractionManager {
         const startRow = startCell.row;
         const startCol = startCell.col;
         if (startCol === null || startRow === null) return;
-        const colKey = this.stateManager.getColumnKey(startCol);
         const sourceValue = this.stateManager.getCellData(startRow, startCol);
         const sourceSchema = this.stateManager.getSchemaForColumn(startCol);
         const sourceType = sourceSchema?.type;

@@ -15,8 +15,11 @@ export const DEFAULT_OPTIONS: RequiredSpreadsheetOptions = {
     textAlign: 'left',
     textBaseline: 'middle',
     textColor: "#111827", // gray-900
+    loadingTextColor: "#3b82f6", // blue-500
+    errorTextColor: "#b91c1c", // red-700
     cellBgColor: "#ffffff", // Default white background for cells
     activeCellBgColor: "#eff6ff", // blue-50 - Background for the actively selected cell
+    errorCellBgColor: "#fca5a5", // red-100
     selectedRowBgColor: "#f3f4f6", // gray-100 - Background for cells in selected rows
     selectedRangeBgColor: "#e0e7ff", // indigo-100 - Background for non-active cells in selection range
     headerTextColor: "#ffffff", // white
@@ -38,7 +41,6 @@ export const DEFAULT_OPTIONS: RequiredSpreadsheetOptions = {
     copyHighlightBorderColor: "#1f2937", // gray-800
     copyHighlightBorderDash: [4, 3], // Dash pattern (e.g., [dashLength, gapLength])
     resizeHandleSize: 5,
-    isCellDisabled: (_rowIndex, _colKey, _rowData) => false,
     verbose: false,
 };
 

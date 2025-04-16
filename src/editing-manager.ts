@@ -299,9 +299,11 @@ export class EditingManager {
             if (dropdownRect.left < containerRect.left) {
                 this.dropdown.style.left = `${containerRect.left}px`;
             }
-             if (parseFloat(this.dropdown.style.top) < containerRect.top) {
+            if (parseFloat(this.dropdown.style.top) < containerRect.top) {
                 this.dropdown.style.top = `${containerRect.top}px`;
             }
+            const inputHeight = ((this.dropdown.firstChild as HTMLElement)?.clientHeight || 0) + 15;// extra height cap for the input
+            this.dropdown.style.maxHeight = `${200 + inputHeight}px`; // Limit height updated
         });
 
         // Reset search and focus
