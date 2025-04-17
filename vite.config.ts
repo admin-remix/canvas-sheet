@@ -18,7 +18,7 @@ export default defineConfig({
   // Configure the build process for the example app
   build: {
     // Output directory relative to the 'root' option (i.e., example/dist)
-    outDir: 'preview',
+    outDir: 'dist',
     sourcemap: false, // Generate source maps for the production build
     // Empty the output directory before building
     emptyOutDir: true,
