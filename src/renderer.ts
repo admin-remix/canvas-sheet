@@ -309,7 +309,8 @@ export class Renderer {
             disabledCellTextColor,
             errorCellBgColor,
             errorTextColor,
-            loadingTextColor
+            loadingTextColor,
+            placeholderTextColor
         } = this.options;
         const data = this.stateManager.getData();
         const columns = this.stateManager.getColumns();
@@ -398,7 +399,12 @@ export class Renderer {
                 }
 
                 // Cell Text (Skip if editing)
-                if (!isEditing) {
+                let showRenderText = true;
+                if (isEditing && !['select', 'boolean'].includes(schemaCol?.type)) {
+                    showRenderText = false;
+                }
+
+                if (showRenderText) {
                     const textY = currentY + rowHeight / 2;
                     let textX = currentX + padding;
                     if (isCellLoading) {
@@ -408,7 +414,7 @@ export class Renderer {
                         const value = data[row]?.[colKey];
                         const formattedValue = formatValue(value, schemaCol?.type, schemaCol?.values);
                         if (formattedValue !== null && formattedValue !== undefined && formattedValue !== '') {
-                            this.ctx.fillStyle = isDisabled ? disabledCellTextColor : currentCellError ? errorTextColor : textColor;
+                            this.ctx.fillStyle = isDisabled ? disabledCellTextColor : isEditing ? placeholderTextColor : currentCellError ? errorTextColor : textColor;
                             if (textAlign === 'center') {
                                 textX = currentX + colWidth / 2;
                             } else if (textAlign === 'right') {

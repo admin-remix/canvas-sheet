@@ -3,10 +3,9 @@
 import {
     RequiredSpreadsheetOptions,
     CellCoords,
-    ResizeColumnState,
-    ResizeRowState,
     DataType,
-    ColumnSchema
+    ColumnSchema,
+    CellUpdateEvent
 } from './types';
 import { StateManager } from './state-manager';
 import { Renderer } from './renderer';
@@ -14,7 +13,6 @@ import { DimensionCalculator } from './dimension-calculator';
 import { log, validateInput } from './utils';
 import { DomManager } from './dom-manager';
 import { EditingManager } from './editing-manager'; // Needed for moving active cell
-import { DISABLED_FIELD_PREFIX } from './config';
 
 export class InteractionManager {
     private options: RequiredSpreadsheetOptions;
@@ -436,6 +434,7 @@ export class InteractionManager {
         if (startCol === null || startRow === null) return;
         const sourceValue = this.stateManager.getCellData(startRow, startCol);
         const sourceSchema = this.stateManager.getSchemaForColumn(startCol);
+        const sourceColumnKey = this.stateManager.getColumnKey(startCol);
         const sourceType = sourceSchema?.type;
         let changed = false;
         const dataLength = this.stateManager.getData().length; // Cache length
@@ -444,6 +443,7 @@ export class InteractionManager {
         const isFillingDown = endRow >= startRow;
         const firstRow = isFillingDown ? startRow + 1 : endRow;
         const lastRow = isFillingDown ? endRow : startRow - 1;
+        const cellUpdates: number[] = [];
         for (let row = firstRow; row <= lastRow; row++) {
             if (row < 0 || row >= dataLength) continue; // Ensure row index is valid
 
@@ -466,13 +466,41 @@ export class InteractionManager {
                 // Use StateManager to update the cell value internally
                 this.stateManager.updateCellInternal(row, startCol, sourceValue);
                 // Crucially, update disabled states for the row *after* changing the value
-                this.stateManager.updateDisabledStatesForRow(row);
+                cellUpdates.push(row);
                 changed = true;
             }
         }
 
         if (changed) {
             this.renderer.draw();
+        }
+
+        if (cellUpdates.length > 0) {
+            this._batchUpdateCellsAndNotify(cellUpdates, [sourceColumnKey]);
+        }
+    }
+
+    /**
+     * Helper method to optimize multiple cell updates followed by row disabled state updates
+     * This replaces the pattern of calling updateCellInternal in a loop followed by updateDisabledStatesForRow
+     * @param updates List of row, column, value updates to apply
+     */
+    public _batchUpdateCellsAndNotify(rows: number[], updateColumns: string[]): void {
+        if (!rows || rows.length === 0) return;
+        // Then update disabled states for each affected row
+        const updatedRows: CellUpdateEvent[] = [];
+        rows.forEach(rowIndex => {
+            this.stateManager.updateDisabledStatesForRow(rowIndex);
+            updatedRows.push({
+                rowIndex,
+                columnKeys: updateColumns,
+                data: this.stateManager.getRowData(rowIndex)!
+            });
+        });
+        
+        // Notify about updates (once per batch)
+        if (updatedRows.length > 0) {
+            this.stateManager.callOnCellsUpdate(updatedRows);
         }
     }
 
@@ -616,7 +644,7 @@ export class InteractionManager {
         const currentValue = this.stateManager.getCellData(targetRow, targetCol);
         if (currentValue !== value) {
             this.stateManager.updateCellInternal(targetRow, targetCol, value);
-            this.stateManager.updateDisabledStatesForRow(targetRow);
+            this._batchUpdateCellsAndNotify([targetRow], [targetColKey]);
             log('log', this.options.verbose, `Pasted value ${value} to cell ${targetRow},${targetCol}`);
             return true;
         }
@@ -626,15 +654,15 @@ export class InteractionManager {
     /** Case 2: Paste single value to a selected range */
     private _pasteSingleValueToRange(targetRange: { start: CellCoords, end: CellCoords }, value: any, valueType: DataType | undefined): boolean {
         let changed = false;
-        const affectedRows = new Set<number>();
-
-        for (let r = targetRange.start.row!; r <= targetRange.end.row!; r++) {
-            for (let c = targetRange.start.col!; c <= targetRange.end.col!; c++) {
-                const targetColKey = this.stateManager.getColumnKey(c);
-                const targetSchema = this.stateManager.getSchemaForColumn(c);
+        const affectedRows:number[] = [];
+        const affectedColumns:string[] = [];
+        for (let row = targetRange.start.row!; row <= targetRange.end.row!; row++) {
+            for (let col = targetRange.start.col!; col <= targetRange.end.col!; col++) {
+                const targetColKey = this.stateManager.getColumnKey(col);
+                const targetSchema = this.stateManager.getSchemaForColumn(col);
 
                 // Skip if disabled
-                if (this.stateManager.isCellDisabled(r, c)) continue;
+                if (this.stateManager.isCellDisabled(row, col)) continue;
 
                 // Handle type conversion if needed
                 let valueToUse = value;
@@ -645,22 +673,24 @@ export class InteractionManager {
 
                 // Validate value for the target cell
                 if (!validateInput(valueToUse, targetSchema, targetColKey, this.options.verbose)) {
-                    log('warn', this.options.verbose, `Paste single to range: Value validation failed for cell ${r},${c}. Skipping.`);
+                    log('warn', this.options.verbose, `Paste single to range: Value validation failed for cell ${row},${col}. Skipping.`);
                     continue;
                 }
 
-                const currentValue = this.stateManager.getCellData(r, c);
+                const currentValue = this.stateManager.getCellData(row, col);
                 if (currentValue !== valueToUse) {
-                    this.stateManager.updateCellInternal(r, c, valueToUse);
-                    affectedRows.add(r);
+                    this.stateManager.updateCellInternal(row, col, valueToUse);
+                    affectedRows.push(row);
+                    affectedColumns.push(targetColKey);
                     changed = true;
                 }
             }
         }
 
         // Update disabled states for all affected rows
-        affectedRows.forEach(r => this.stateManager.updateDisabledStatesForRow(r));
-
+        if (affectedRows.length > 0) {
+            this._batchUpdateCellsAndNotify(affectedRows, affectedColumns);
+        }
         if (changed) {
             log('log', this.options.verbose, `Pasted single value to range [${targetRange.start.row},${targetRange.start.col}] -> [${targetRange.end.row},${targetRange.end.col}]`);
         }
@@ -743,47 +773,6 @@ export class InteractionManager {
         return this._pasteSingleValue(targetCell, convertedValue, targetSchema?.type);
     }
 
-    /** Pastes external single string value to a range with type conversion per cell */
-    private _pasteExternalSingleValueToRange(targetRange: { start: CellCoords, end: CellCoords }, value: string): boolean {
-        let changed = false;
-        const affectedRows = new Set<number>();
-
-        for (let r = targetRange.start.row!; r <= targetRange.end.row!; r++) {
-            for (let c = targetRange.start.col!; c <= targetRange.end.col!; c++) {
-                const targetColKey = this.stateManager.getColumnKey(c);
-                const targetSchema = this.stateManager.getSchemaForColumn(c);
-
-                // Skip if disabled
-                if (this.stateManager.isCellDisabled(r, c)) continue;
-
-                // Convert value for this cell's type
-                const convertedValue = this._convertValueForTargetType(value, targetSchema);
-                if (convertedValue === null) continue; // Skip if conversion not possible
-
-                // Validate value for the target cell
-                if (!validateInput(convertedValue, targetSchema, targetColKey, this.options.verbose)) {
-                    log('warn', this.options.verbose, `External paste to range: Value validation failed for cell ${r},${c}. Skipping.`);
-                    continue;
-                }
-
-                const currentValue = this.stateManager.getCellData(r, c);
-                if (currentValue !== convertedValue) {
-                    this.stateManager.updateCellInternal(r, c, convertedValue);
-                    affectedRows.add(r);
-                    changed = true;
-                }
-            }
-        }
-
-        // Update disabled states for all affected rows
-        affectedRows.forEach(r => this.stateManager.updateDisabledStatesForRow(r));
-
-        if (changed) {
-            log('log', this.options.verbose, `Pasted external single value to range [${targetRange.start.row},${targetRange.start.col}] -> [${targetRange.end.row},${targetRange.end.col}]`);
-        }
-        return changed;
-    }
-
     /** Case 3: Paste range starting from a single top-left cell */
     private _pasteRangeFromTopLeft(startCell: CellCoords, rangeData: any[][]): boolean {
         if (startCell.row === null || startCell.col === null || !rangeData || rangeData.length === 0) {
@@ -796,7 +785,8 @@ export class InteractionManager {
         let changed = false;
         const totalRows = this.stateManager.getData().length;
         const totalCols = this.stateManager.getColumns().length;
-        const affectedRows = new Set<number>();
+        const affectedRows:number[] = [];
+        const affectedColumns = new Set<string>();
 
         for (let rOffset = 0; rOffset < numRowsToPaste; rOffset++) {
             const targetRow = startRow + rOffset;
@@ -831,16 +821,19 @@ export class InteractionManager {
                 if (currentValue !== valueToUse) {
                     this.stateManager.updateCellInternal(targetRow, targetCol, valueToUse);
                     rowChanged = true;
+                    affectedColumns.add(targetColKey);
                 }
             }
 
             if (rowChanged) {
-                affectedRows.add(targetRow);
+                affectedRows.push(targetRow);
                 changed = true;
             }
         }
 
-        affectedRows.forEach(r => this.stateManager.updateDisabledStatesForRow(r));
+        if (affectedRows.length > 0) {
+            this._batchUpdateCellsAndNotify(affectedRows, Array.from(affectedColumns));
+        }
 
         if (changed) {
             log('log', this.options.verbose, `Pasted range [${numRowsToPaste}x${numColsToPaste}] starting at ${startRow},${startCol}`);
@@ -857,21 +850,22 @@ export class InteractionManager {
         if (sourceCols === 0) return false;
 
         let changed = false;
-        const affectedRows = new Set<number>();
+        const affectedRows:number[] = [];
+        const affectedColumns = new Set<string>();
 
-        for (let r = targetRange.start.row!; r <= targetRange.end.row!; r++) {
+        for (let row = targetRange.start.row!; row <= targetRange.end.row!; row++) {
             let rowChanged = false;
-            for (let c = targetRange.start.col!; c <= targetRange.end.col!; c++) {
+            for (let col = targetRange.start.col!; col <= targetRange.end.col!; col++) {
                 // Calculate corresponding source cell using modulo for pattern repetition
-                const sourceRowIndex = (r - targetRange.start.row!) % sourceRows;
-                const sourceColIndex = (c - targetRange.start.col!) % sourceCols;
+                const sourceRowIndex = (row - targetRange.start.row!) % sourceRows;
+                const sourceColIndex = (col - targetRange.start.col!) % sourceCols;
                 const valueToPaste = sourceRangeData[sourceRowIndex][sourceColIndex];
 
-                const targetColKey = this.stateManager.getColumnKey(c);
-                const targetSchema = this.stateManager.getSchemaForColumn(c);
+                const targetColKey = this.stateManager.getColumnKey(col);
+                const targetSchema = this.stateManager.getSchemaForColumn(col);
 
                 // Skip if disabled
-                if (this.stateManager.isCellDisabled(r, c)) continue;
+                if (this.stateManager.isCellDisabled(row, col)) continue;
 
                 // Handle type conversion if needed
                 let valueToUse = valueToPaste;
@@ -882,23 +876,26 @@ export class InteractionManager {
 
                 // Validate value
                 if (!validateInput(valueToUse, targetSchema, targetColKey, this.options.verbose)) {
-                    log('warn', this.options.verbose, `Paste range to range: Value validation failed for cell ${r},${c}. Skipping.`);
+                    log('warn', this.options.verbose, `Paste range to range: Value validation failed for cell ${row},${col}. Skipping.`);
                     continue;
                 }
 
-                const currentValue = this.stateManager.getCellData(r, c);
+                const currentValue = this.stateManager.getCellData(row, col);
                 if (currentValue !== valueToUse) {
-                    this.stateManager.updateCellInternal(r, c, valueToUse);
+                    this.stateManager.updateCellInternal(row, col, valueToUse);
                     rowChanged = true;
+                    affectedColumns.add(targetColKey);
                 }
             }
             if (rowChanged) {
-                affectedRows.add(r);
+                affectedRows.push(row);
                 changed = true;
             }
         }
 
-        affectedRows.forEach(r => this.stateManager.updateDisabledStatesForRow(r));
+        if (affectedRows.length > 0) {
+            this._batchUpdateCellsAndNotify(affectedRows, Array.from(affectedColumns));
+        }
 
         if (changed) {
             log('log', this.options.verbose, `Pasted range pattern into target range [${targetRange.start.row},${targetRange.start.col}] -> [${targetRange.end.row},${targetRange.end.col}]`);
@@ -906,119 +903,6 @@ export class InteractionManager {
         return changed;
     }
 
-    /** Pastes external 2D string array starting from a single top-left cell with type conversion */
-    private _pasteExternalRangeFromTopLeft(startCell: CellCoords, rangeData: string[][]): boolean {
-        if (startCell.row === null || startCell.col === null || !rangeData || rangeData.length === 0) {
-            return false;
-        }
-        
-        const startRow = startCell.row;
-        const startCol = startCell.col;
-        const numRowsToPaste = rangeData.length;
-        const numColsToPaste = rangeData[0]?.length || 0;
-        let changed = false;
-        const totalRows = this.stateManager.getData().length;
-        const totalCols = this.stateManager.getColumns().length;
-        const affectedRows = new Set<number>();
-
-        for (let rOffset = 0; rOffset < numRowsToPaste; rOffset++) {
-            const targetRow = startRow + rOffset;
-            if (targetRow >= totalRows) break;
-
-            const pastedRowData = rangeData[rOffset];
-            let rowChanged = false;
-
-            for (let cOffset = 0; cOffset < numColsToPaste; cOffset++) {
-                const targetCol = startCol + cOffset;
-                if (targetCol >= totalCols) break;
-
-                const stringValue = pastedRowData[cOffset]; // String from clipboard
-                const targetColKey = this.stateManager.getColumnKey(targetCol);
-                const targetSchema = this.stateManager.getSchemaForColumn(targetCol);
-
-                if (this.stateManager.isCellDisabled(targetRow, targetCol)) continue;
-
-                // Convert value based on target cell type
-                const convertedValue = this._convertValueForTargetType(stringValue, targetSchema);
-                if (convertedValue === null) continue; // Skip if conversion not possible
-
-                if (!validateInput(convertedValue, targetSchema, targetColKey, this.options.verbose)) {
-                    log('warn', this.options.verbose, `External paste range: Value validation failed for cell ${targetRow},${targetCol}. Skipping.`);
-                    continue;
-                }
-
-                const currentValue = this.stateManager.getCellData(targetRow, targetCol);
-                if (currentValue !== convertedValue) {
-                    this.stateManager.updateCellInternal(targetRow, targetCol, convertedValue);
-                    rowChanged = true;
-                }
-            }
-
-            if (rowChanged) {
-                affectedRows.add(targetRow);
-                changed = true;
-            }
-        }
-
-        affectedRows.forEach(r => this.stateManager.updateDisabledStatesForRow(r));
-
-        if (changed) {
-            log('log', this.options.verbose, `Pasted external range [${numRowsToPaste}x${numColsToPaste}] starting at ${startRow},${startCol}`);
-        }
-
-        return changed;
-    }
-
-    /** Pastes external 2D string array into a selected range with type conversion */
-    private _pasteExternalRangeToRange(targetRange: { start: CellCoords, end: CellCoords }, sourceRangeData: string[][]): boolean {
-        if (!sourceRangeData || sourceRangeData.length === 0) return false;
-        const sourceRows = sourceRangeData.length;
-        const sourceCols = sourceRangeData[0]?.length || 0;
-        if (sourceCols === 0) return false;
-
-        let changed = false;
-        const affectedRows = new Set<number>();
-
-        for (let r = targetRange.start.row!; r <= targetRange.end.row!; r++) {
-            let rowChanged = false;
-            for (let c = targetRange.start.col!; c <= targetRange.end.col!; c++) {
-                const sourceRowIndex = (r - targetRange.start.row!) % sourceRows;
-                const sourceColIndex = (c - targetRange.start.col!) % sourceCols;
-                const stringValue = sourceRangeData[sourceRowIndex][sourceColIndex]; // String from clipboard
-
-                const targetColKey = this.stateManager.getColumnKey(c);
-                const targetSchema = this.stateManager.getSchemaForColumn(c);
-
-                if (this.stateManager.isCellDisabled(r, c)) continue;
-
-                // Convert based on target cell type
-                const convertedValue = this._convertValueForTargetType(stringValue, targetSchema);
-                if (convertedValue === null) continue; // Skip if conversion not possible
-
-                if (!validateInput(convertedValue, targetSchema, targetColKey, this.options.verbose)) {
-                    log('warn', this.options.verbose, `External paste range->range: Value validation failed for cell ${r},${c}. Skipping.`);
-                    continue;
-                }
-
-                const currentValue = this.stateManager.getCellData(r, c);
-                if (currentValue !== convertedValue) {
-                    this.stateManager.updateCellInternal(r, c, convertedValue);
-                    rowChanged = true;
-                }
-            }
-            if (rowChanged) {
-                affectedRows.add(r);
-                changed = true;
-            }
-        }
-
-        affectedRows.forEach(r => this.stateManager.updateDisabledStatesForRow(r));
-
-        if (changed) {
-            log('log', this.options.verbose, `Pasted external range pattern into target range [${targetRange.start.row},${targetRange.start.col}] -> [${targetRange.end.row},${targetRange.end.col}]`);
-        }
-        return changed;
-    }
 
     /** Clears all copy state. Returns true if state changed. */
     public clearCopiedCell(): boolean {
@@ -1215,7 +1099,8 @@ export class InteractionManager {
         let changed = false;
         const totalRows = this.stateManager.getData().length;
         const totalCols = this.stateManager.getColumns().length;
-        const affectedRows = new Set<number>();
+        const affectedRows:number[] = [];
+        const affectedColumns = new Set<string>();
 
         for (let rOffset = 0; rOffset < numRowsToPaste; rOffset++) {
             const targetRow = startRow + rOffset;
@@ -1249,16 +1134,19 @@ export class InteractionManager {
                 if (currentValue !== valueToPaste) {
                     this.stateManager.updateCellInternal(targetRow, targetCol, valueToPaste);
                     rowChanged = true;
+                    affectedColumns.add(targetColKey);
                 }
             }
 
             if (rowChanged) {
-                affectedRows.add(targetRow);
+                affectedRows.push(targetRow);
                 changed = true;
             }
         }
 
-        affectedRows.forEach(r => this.stateManager.updateDisabledStatesForRow(r));
+        if (affectedRows.length > 0) {
+            this._batchUpdateCellsAndNotify(affectedRows, Array.from(affectedColumns));
+        }
 
         if (changed) {
             log('log', this.options.verbose, `Pasted external range [${numRowsToPaste}x${numColsToPaste}] starting at ${startRow},${startCol}`);
@@ -1276,42 +1164,46 @@ export class InteractionManager {
         if (sourceCols === 0) return false;
 
         let changed = false;
-        const affectedRows = new Set<number>();
+        const affectedRows:number[] = [];
+        const affectedColumns = new Set<string>();
 
-        for (let r = targetRange.start.row!; r <= targetRange.end.row!; r++) {
+        for (let row = targetRange.start.row!; row <= targetRange.end.row!; row++) {
             let rowChanged = false;
-            for (let c = targetRange.start.col!; c <= targetRange.end.col!; c++) {
-                const sourceRowIndex = (r - targetRange.start.row!) % sourceRows;
-                const sourceColIndex = (c - targetRange.start.col!) % sourceCols;
+            for (let col = targetRange.start.col!; col <= targetRange.end.col!; col++) {
+                const sourceRowIndex = (row - targetRange.start.row!) % sourceRows;
+                const sourceColIndex = (col - targetRange.start.col!) % sourceCols;
                 const valueToPaste = sourceRangeData[sourceRowIndex][sourceColIndex]; // String from clipboard
 
-                const targetColKey = this.stateManager.getColumnKey(c);
-                const targetSchema = this.stateManager.getSchemaForColumn(c);
+                const targetColKey = this.stateManager.getColumnKey(col);
+                const targetSchema = this.stateManager.getSchemaForColumn(col);
 
-                if (this.stateManager.isCellDisabled(r, c)) continue;
+                if (this.stateManager.isCellDisabled(row, col)) continue;
 
                 // Convert based on target cell type
                 const convertedValue = this._convertValueForTargetType(valueToPaste, targetSchema);
                 if (convertedValue === null) continue; // Skip if conversion not possible
 
                 if (!validateInput(convertedValue, targetSchema, targetColKey, this.options.verbose)) {
-                    log('warn', this.options.verbose, `External paste range->range: Value validation failed for cell ${r},${c}. Skipping.`);
+                    log('warn', this.options.verbose, `External paste range->range: Value validation failed for cell ${row},${col}. Skipping.`);
                     continue;
                 }
 
-                const currentValue = this.stateManager.getCellData(r, c);
+                const currentValue = this.stateManager.getCellData(row, col);
                 if (currentValue !== convertedValue) {
-                    this.stateManager.updateCellInternal(r, c, convertedValue);
+                    this.stateManager.updateCellInternal(row, col, convertedValue);
                     rowChanged = true;
+                    affectedColumns.add(targetColKey);
                 }
             }
             if (rowChanged) {
-                affectedRows.add(r);
+                affectedRows.push(row);
                 changed = true;
             }
         }
 
-        affectedRows.forEach(r => this.stateManager.updateDisabledStatesForRow(r));
+        if (affectedRows.length > 0) {
+            this._batchUpdateCellsAndNotify(affectedRows, Array.from(affectedColumns));
+        }
 
         if (changed) {
             log('log', this.options.verbose, `Pasted external range pattern into target range [${targetRange.start.row},${targetRange.start.col}] -> [${targetRange.end.row},${targetRange.end.col}]`);
@@ -1339,6 +1231,7 @@ export class InteractionManager {
         // Convert value to correct type for the column
         const convertedValue = this._convertValueForTargetType(value, schemaColumn);
         // Apply to all cells in the column
+        const affectedRows:number[] = [];
         for (let rowIndex = 0; rowIndex < data.length; rowIndex++) {
             // Skip disabled cells
             if (this.stateManager.isCellDisabled(rowIndex, columnIndex)) continue;
@@ -1347,14 +1240,13 @@ export class InteractionManager {
             if (currentValue !== convertedValue) {
                 this.stateManager.updateCellInternal(rowIndex, columnIndex, convertedValue);
                 changedAny = true;
+                affectedRows.push(rowIndex);
             }
         }
         
         // Update disabled states after all changes
         if (changedAny) {
-            for (let rowIndex = 0; rowIndex < data.length; rowIndex++) {
-                this.stateManager.updateDisabledStatesForRow(rowIndex);
-            }
+            this._batchUpdateCellsAndNotify(affectedRows, [this.stateManager.getColumnKey(columnIndex)]);
             this.renderer.draw();
         }
         

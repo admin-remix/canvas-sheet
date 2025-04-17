@@ -337,16 +337,17 @@ document.addEventListener("DOMContentLoaded", () => {
         // cellWidth: 180,
         selectedRowBgColor: '#e0e7ff', // light-blue
         isCellDisabled: customIsCellDisabled, // Pass the custom disabling function
-        // onCellsUpdate: (rows: CellUpdateEvent[]) => {
-        //   console.log("onCellUpdate", rows);
-        //   if (rows[0].index === 10) {
-        //     spreadsheet?.updateCell(10, 'loading:email', true);
-        //     setTimeout(() => {
-        //       spreadsheet?.updateCell(10, 'loading:email', null);
-        //       spreadsheet?.updateCell(10, 'error:email', "error");
-        //     }, 2000);
-        //   }
-        // },
+        onCellsUpdate: (rows: CellUpdateEvent[]) => {
+          // custom loading and error state with a specific column updated value checking
+          const row = rows[0];
+          if (row.columnKeys.includes('email') && row.data.email && row.data.email.endsWith('@sample.net')) {
+            spreadsheet?.updateCell(row.rowIndex, 'loading:email', true);
+            setTimeout(() => {
+              spreadsheet?.updateCell(row.rowIndex, 'loading:email', null);
+              spreadsheet?.updateCell(row.rowIndex, 'error:email', "error");
+            }, 2000);
+          }
+        },
         verbose: true,
       }
     );

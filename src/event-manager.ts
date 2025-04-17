@@ -434,6 +434,11 @@ export class EventManager {
         } else if (event.key === 'Tab' && activeCell) {
             // moveActiveCell handles finding next cell, setting state, and activating editor (which redraws)
             redrawNeeded = this.interactionManager.moveActiveCell(0, event.shiftKey ? -1 : 1);
+            // clear selections and selection range after moving
+            if (redrawNeeded) {
+                this.interactionManager.clearSelections();
+                this.stateManager.clearSelectionRange();
+            }
             event.preventDefault();
         } else if (!isCtrl && !event.ctrlKey && event.key.length === 1) {
             // user is typing a new value into a cell

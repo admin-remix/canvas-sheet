@@ -15,6 +15,7 @@ export const DEFAULT_OPTIONS: RequiredSpreadsheetOptions = {
     textAlign: 'left',
     textBaseline: 'middle',
     textColor: "#111827", // gray-900
+    placeholderTextColor: "#9ca3af", // gray-400
     loadingTextColor: "#3b82f6", // blue-500
     errorTextColor: "#b91c1c", // red-700
     cellBgColor: "#ffffff", // Default white background for cells

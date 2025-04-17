@@ -10,7 +10,8 @@ import {
     ResizeColumnState,
     ResizeRowState,
     DataType,
-    ColumnSchema
+    ColumnSchema,
+    CellUpdateEvent
 } from './types';
 import { DISABLED_FIELD_PREFIX } from './config';
 import { log, validateInput } from './utils';
@@ -487,6 +488,10 @@ export class StateManager {
             }
         });
         return changed;
+    }
+
+    public callOnCellsUpdate(rows: CellUpdateEvent[]): void {
+        this.options.onCellsUpdate?.(rows);
     }
 
     /** Updates disabled states for all rows */

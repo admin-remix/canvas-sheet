@@ -139,7 +139,7 @@ export class EditingManager {
         this.renderer.draw();
     }
 
-    public deactivateEditor(saveChanges = true): void {
+    public deactivateEditor(saveChanges = true, activateCell = false): void {
         const activeEditor = this.stateManager.getActiveEditor();
         if (!activeEditor) return;
 
@@ -169,7 +169,7 @@ export class EditingManager {
                             this.stateManager.updateCellInternal(row, col, newValue); // Update data directly
                             valueChanged = true;
                             // Update disabled states for the row after the change
-                            this.stateManager.updateDisabledStatesForRow(row);
+                            this.interactionManager._batchUpdateCellsAndNotify([row], [colKey]);
                          }
                     } else {
                         log('log', this.options.verbose, "Change not saved due to validation error.");
@@ -183,7 +183,13 @@ export class EditingManager {
         }
 
         this.stateManager.setActiveEditor(null); // Clear active editor state
-
+        if (activateCell) {
+            this.stateManager.setActiveCell({
+                row,
+                col,
+            });
+            redrawRequired = true;
+        }
         // If the value changed or editor/dropdown was hidden, redraw the sheet
         if (valueChanged || redrawRequired) {
             this.renderer.draw();
@@ -211,18 +217,26 @@ export class EditingManager {
             case 'Enter':
                 this.deactivateEditor(true);
                 redrawNeeded = this.interactionManager.moveActiveCell(1, 0); // Move down
+                // clear selections and selection range after moving
+                if (redrawNeeded) {
+                    this.interactionManager.clearSelections();
+                    this.stateManager.clearSelectionRange();
+                }
                 event.preventDefault();
                 break;
             case 'Escape':
-                this.deactivateEditor(false); // Discard changes
-                 // Optionally clear active cell as well
-                this.stateManager.setActiveCell(null);
-                redrawNeeded = true; // Redraw after clearing active cell
+                this.deactivateEditor(false, true); // Discard changes, activate cell
+                this.domManager.focusContainer();
                 event.preventDefault();
-                break;
+                return; // redraw already handled in deactivateEditor
             case 'Tab':
                 this.deactivateEditor(true);
-                this.interactionManager.moveActiveCell(0, event.shiftKey ? -1 : 1); // Move left/right
+                redrawNeeded = this.interactionManager.moveActiveCell(0, event.shiftKey ? -1 : 1); // Move left/right
+                // clear selections and selection range after moving
+                if (redrawNeeded) {
+                    this.interactionManager.clearSelections();
+                    this.stateManager.clearSelectionRange();
+                }
                 event.preventDefault();
                 break;
         }
@@ -376,11 +390,18 @@ export class EditingManager {
                 return; // Handled by click handler
             case 'Escape':
                 event.preventDefault();
-                this.deactivateEditor(false); // Close dropdown, discard changes
+                this.deactivateEditor(false, true); // Close dropdown, discard changes, activate cell
+                this.domManager.focusContainer(); // Return focus to the main grid container
                 return;
             case 'Tab':
-                 event.preventDefault(); // Prevent tabbing out of dropdown, maybe cycle? For now, just prevent.
-                 break;
+                // Prevent tabbing out of dropdown, maybe cycle? For now, just prevent.
+                event.preventDefault();
+                // check if any text in entered in the editor
+                if (!`${this.dropdownSearchInput.value}`.trim() && currentHighlight<0) {
+                    this.deactivateEditor(false);
+                    return;
+                }
+                break;
             default:
                  return; // Let other keys (like letters) be handled by the search input
         }
@@ -424,7 +445,7 @@ export class EditingManager {
 
             // Update the data in the state manager
             this.stateManager.updateCellInternal(row, col, valueToSet);
-            this.stateManager.updateDisabledStatesForRow(row); // Update disabled states after change
+            this.interactionManager._batchUpdateCellsAndNotify([row], [this.stateManager.getColumnKey(col)]);// Update disabled states after change
 
             // delay the dropdown deactivation to stop the same keyup event from reopening the dropdown
             setTimeout(() => {

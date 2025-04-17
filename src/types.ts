@@ -77,6 +77,7 @@ export interface SpreadsheetOptions {
     font?: string;
     headerFont?: string;
     textColor?: string;
+    placeholderTextColor?: string;
     loadingTextColor?: string;
     errorTextColor?: string;
     cellBgColor?: string; // Default cell background
@@ -110,7 +111,8 @@ export interface SpreadsheetOptions {
 }
 
 export interface CellUpdateEvent {
-    index: number;
+    rowIndex: number;
+    columnKeys: string[];
     data: any;
 }
 
