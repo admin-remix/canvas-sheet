@@ -7,7 +7,7 @@ export default defineConfig({
   // Set the root for Vite to the 'example' directory.
   // This means index.html and source files are expected here.
   root: path.resolve(__dirname, 'example'),
-
+  base: './',
   // Configure the development server
   server: {
     port: 3000, // Optional: Set a port (defaults to 5173)

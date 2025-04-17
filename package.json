@@ -8,7 +8,10 @@
     "build:lib": "tsc -p tsconfig.json",
     "dev": "vite",
     "build:example": "vite build",
-    "build": "npm run build:lib && npm run build:example",
+    "copy:preview": "cpy example/dist/* docs",
+    "copy:previewassets": "cpy example/dist/assets/* docs/assets",
+    "copy": "npm run copy:preview && npm run copy:previewassets",
+    "build": "npm run build:lib && npm run build:example && npm run copy",
     "preview": "vite preview",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -31,6 +34,7 @@
     "library"
   ],
   "devDependencies": {
+    "cpy-cli": "^5.0.0",
     "typescript": "^5.8.3",
     "vite": "^6.2.6"
   }
