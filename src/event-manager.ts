@@ -210,6 +210,8 @@ export class EventManager {
             }
         }
         else if (isCellClick && coords && coords.row !== null) {
+            /////////////// This section is not used because of mouse up event handling
+            /////////////// TODO: cleanup unused code
             const cellChanged = this.stateManager.setActiveCell(coords);
             let rowsCleared = false;
             let rangeCleared = false;
@@ -252,7 +254,9 @@ export class EventManager {
         }
 
         const activeCell = this.stateManager.getActiveCell();
+        let hasActiveCell = false;
         if (activeCell && activeCell.row !== null && activeCell.col !== null) {
+            hasActiveCell = true;
             const fillHandleTarget = this.interactionManager.checkFillHandle(event);
             if (fillHandleTarget) {
                 event.preventDefault();
@@ -270,8 +274,15 @@ export class EventManager {
                  if (coords.row !== editor?.row || coords.col !== editor?.col) {
                      this.editingManager.deactivateEditor(true);
                  }
-             }
+            }
 
+            if (event.shiftKey && hasActiveCell && coords.row !== activeCell?.row && coords.col !== activeCell?.col) {
+                // shift click to select a range
+                log('log', this.options.verbose, `shift click detected at ${activeCell?.row},${activeCell?.col} -> ${coords.row},${coords.col}`);
+                event.preventDefault();
+                this.domManager.focusContainer();
+                return;
+            }
             // Start selection drag
             const dragStarted = this.interactionManager.startSelectionDrag(coords);
             // InteractionManager.startSelectionDrag now handles clearing row state internally
@@ -307,9 +318,21 @@ export class EventManager {
     private _handleDocumentMouseUp(event: MouseEvent): void {
         let wasDraggingSelection = false;
         // Order matters: check drag selection first
+        const selectedCell = this.stateManager.getActiveCell();
         if (this.stateManager.getIsDraggingSelection()) {
             wasDraggingSelection = true;
             this.interactionManager.endSelectionDrag();
+        } else if (event.shiftKey && selectedCell && selectedCell.row !== null && selectedCell.col !== null) {
+            // shift click to select a range
+            const coords = this._getCoordsFromEvent(event);
+            if (coords && coords.row !== null && coords.col !== null) {
+                this.interactionManager.startSelectionDrag(selectedCell);
+                this.interactionManager.updateSelectionDrag(coords);
+                this.interactionManager.endSelectionDrag();
+                this.renderer.draw(); // redraw after selection drag is complete because no one else will draw
+                wasDraggingSelection = true;
+                log('log', this.options.verbose, `shift click received: ${selectedCell.row},${selectedCell.col} -> ${coords.row},${coords.col}`);
+            }
         }
         if (this.stateManager.isResizing()) {
             this.interactionManager.endResize();
