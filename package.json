@@ -5,17 +5,32 @@
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build:lib": "tsc -p tsconfig.json",
     "dev": "vite",
-    "build:example": "vite build",
     "copy:preview": "cpy example/dist/* docs",
     "copy:previewassets": "cpy example/dist/assets/* docs/assets",
     "copy": "npm run copy:preview && npm run copy:previewassets",
-    "build": "npm run build:lib && npm run build:example && npm run copy",
+    "build": "tsc -p tsconfig.json && cpy src/*.css dist",
+    "build:all": "npm run build && vite build && npm run copy",
     "preview": "vite preview",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "prepare": "npm run build"
   },
-  "author": "",
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "tsconfig.json",
+    "LICENSE"
+  ],
+  "style": "dist/spreadsheet.css",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/admin-remix/canvas-sheet.git"
+  },
+  "homepage": "https://admin-remix.github.io/canvas-sheet",
+  "bugs": {
+    "url": "https://github.com/admin-remix/canvas-sheet/issues"
+  },
   "license": "MIT",
   "description": "A lightweight, high-performance spreadsheet component built on the HTML5 Canvas API for modern web applications. Unlike other canvas-based spreadsheet libraries, Canvas-Sheet uses a schema-based approach that gives you strong typing, validation, and custom editors for each data type.",
   "keywords": [

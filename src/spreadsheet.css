@@ -1,4 +1,4 @@
-/* Custom Dropdown Styles (using Tailwind classes where possible) */
+/* Basic Dropdown Styles */
 .spreadsheet-dropdown {
   position: absolute;
   z-index: 1000;

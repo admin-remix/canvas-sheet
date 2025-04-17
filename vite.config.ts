@@ -30,7 +30,7 @@ export default defineConfig({
       // Create an alias 'canvas-sheet' that points directly to your library's source entry point.
       // This gives the best development experience (like HMR working for library changes).
       'canvas-sheet': path.resolve(__dirname, 'src/index.ts'),
-
+      '@': path.resolve(__dirname, 'src'),
       // You could also create an alias for the whole src directory if needed:
       // '@lib': path.resolve(__dirname, 'src'),
     }

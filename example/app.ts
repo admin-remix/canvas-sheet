@@ -1,4 +1,6 @@
 import { DataRow, Spreadsheet, SpreadsheetSchema, CellUpdateEvent } from "canvas-sheet";
+import "@/spreadsheet.css"; // basic styles
+
 // --- Schema Definition ---
 const schema: SpreadsheetSchema = {
   id: { type: "number", decimal: false, label: "ID" },
