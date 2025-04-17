@@ -28,6 +28,17 @@ export class EventManager {
     private _ignoreNextClick = false; // Flag to ignore click after drag mouseup
     private isCtrl = false;
     private _customEventHandler: ((event: Event) => void)|null = null;
+    
+    // Touch events state
+    private touchStartX: number | null = null;
+    private touchStartY: number | null = null;
+    private lastTouchX: number | null = null;
+    private lastTouchY: number | null = null;
+    private isTouching: boolean = false;
+    private touchVelocityX: number = 0;
+    private touchVelocityY: number = 0;
+    private lastTouchTime: number = 0;
+    private kineticScrollInterval: number | null = null;
 
     constructor(
         container: HTMLElement,
@@ -78,6 +89,12 @@ export class EventManager {
         document.addEventListener('keyup', this._handleDocumentKeyUp.bind(this));
         // Add listener for the native paste event on the container
         this.container.addEventListener('paste', this._handlePaste.bind(this));
+
+        // Touch Events
+        this.canvas.addEventListener('touchstart', this._handleTouchStart.bind(this));
+        this.canvas.addEventListener('touchmove', this._handleTouchMove.bind(this));
+        this.canvas.addEventListener('touchend', this._handleTouchEnd.bind(this));
+        this.canvas.addEventListener('touchcancel', this._handleTouchEnd.bind(this));
 
         // Editing Manager binds its own internal events (blur, keydown on input/dropdown)
         this.editingManager.bindInternalEvents();
@@ -651,5 +668,104 @@ export class EventManager {
         const rect = this.domManager.getCanvasBoundingClientRect();
         const canvasY = event.clientY - rect.top;
         return canvasY < this.options.headerHeight;
+    }
+
+    // --- Touch Event Handlers ---
+    private _handleTouchStart(event: TouchEvent): void {
+        // Prevent default to avoid page scrolling
+        event.preventDefault();
+        
+        if (event.touches.length === 1) {
+            const touch = event.touches[0];
+            this.touchStartX = touch.clientX;
+            this.touchStartY = touch.clientY;
+            this.lastTouchX = touch.clientX;
+            this.lastTouchY = touch.clientY;
+            this.isTouching = true;
+            this.lastTouchTime = Date.now();
+            
+            // Cancel any ongoing kinetic scrolling
+            if (this.kineticScrollInterval !== null) {
+                window.clearInterval(this.kineticScrollInterval);
+                this.kineticScrollInterval = null;
+            }
+            
+            // Deactivate editor/dropdown immediately
+            this.editingManager.deactivateEditor(false);
+            this.editingManager.hideDropdown();
+        }
+    }
+
+    private _handleTouchMove(event: TouchEvent): void {
+        if (!this.isTouching || !this.lastTouchX || !this.lastTouchY) return;
+        
+        event.preventDefault();
+        
+        if (event.touches.length === 1) {
+            const touch = event.touches[0];
+            const currentX = touch.clientX;
+            const currentY = touch.clientY;
+            
+            // Calculate delta movement
+            const deltaX = this.lastTouchX - currentX;
+            const deltaY = this.lastTouchY - currentY;
+            
+            // Calculate velocity for kinetic scrolling
+            const currentTime = Date.now();
+            const timeElapsed = currentTime - this.lastTouchTime;
+            if (timeElapsed > 0) {
+                this.touchVelocityX = deltaX / timeElapsed * 15; // Scale factor for kinetic feel
+                this.touchVelocityY = deltaY / timeElapsed * 15;
+            }
+            
+            // Perform the scroll
+            const { scrollTop, scrollLeft } = this.interactionManager.moveScroll(deltaX, deltaY);
+            this.stateManager.updateScroll(scrollTop, scrollLeft);
+            this._handleScroll();
+            
+            // Update last positions and time
+            this.lastTouchX = currentX;
+            this.lastTouchY = currentY;
+            this.lastTouchTime = currentTime;
+        }
+    }
+
+    private _handleTouchEnd(event: TouchEvent): void {
+        event.preventDefault();
+        this.isTouching = false;
+        
+        // Start kinetic scrolling if velocity is significant
+        if (Math.abs(this.touchVelocityX) > 0.5 || Math.abs(this.touchVelocityY) > 0.5) {
+            this._startKineticScroll();
+        }
+    }
+
+    private _startKineticScroll(): void {
+        // Clear any existing interval
+        if (this.kineticScrollInterval !== null) {
+            window.clearInterval(this.kineticScrollInterval);
+        }
+        
+        // Start the kinetic scrolling animation
+        this.kineticScrollInterval = window.setInterval(() => {
+            // Apply friction to slow down gradually
+            this.touchVelocityX *= 0.95;
+            this.touchVelocityY *= 0.95;
+            
+            // Stop if velocity becomes negligible
+            if (Math.abs(this.touchVelocityX) < 0.5 && Math.abs(this.touchVelocityY) < 0.5) {
+                window.clearInterval(this.kineticScrollInterval!);
+                this.kineticScrollInterval = null;
+                return;
+            }
+            
+            // Perform the scroll with the current velocity
+            const { scrollTop, scrollLeft } = this.interactionManager.moveScroll(
+                this.touchVelocityX, 
+                this.touchVelocityY
+            );
+            this.stateManager.updateScroll(scrollTop, scrollLeft);
+            this._handleScroll();
+        }, 16); // ~60fps
     }
 }
