@@ -1,6 +1,6 @@
 {
   "name": "canvas-sheet",
-  "version": "1.0.0",
+  "version": "0.0.1",
   "main": "dist/index.js",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -13,8 +13,23 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "",
-  "license": "ISC",
-  "description": "",
+  "license": "MIT",
+  "description": "A lightweight, high-performance spreadsheet component built on the HTML5 Canvas API for modern web applications. Unlike other canvas-based spreadsheet libraries, Canvas-Sheet uses a schema-based approach that gives you strong typing, validation, and custom editors for each data type.",
+  "keywords": [
+    "spreadsheet",
+    "canvas",
+    "editor",
+    "html5",
+    "table",
+    "grid",
+    "data",
+    "schema",
+    "typescript",
+    "javascript",
+    "web",
+    "component",
+    "library"
+  ],
   "devDependencies": {
     "typescript": "^5.8.3",
     "vite": "^6.2.6"
