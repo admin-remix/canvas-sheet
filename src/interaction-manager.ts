@@ -1,5 +1,3 @@
-// src/interaction-manager.ts
-
 import {
     RequiredSpreadsheetOptions,
     CellCoords,
@@ -21,7 +19,7 @@ export class InteractionManager {
     private dimensionCalculator: DimensionCalculator;
     private domManager: DomManager;
     private editingManager!: EditingManager; // Use definite assignment assertion
-    private lastPasteHandledAt:Date|null = null;// used to prevent multiple pastes in a row
+    private lastPasteHandledAt: Date | null = null;// used to prevent multiple pastes in a row
 
     constructor(
         options: RequiredSpreadsheetOptions,
@@ -45,7 +43,7 @@ export class InteractionManager {
 
     public moveScroll(deltaX: number, deltaY: number, setScroll: boolean = false) {
         return {
-            scrollTop: this.domManager.setVScrollPosition( setScroll ? deltaY : this.domManager.getVScrollPosition() + deltaY),
+            scrollTop: this.domManager.setVScrollPosition(setScroll ? deltaY : this.domManager.getVScrollPosition() + deltaY),
             scrollLeft: this.domManager.setHScrollPosition(setScroll ? deltaX : this.domManager.getHScrollPosition() + deltaX)
         };
     }
@@ -71,7 +69,7 @@ export class InteractionManager {
                 newSelectedRows.add(i);
             }
             // Update the state ONLY if the set actually changed
-             if (JSON.stringify(Array.from(newSelectedRows).sort()) !== originalSelectedRowsJson) {
+            if (JSON.stringify(Array.from(newSelectedRows).sort()) !== originalSelectedRowsJson) {
                 this.stateManager.setSelectedRows(newSelectedRows, lastClickedRow); // Keep original lastClicked for subsequent shifts
             }
             log('log', this.options.verbose, "Selected rows (Shift):", Array.from(newSelectedRows).sort((a, b) => a - b));
@@ -114,9 +112,9 @@ export class InteractionManager {
     public handleHeaderClick(clickedCol: number): boolean {
         log('log', this.options.verbose, `Column ${clickedCol} clicked.`);
         const selectedColumn = this.stateManager.getSelectedColumn();
-        
+
         this.stateManager.setSelectedColumn(clickedCol);
-        
+
         const changed = selectedColumn !== clickedCol;
         // If column selection changed, clear other selections
         if (changed) {
@@ -284,7 +282,7 @@ export class InteractionManager {
         let newCursor = 'default';
 
         // Check Column Resize Handles
-        if (contentY < headerHeight && contentX > rowNumberWidth && scrollTop<headerHeight) {
+        if (contentY < headerHeight && contentX > rowNumberWidth && scrollTop < headerHeight) {
             let currentX = rowNumberWidth;
             for (let col = 0; col < columns.length; col++) {
                 const borderX = currentX + columnWidths[col];
@@ -298,7 +296,7 @@ export class InteractionManager {
         }
 
         // Check Row Resize Handles
-        if (newCursor === 'default' && contentX < rowNumberWidth && contentY > headerHeight && scrollLeft<rowNumberWidth) {
+        if (newCursor === 'default' && contentX < rowNumberWidth && contentY > headerHeight && scrollLeft < rowNumberWidth) {
             let currentY = headerHeight;
             for (let row = 0; row < data.length; row++) {
                 const borderY = currentY + rowHeights[row];
@@ -497,7 +495,7 @@ export class InteractionManager {
                 data: this.stateManager.getRowData(rowIndex)!
             });
         });
-        
+
         // Notify about updates (once per batch)
         if (updatedRows.length > 0) {
             this.stateManager.callOnCellsUpdate(updatedRows);
@@ -535,7 +533,7 @@ export class InteractionManager {
                 rangeData.push(rowData);
             }
 
-             if (!allTypesMatch) {
+            if (!allTypesMatch) {
                 log('warn', this.options.verbose, "Copied range contains mixed data types.");
                 // Decide if copy should be prevented or allowed with warning
             }
@@ -551,7 +549,7 @@ export class InteractionManager {
             const type = this.stateManager.getSchemaForColumn(col)?.type;
             changed = this.stateManager.setCopiedValue(value, type, { ...activeCell });
             if (changed) {
-                 log('log', this.options.verbose, `Copied value: ${value} (Type: ${type}) from cell ${row},${col}`);
+                log('log', this.options.verbose, `Copied value: ${value} (Type: ${type}) from cell ${row},${col}`);
             }
         }
         return changed;
@@ -559,7 +557,7 @@ export class InteractionManager {
 
     /** Pastes single value or range. Returns true if paste occurred and requires redraw. */
     public paste(): boolean {
-        if(this.lastPasteHandledAt && (Date.now() - this.lastPasteHandledAt.getTime() < 1000)) {
+        if (this.lastPasteHandledAt && (Date.now() - this.lastPasteHandledAt.getTime() < 1000)) {
             return false;
         }
         this.lastPasteHandledAt = new Date();
@@ -575,7 +573,7 @@ export class InteractionManager {
 
         // TODO: Handle row selection paste
         // const selectedRows = this.stateManager.getSelectedRows();
-        
+
         // Regular paste to cell or range
         const targetRange = selectionRange;
         const targetCell = (!targetRange && activeCell) ? activeCell : null;
@@ -635,13 +633,19 @@ export class InteractionManager {
             }
             value = convertedValue;
         }
-
-        if (!validateInput(value, targetSchema, targetColKey, this.options.verbose)) {
-            log('log', this.options.verbose, `Paste cancelled: Copied value failed validation for target cell.`);
-            return false;
-        }
-
         const currentValue = this.stateManager.getCellData(targetRow, targetCol);
+        const validationResult = validateInput(value, targetSchema, targetColKey, this.options.verbose);
+        if ('error' in validationResult) {
+            log('log', this.options.verbose, validationResult.error);
+            if (validationResult.errorType === 'required' && !currentValue) {
+                this.stateManager.updateCell(targetRow, `error:${targetColKey}`, validationResult.error);
+            } else {
+                this.renderer.setTemporaryError(targetRow, targetCol);
+            }
+            return true;// redraw required for error
+        } else {
+            this.stateManager.removeCellValue(targetRow, `error:${targetColKey}`);
+        }
         if (currentValue !== value) {
             this.stateManager.updateCellInternal(targetRow, targetCol, value);
             this._batchUpdateCellsAndNotify([targetRow], [targetColKey]);
@@ -654,8 +658,8 @@ export class InteractionManager {
     /** Case 2: Paste single value to a selected range */
     private _pasteSingleValueToRange(targetRange: { start: CellCoords, end: CellCoords }, value: any, valueType: DataType | undefined): boolean {
         let changed = false;
-        const affectedRows:number[] = [];
-        const affectedColumns:string[] = [];
+        const affectedRows: number[] = [];
+        const affectedColumns: string[] = [];
         for (let row = targetRange.start.row!; row <= targetRange.end.row!; row++) {
             for (let col = targetRange.start.col!; col <= targetRange.end.col!; col++) {
                 const targetColKey = this.stateManager.getColumnKey(col);
@@ -671,13 +675,23 @@ export class InteractionManager {
                     if (valueToUse === null) continue; // Skip if conversion not possible
                 }
 
+                const currentValue = this.stateManager.getCellData(row, col);
                 // Validate value for the target cell
-                if (!validateInput(valueToUse, targetSchema, targetColKey, this.options.verbose)) {
-                    log('warn', this.options.verbose, `Paste single to range: Value validation failed for cell ${row},${col}. Skipping.`);
+                const validationResult = validateInput(valueToUse, targetSchema, targetColKey, this.options.verbose);
+                if ('error' in validationResult) {
+                    log('warn', this.options.verbose, validationResult.error);
+                    if (validationResult.errorType === 'required' && !currentValue) {
+                        this.stateManager.updateCell(row, `error:${targetColKey}`, validationResult.error);
+                    } else {
+                        this.renderer.setTemporaryError(row, col);
+                    }
+                    changed = true;
+                    // TODO: add to affectedRows and affectedColumns
                     continue;
+                } else {
+                    this.stateManager.removeCellValue(row, `error:${targetColKey}`);
                 }
 
-                const currentValue = this.stateManager.getCellData(row, col);
                 if (currentValue !== valueToUse) {
                     this.stateManager.updateCellInternal(row, col, valueToUse);
                     affectedRows.push(row);
@@ -716,61 +730,45 @@ export class InteractionManager {
             case 'number':
                 const num = parseFloat(stringValue);
                 return isNaN(num) ? null : num;
-            
+
             case 'boolean':
                 if (typeof value === 'boolean') return value;
                 const lower = stringValue.toLowerCase();
                 if (['true', 'yes', '1', 'y'].includes(lower)) return true;
                 if (['false', 'no', '0', 'n'].includes(lower)) return false;
                 return null;
-                
+
             case 'date':
                 if (value instanceof Date) return value.toISOString().split('T')[0];
-                
+
                 try {
                     // Handle numeric timestamps and various date formats
                     const date = new Date(value);
                     if (!isNaN(date.getTime())) {
                         return date.toISOString().split('T')[0]; // YYYY-MM-DD format
                     }
-                } catch (e) {}
+                } catch (e) { }
                 return null;
-                
+
             case 'select':
                 // For select, we need to check if the value matches any option id or name
                 if (schema?.values) {
                     // Try to match by id
                     let option = schema.values.find(opt => String(opt.id) === stringValue);
-                    
+
                     // If not found by id, try to match by name
                     if (!option) {
-                        option = schema.values.find(opt => 
+                        option = schema.values.find(opt =>
                             opt.name.toLowerCase() === stringValue.toLowerCase());
                     }
-                    
+
                     return option ? option.id : null;
                 }
                 return null;
-                
+
             default:
                 return null;
         }
-    }
-
-    /** Pastes external single string value to a single cell with type conversion */
-    private _pasteExternalSingleValue(targetCell: CellCoords, value: string): boolean {
-        if (targetCell.row === null || targetCell.col === null) return false;
-        
-        const targetSchema = this.stateManager.getSchemaForColumn(targetCell.col);
-        const convertedValue = this._convertValueForTargetType(value, targetSchema);
-        
-        if (convertedValue === null) {
-            log('log', this.options.verbose, `External paste cancelled: Cannot convert value for target cell type.`);
-            return false;
-        }
-        
-        // Use existing single value paste logic with the converted value
-        return this._pasteSingleValue(targetCell, convertedValue, targetSchema?.type);
     }
 
     /** Case 3: Paste range starting from a single top-left cell */
@@ -785,7 +783,7 @@ export class InteractionManager {
         let changed = false;
         const totalRows = this.stateManager.getData().length;
         const totalCols = this.stateManager.getColumns().length;
-        const affectedRows:number[] = [];
+        const affectedRows: number[] = [];
         const affectedColumns = new Set<string>();
 
         for (let rOffset = 0; rOffset < numRowsToPaste; rOffset++) {
@@ -812,12 +810,22 @@ export class InteractionManager {
                     if (valueToUse === null) continue; // Skip if conversion not possible
                 }
 
-                if (!validateInput(valueToUse, targetSchema, targetColKey, this.options.verbose)) {
-                    log('warn', this.options.verbose, `Paste range from TL: Value validation failed for cell ${targetRow},${targetCol}. Skipping.`);
+                const currentValue = this.stateManager.getCellData(targetRow, targetCol);
+                const validationResult = validateInput(valueToUse, targetSchema, targetColKey, this.options.verbose);
+                if ('error' in validationResult) {
+                    log('warn', this.options.verbose, validationResult.error);
+                    if (validationResult.errorType === 'required' && !currentValue) {
+                        this.stateManager.updateCell(targetRow, `error:${targetColKey}`, validationResult.error);
+                    } else {
+                        this.renderer.setTemporaryError(targetRow, targetCol);
+                    }
+                    changed = true;
+                    // TODO: add to affectedRows and affectedColumns
                     continue;
+                } else {
+                    this.stateManager.removeCellValue(targetRow, `error:${targetColKey}`);
                 }
 
-                const currentValue = this.stateManager.getCellData(targetRow, targetCol);
                 if (currentValue !== valueToUse) {
                     this.stateManager.updateCellInternal(targetRow, targetCol, valueToUse);
                     rowChanged = true;
@@ -833,9 +841,6 @@ export class InteractionManager {
 
         if (affectedRows.length > 0) {
             this._batchUpdateCellsAndNotify(affectedRows, Array.from(affectedColumns));
-        }
-
-        if (changed) {
             log('log', this.options.verbose, `Pasted range [${numRowsToPaste}x${numColsToPaste}] starting at ${startRow},${startCol}`);
         }
 
@@ -850,7 +855,7 @@ export class InteractionManager {
         if (sourceCols === 0) return false;
 
         let changed = false;
-        const affectedRows:number[] = [];
+        const affectedRows: number[] = [];
         const affectedColumns = new Set<string>();
 
         for (let row = targetRange.start.row!; row <= targetRange.end.row!; row++) {
@@ -874,13 +879,23 @@ export class InteractionManager {
                     if (valueToUse === null) continue; // Skip if conversion not possible
                 }
 
+                const currentValue = this.stateManager.getCellData(row, col);
                 // Validate value
-                if (!validateInput(valueToUse, targetSchema, targetColKey, this.options.verbose)) {
-                    log('warn', this.options.verbose, `Paste range to range: Value validation failed for cell ${row},${col}. Skipping.`);
+                const validationResult = validateInput(valueToUse, targetSchema, targetColKey, this.options.verbose);
+                if ('error' in validationResult) {
+                    log('warn', this.options.verbose, validationResult.error);
+                    if (validationResult.errorType === 'required' && !currentValue) {
+                        this.stateManager.updateCell(row, `error:${targetColKey}`, validationResult.error);
+                    } else {
+                        this.renderer.setTemporaryError(row, col);
+                    }
+                    changed = true;
+                    // TODO: add to affectedRows and affectedColumns
                     continue;
+                } else {
+                    this.stateManager.removeCellValue(row, `error:${targetColKey}`);
                 }
 
-                const currentValue = this.stateManager.getCellData(row, col);
                 if (currentValue !== valueToUse) {
                     this.stateManager.updateCellInternal(row, col, valueToUse);
                     rowChanged = true;
@@ -895,18 +910,16 @@ export class InteractionManager {
 
         if (affectedRows.length > 0) {
             this._batchUpdateCellsAndNotify(affectedRows, Array.from(affectedColumns));
-        }
-
-        if (changed) {
             log('log', this.options.verbose, `Pasted range pattern into target range [${targetRange.start.row},${targetRange.start.col}] -> [${targetRange.end.row},${targetRange.end.col}]`);
         }
+
         return changed;
     }
 
 
     /** Clears all copy state. Returns true if state changed. */
     public clearCopiedCell(): boolean {
-         return this.stateManager.clearCopyState();
+        return this.stateManager.clearCopyState();
     }
 
     // --- Deletion --- HINT HINT
@@ -973,7 +986,7 @@ export class InteractionManager {
         const currentEnd = this.stateManager.getSelectionEndCell();
         if (currentEnd?.row !== endCoords.row || currentEnd?.col !== endCoords.col) {
             log('log', this.options.verbose, `Updating selection drag to ${endCoords.row},${endCoords.col}`);
-             // Keep the original start cell, only update the end cell
+            // Keep the original start cell, only update the end cell
             return this.stateManager.setSelectionRange(this.stateManager.getSelectionStartCell(), endCoords);
         }
         return false;
@@ -1054,10 +1067,10 @@ export class InteractionManager {
         }
 
         if (safetyCounter >= maxSearch) {
-             log('warn', this.options.verbose, "Max search limit reached while finding next editable cell.");
-             this.editingManager.deactivateEditor(true);
-             this.stateManager.setActiveCell(null);
-             return true;
+            log('warn', this.options.verbose, "Max search limit reached while finding next editable cell.");
+            this.editingManager.deactivateEditor(true);
+            this.stateManager.setActiveCell(null);
+            return true;
         }
 
         // Found the next editable cell
@@ -1079,17 +1092,17 @@ export class InteractionManager {
         if (targetCell.row === null || targetCell.col === null) return false;
         const targetSchema = this.stateManager.getSchemaForColumn(targetCell.col);
         if (targetSchema?.type !== 'text') {
-             log('log', this.options.verbose, `Clipboard paste cancelled: Target cell ${targetCell.row},${targetCell.col} is not type 'text'.`);
-             return false;
+            log('log', this.options.verbose, `Clipboard paste cancelled: Target cell ${targetCell.row},${targetCell.col} is not type 'text'.`);
+            return false;
         }
         // Use the existing single value paste logic, forcing type 'text'
         return this._pasteSingleValue(targetCell, value, 'text');
     }
 
-     /** Pastes external 2D string array starting from a single top-left cell */
-     public pasteRangeFromTopLeftExternal(startCell: CellCoords, rangeData: string[][]): boolean {
-         // Similar to _pasteRangeFromTopLeft, but assumes string data and checks target type
-         if (startCell.row === null || startCell.col === null || !rangeData || rangeData.length === 0) {
+    /** Pastes external 2D string array starting from a single top-left cell */
+    public pasteRangeFromTopLeftExternal(startCell: CellCoords, rangeData: string[][]): boolean {
+        // Similar to _pasteRangeFromTopLeft, but assumes string data and checks target type
+        if (startCell.row === null || startCell.col === null || !rangeData || rangeData.length === 0) {
             return false;
         }
         const startRow = startCell.row;
@@ -1099,7 +1112,7 @@ export class InteractionManager {
         let changed = false;
         const totalRows = this.stateManager.getData().length;
         const totalCols = this.stateManager.getColumns().length;
-        const affectedRows:number[] = [];
+        const affectedRows: number[] = [];
         const affectedColumns = new Set<string>();
 
         for (let rOffset = 0; rOffset < numRowsToPaste; rOffset++) {
@@ -1121,16 +1134,26 @@ export class InteractionManager {
 
                 // Only allow pasting string into text cells
                 if (targetSchema?.type !== 'text') {
-                     log('log', this.options.verbose, `Clipboard paste range: Target cell ${targetRow},${targetCol} is not type 'text'. Skipping.`);
-                    continue;
-                }
-
-                if (!validateInput(valueToPaste, targetSchema, targetColKey, this.options.verbose)) {
-                    log('warn', this.options.verbose, `Clipboard paste range TL: Value validation failed for cell ${targetRow},${targetCol}. Skipping.`);
+                    log('log', this.options.verbose, `Clipboard paste range: Target cell ${targetRow},${targetCol} is not type 'text'. Skipping.`);
                     continue;
                 }
 
                 const currentValue = this.stateManager.getCellData(targetRow, targetCol);
+                const validationResult = validateInput(valueToPaste, targetSchema, targetColKey, this.options.verbose);
+                if ('error' in validationResult) {
+                    log('warn', this.options.verbose, validationResult.error);
+                    if (validationResult.errorType === 'required' && !currentValue) {
+                        this.stateManager.updateCell(targetRow, `error:${targetColKey}`, validationResult.error);
+                    } else {
+                        this.renderer.setTemporaryError(targetRow, targetCol);
+                    }
+                    changed = true;
+                    // TODO: add to affectedRows and affectedColumns
+                    continue;
+                } else {
+                    this.stateManager.removeCellValue(targetRow, `error:${targetColKey}`);
+                }
+
                 if (currentValue !== valueToPaste) {
                     this.stateManager.updateCellInternal(targetRow, targetCol, valueToPaste);
                     rowChanged = true;
@@ -1146,25 +1169,22 @@ export class InteractionManager {
 
         if (affectedRows.length > 0) {
             this._batchUpdateCellsAndNotify(affectedRows, Array.from(affectedColumns));
-        }
-
-        if (changed) {
             log('log', this.options.verbose, `Pasted external range [${numRowsToPaste}x${numColsToPaste}] starting at ${startRow},${startCol}`);
         }
 
         return changed;
-     }
+    }
 
-     /** Pastes external 2D string array into a selected range (repeating pattern) */
-     public pasteRangeToRangeExternal(targetRange: { start: CellCoords, end: CellCoords }, sourceRangeData: string[][]): boolean {
+    /** Pastes external 2D string array into a selected range (repeating pattern) */
+    public pasteRangeToRangeExternal(targetRange: { start: CellCoords, end: CellCoords }, sourceRangeData: string[][]): boolean {
         // Similar to _pasteRangeToRange, but assumes string data and checks target type
-         if (!sourceRangeData || sourceRangeData.length === 0) return false;
+        if (!sourceRangeData || sourceRangeData.length === 0) return false;
         const sourceRows = sourceRangeData.length;
         const sourceCols = sourceRangeData[0]?.length || 0;
         if (sourceCols === 0) return false;
 
         let changed = false;
-        const affectedRows:number[] = [];
+        const affectedRows: number[] = [];
         const affectedColumns = new Set<string>();
 
         for (let row = targetRange.start.row!; row <= targetRange.end.row!; row++) {
@@ -1183,12 +1203,22 @@ export class InteractionManager {
                 const convertedValue = this._convertValueForTargetType(valueToPaste, targetSchema);
                 if (convertedValue === null) continue; // Skip if conversion not possible
 
-                if (!validateInput(convertedValue, targetSchema, targetColKey, this.options.verbose)) {
-                    log('warn', this.options.verbose, `External paste range->range: Value validation failed for cell ${row},${col}. Skipping.`);
+                const currentValue = this.stateManager.getCellData(row, col);
+                const validationResult = validateInput(convertedValue, targetSchema, targetColKey, this.options.verbose);
+                if ('error' in validationResult) {
+                    log('warn', this.options.verbose, validationResult.error);
+                    if (validationResult.errorType === 'required' && !currentValue) {
+                        this.stateManager.updateCell(row, `error:${targetColKey}`, validationResult.error);
+                    } else {
+                        this.renderer.setTemporaryError(row, col);
+                    }
+                    changed = true;
+                    // TODO: add to affectedRows and affectedColumns
                     continue;
+                } else {
+                    this.stateManager.removeCellValue(row, `error:${targetColKey}`);
                 }
 
-                const currentValue = this.stateManager.getCellData(row, col);
                 if (currentValue !== convertedValue) {
                     this.stateManager.updateCellInternal(row, col, convertedValue);
                     rowChanged = true;
@@ -1203,13 +1233,10 @@ export class InteractionManager {
 
         if (affectedRows.length > 0) {
             this._batchUpdateCellsAndNotify(affectedRows, Array.from(affectedColumns));
-        }
-
-        if (changed) {
             log('log', this.options.verbose, `Pasted external range pattern into target range [${targetRange.start.row},${targetRange.start.col}] -> [${targetRange.end.row},${targetRange.end.col}]`);
         }
         return changed;
-     }
+    }
 
     /**
      * Handle external paste to entire column
@@ -1222,20 +1249,20 @@ export class InteractionManager {
         const schemaColumn = this.stateManager.getSchemaForColumn(columnIndex);
         const data = this.stateManager.getData();
         let changedAny = false;
-        
+
         if (value === undefined || value === null) {
             log('log', this.options.verbose, "No value to paste to column");
             return false;
         }
-        
+
         // Convert value to correct type for the column
         const convertedValue = this._convertValueForTargetType(value, schemaColumn);
         // Apply to all cells in the column
-        const affectedRows:number[] = [];
+        const affectedRows: number[] = [];
         for (let rowIndex = 0; rowIndex < data.length; rowIndex++) {
             // Skip disabled cells
             if (this.stateManager.isCellDisabled(rowIndex, columnIndex)) continue;
-            
+
             const currentValue = this.stateManager.getCellData(rowIndex, columnIndex);
             if (currentValue !== convertedValue) {
                 this.stateManager.updateCellInternal(rowIndex, columnIndex, convertedValue);
@@ -1243,13 +1270,13 @@ export class InteractionManager {
                 affectedRows.push(rowIndex);
             }
         }
-        
+
         // Update disabled states after all changes
         if (changedAny) {
             this._batchUpdateCellsAndNotify(affectedRows, [this.stateManager.getColumnKey(columnIndex)]);
             this.renderer.draw();
         }
-        
+
         return changedAny;
     }
 }

@@ -42,6 +42,7 @@ export const DEFAULT_OPTIONS: RequiredSpreadsheetOptions = {
     copyHighlightBorderColor: "#1f2937", // gray-800
     copyHighlightBorderDash: [4, 3], // Dash pattern (e.g., [dashLength, gapLength])
     resizeHandleSize: 5,
+    temporaryErrorTimeout: 2000,
     verbose: false,
 };
 

@@ -1,5 +1,3 @@
-// src/state-manager.ts
-
 import {
     SpreadsheetSchema,
     DataRow,
@@ -11,7 +9,8 @@ import {
     ResizeRowState,
     DataType,
     ColumnSchema,
-    CellUpdateEvent
+    CellUpdateEvent,
+    ValidationError
 } from './types';
 import { DISABLED_FIELD_PREFIX } from './config';
 import { log, validateInput } from './utils';
@@ -45,7 +44,7 @@ export class StateManager {
     private activeEditor: ActiveEditorState | null = null;
     private selectedRows: Set<number> = new Set();
     private lastClickedRow: number | null = null; // For shift-click selection range
-    private selectedColumn:number|null=null; // For column selection
+    private selectedColumn: number | null = null; // For column selection
     private copiedValue: any = undefined; // For single cell copy
     private copiedValueType: DataType | undefined = undefined;
     private copiedCell: CellCoords | null = null; // Tracks the source cell of single copy
@@ -93,7 +92,7 @@ export class StateManager {
         // Recalculation of sizes, dimensions, and redraw is handled by Spreadsheet class
     }
 
-    public clearAllSelections():void {
+    public clearAllSelections(): void {
         this.activeCell = null;
         this.selectionStartCell = null;
         this.selectionEndCell = null;
@@ -108,21 +107,21 @@ export class StateManager {
 
     /** Internal method to update a single cell's value without validation (validation happens before) */
     public updateCellInternal(rowIndex: number, colIndex: number, value: any): void {
-        if (rowIndex >= 0 && rowIndex < this.data.length && colIndex >= 0 && colIndex < this.columns.length) {
-            const colKey = this.columns[colIndex];
-            if (!this.data[rowIndex]) {
-                this.data[rowIndex] = {};
-            }
-            this.data[rowIndex][colKey] = value;
-            // Disabled state update should happen *after* the value change
-            // this.updateDisabledStatesForRow(rowIndex); // Called separately after update
-        } else {
+        if (rowIndex < 0 || rowIndex >= this.data.length || colIndex < 0 || colIndex >= this.columns.length) {
             log('warn', this.options.verbose, `updateCellInternal: Invalid coordinates (${rowIndex}, ${colIndex})`);
+            return;
         }
+        const colKey = this.columns[colIndex];
+        if (!this.data[rowIndex]) {
+            this.data[rowIndex] = {};
+        }
+        this.data[rowIndex][colKey] = value;
+        // Disabled state update should happen *after* the value change
+        // this.updateDisabledStatesForRow(rowIndex); // Called separately after update
     }
 
     /** Public method to update a cell, includes validation */
-    public updateCell(rowIndex: number, colKey: string, value: any): boolean {
+    public updateCell(rowIndex: number, colKey: string, value: any, throwError: boolean = false): boolean {
         if (rowIndex < 0 || rowIndex >= this.data.length) {
             log('warn', this.options.verbose, `updateCell: Invalid row index (${rowIndex}).`);
             return false;
@@ -137,19 +136,43 @@ export class StateManager {
             return false;
         }
         const schemaCol = this.schema[colKey];
-        if (validateInput(value, schemaCol, colKey, this.options.verbose)) {
+        const validationResult = validateInput(value, schemaCol, colKey, this.options.verbose);
+        if ('error' in validationResult) {
+            log('warn', this.options.verbose, `updateCell: Validation failed for ${colKey}. Value not set.`);
+            if (throwError) {
+                throw new ValidationError({
+                    errorMessage: validationResult.error,
+                    rowIndex: rowIndex,
+                    colKey: colKey,
+                    value: value,
+                    schema: schemaCol,
+                    errorType: validationResult.errorType
+                });
+            }
+        } else {
             if (!this.data[rowIndex]) {
                 this.data[rowIndex] = {};
+            }
+            if (!colKey.includes(':')) {
+                this.removeCellValue(rowIndex, `error:${colKey}`);
             }
             if (this.data[rowIndex][colKey] !== value) {
                 this.data[rowIndex][colKey] = value;
                 this.updateDisabledStatesForRow(rowIndex); // Update disabled states after change
                 return true; // Indicate that an update occurred
             }
-        } else {
-            log('warn', this.options.verbose, `updateCell: Validation failed for ${colKey}. Value not set.`);
         }
         return false; // No update occurred
+    }
+
+    public removeCellValue(rowIndex: number, colKey: string): boolean {
+        if (rowIndex < 0 || rowIndex >= this.data.length) {
+            log('warn', this.options.verbose, `removeCellValue: Invalid coordinates (${rowIndex}, ${colKey}).`);
+            return false;
+        }
+        const value = this.data[rowIndex]?.[colKey];
+        delete this.data[rowIndex][colKey];
+        return !!value;
     }
 
     public getCellData(rowIndex: number, colIndex: number): any {
@@ -291,7 +314,16 @@ export class StateManager {
     public setActiveCell(coords: CellCoords | null): boolean {
         const changed = JSON.stringify(this.activeCell) !== JSON.stringify(coords);
         if (changed) {
-             this.activeCell = coords;
+            this.activeCell = coords;
+        }
+        if (this.options.onCellSelected && coords?.col && coords?.row) {
+            setTimeout(() => {
+                try {
+                    this.options.onCellSelected!(coords?.row!, this.getColumnKey(coords?.col!), this.data[coords?.row!]);
+                } catch (_error) {
+                    // Ignore errors in onCellSelected callback
+                }
+            }, 0);
         }
         return changed;
     }
@@ -366,7 +398,7 @@ export class StateManager {
     }
 
     /** Sets the copied range data and source. Clears any single copied cell. Returns true if state changed. */
-    public setCopiedRange(rangeData: any[][] | null, sourceRange: { start: CellCoords, end: CellCoords } | null ): boolean {
+    public setCopiedRange(rangeData: any[][] | null, sourceRange: { start: CellCoords, end: CellCoords } | null): boolean {
         const rangeDataChanged = JSON.stringify(this.copiedRangeData) !== JSON.stringify(rangeData);
         const sourceRangeChanged = JSON.stringify(this.copiedSourceRange) !== JSON.stringify(sourceRange);
         const cellCleared = this.copiedCell !== null;
@@ -480,7 +512,8 @@ export class StateManager {
             const disabledKey = `${DISABLED_FIELD_PREFIX}${colKey}`;
             const currentDisabledState = !!rowData[disabledKey];
             // Use the user-provided function to determine the new state
-            const newDisabledState = this.options.isCellDisabled ? this.options.isCellDisabled(rowIndex, colKey, rowData) : false;
+            const schemaCol = this.schema[colKey];
+            const newDisabledState = schemaCol?.disabled ? schemaCol.disabled(rowData, rowIndex) : false;
 
             if (currentDisabledState !== newDisabledState) {
                 rowData[disabledKey] = newDisabledState;
@@ -561,7 +594,7 @@ export class StateManager {
     public addRow(): number {
         // Create an empty row based on the schema
         const newRow: DataRow = {};
-        
+
         // Initialize each column with default values based on data type
         this.columns.forEach(colKey => {
             if (colKey.includes(DISABLED_FIELD_PREFIX)) {
@@ -569,7 +602,7 @@ export class StateManager {
             }
             const columnSchema = this.schema[colKey];
             let defaultValue = null;
-            
+
             // Set appropriate default values based on data type
             if (columnSchema) {
                 switch (columnSchema.type) {
@@ -587,17 +620,17 @@ export class StateManager {
                         defaultValue = null;
                 }
             }
-            
+
             newRow[colKey] = defaultValue;
         });
-        
+
         // Add the new row to the data array
         this.data.push(newRow);
-        
+
         // Update disabled states for the new row
         const newRowIndex = this.data.length - 1;
         this.updateDisabledStatesForRow(newRowIndex);
-        
+
         // Return the index of the newly added row
         return newRowIndex;
     }

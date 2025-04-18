@@ -1,5 +1,3 @@
-// src/types.ts
-
 export type DataType = 'text' | 'number' | 'boolean' | 'date' | 'select' | 'email';
 
 export interface SelectOption {
@@ -15,7 +13,7 @@ export interface ColumnSchema {
     formatOptions?: any;    // e.g., { decimalPlaces: 2, locale: 'en-US' }
     decimal?: boolean;      // For 'number' type (false means integer)
     maxlength?: number;     // For 'text' type
-    disabled?: (rowData: DataRow) => boolean; // Optional dynamic disabling
+    disabled?: (rowData: DataRow, rowIndex: number) => boolean; // Optional dynamic disabling
     error?: string;
     loading?: boolean;
 }
@@ -107,6 +105,7 @@ export interface SpreadsheetOptions {
     textBaseline?: 'top' | 'middle' | 'bottom';
     copyHighlightBorderColor?: string;
     copyHighlightBorderDash?: number[];
+    temporaryErrorTimeout?: number;
     verbose?: boolean;
 }
 
@@ -117,8 +116,8 @@ export interface CellUpdateEvent {
 }
 
 interface SpreadsheetEvents {
-    isCellDisabled?: (rowIndex: number, colKey: string, rowData: DataRow) => boolean;
     onCellsUpdate?: (rows: CellUpdateEvent[]) => void;
+    onCellSelected?: (rowIndex: number, colKey: string, rowData: DataRow) => void;
 }
 
 // Required version of options for internal use
@@ -127,4 +126,36 @@ export type RequiredSpreadsheetOptions = Required<SpreadsheetOptions> & Spreadsh
 export interface DropdownItem {
     id: any;
     name: string;
-} 
+}
+
+export type ValidationErrorType = 'required' | 'maxlength' | 'value';
+
+export class ValidationError extends Error {
+    rowIndex: number;
+    colKey: string;
+    value: any;
+    schema: ColumnSchema;
+    errorType: ValidationErrorType;
+    constructor({
+        errorMessage,
+        rowIndex,
+        colKey,
+        value,
+        schema,
+        errorType
+    }: {
+        errorMessage: string;
+        rowIndex: number;
+        colKey: string;
+        value: any;
+        schema: ColumnSchema;
+        errorType: ValidationErrorType;
+    }) {
+        super(errorMessage);
+        this.rowIndex = rowIndex;
+        this.colKey = colKey;
+        this.value = value;
+        this.schema = schema;
+        this.errorType = errorType;
+    }
+}

@@ -71,9 +71,13 @@ export class EditingManager {
     }
 
     public activateEditor(rowIndex: number, colIndex: number, initialChar?: string): void {
-        const cellValue = this.stateManager.getCellData(rowIndex, colIndex);
-        const schema = this.stateManager.getSchemaForColumn(colIndex);
-
+        const colKey = this.stateManager.getColumnKey(colIndex);
+        const rowData = this.stateManager.getRowData(rowIndex);
+        // If the cell is loading, prevent editing
+        if (rowData?.[`loading:${colKey}`]) {
+            log('log', this.options.verbose, `Edit prevented: Cell ${rowIndex},${colIndex} is loading.`);
+            return;
+        }
         // Should already be checked by event handler, but double-check
         if (this.stateManager.isCellDisabled(rowIndex, colIndex)) {
             log('log', this.options.verbose, `Edit prevented: Cell ${rowIndex},${colIndex} is disabled.`);
@@ -90,7 +94,8 @@ export class EditingManager {
             log('warn', this.options.verbose, `Cannot activate editor: Cell ${rowIndex},${colIndex} bounds not found (likely not visible).`);
             return;
         }
-
+        const schema = this.stateManager.getSchemaForColumn(colIndex);
+        const cellValue = rowData?.[colKey];
         this.stateManager.setActiveEditor({
             row: rowIndex,
             col: colIndex,
@@ -150,8 +155,8 @@ export class EditingManager {
         if (type === 'select' || type === 'boolean') {
             // For dropdowns, the value is updated on click, just need to check if it changed
             if (this.isDropdownVisible()) {
-                 this.hideDropdown(); // Ensure dropdown is hidden even if no selection made
-                 redrawRequired = true; // Hiding dropdown requires redraw
+                this.hideDropdown(); // Ensure dropdown is hidden even if no selection made
+                redrawRequired = true; // Hiding dropdown requires redraw
             }
             const currentValue = this.stateManager.getCellData(row, col);
             valueChanged = currentValue !== originalValue;
@@ -163,17 +168,24 @@ export class EditingManager {
                     const schemaCol = this.stateManager.getSchemaForColumn(col);
                     const colKey = this.stateManager.getColumnKey(col);
                     const newValue = parseValueFromInput(newValueRaw, schemaCol?.type);
-
-                    if (validateInput(newValue, schemaCol, colKey, this.options.verbose)) {
+                    const validationResult = validateInput(newValue, schemaCol, colKey, this.options.verbose);
+                    if ('error' in validationResult) {
+                        log('log', this.options.verbose, validationResult.error);
+                        // Potentially show an error message to the user here
+                        if (validationResult.errorType === 'required') {
+                            this.stateManager.updateCell(row, `error:${colKey}`, validationResult.error);
+                        } else {
+                            this.renderer.setTemporaryError(row, col);
+                        }
+                        redrawRequired = true;
+                    } else {
+                        this.stateManager.removeCellValue(row, `error:${colKey}`);
                         if (newValue !== originalValue) {
                             this.stateManager.updateCellInternal(row, col, newValue); // Update data directly
                             valueChanged = true;
                             // Update disabled states for the row after the change
                             this.interactionManager._batchUpdateCellsAndNotify([row], [colKey]);
-                         }
-                    } else {
-                        log('log', this.options.verbose, "Change not saved due to validation error.");
-                        // Potentially show an error message to the user here
+                        }
                     }
                 }
                 this.editorInput.style.display = 'none';
@@ -197,7 +209,7 @@ export class EditingManager {
     }
 
     public hasEditorSelection(): boolean {
-        return this.highlightedDropdownIndex>=0;
+        return this.highlightedDropdownIndex >= 0;
     }
 
     private _handleEditorBlur(event: FocusEvent): void {
@@ -302,7 +314,7 @@ export class EditingManager {
 
             // Adjust vertical position if it overflows container bottom
             if (dropdownRect.bottom > containerRect.bottom && boundsY >= dropdownRect.height) {
-                 this.dropdown.style.top = `${boundsY - dropdownRect.height}px`; // Position above cell
+                this.dropdown.style.top = `${boundsY - dropdownRect.height}px`; // Position above cell
             }
             // Adjust horizontal position if it overflows container right
             if (dropdownRect.right > containerRect.right) {
@@ -332,8 +344,8 @@ export class EditingManager {
 
     public hideDropdown(): void {
         if (this.dropdown.style.display !== 'none') {
-             this.dropdown.style.display = 'none';
-             this.highlightedDropdownIndex = -1;
+            this.dropdown.style.display = 'none';
+            this.highlightedDropdownIndex = -1;
         }
     }
 
@@ -397,13 +409,13 @@ export class EditingManager {
                 // Prevent tabbing out of dropdown, maybe cycle? For now, just prevent.
                 event.preventDefault();
                 // check if any text in entered in the editor
-                if (!`${this.dropdownSearchInput.value}`.trim() && currentHighlight<0) {
+                if (!`${this.dropdownSearchInput.value}`.trim() && currentHighlight < 0) {
                     this.deactivateEditor(false);
                     return;
                 }
                 break;
             default:
-                 return; // Let other keys (like letters) be handled by the search input
+                return; // Let other keys (like letters) be handled by the search input
         }
 
         this.highlightedDropdownIndex = currentHighlight;
@@ -437,10 +449,10 @@ export class EditingManager {
             let valueToSet: any = selectedData.id;
 
             // Handle boolean case explicitly as 'true'/'false' strings might cause issues
-             if (typeof valueToSet === 'string' && activeEditor.type === 'boolean') {
+            if (typeof valueToSet === 'string' && activeEditor.type === 'boolean') {
                 if (valueToSet.toLowerCase() === 'true') valueToSet = true;
                 else if (valueToSet.toLowerCase() === 'false') valueToSet = false;
-                 // Keep as null/undefined if it's the blank option
+                // Keep as null/undefined if it's the blank option
             }
 
             // Update the data in the state manager

@@ -1,4 +1,4 @@
-import { DataType, ColumnSchema, SelectOption } from './types';
+import { DataType, ColumnSchema, SelectOption, ValidationErrorType } from './types';
 
 /** Basic logger utility */
 export function log(type: 'log' | 'warn' | 'error', verbose: boolean, ...args: any[]): void {
@@ -37,7 +37,7 @@ export function formatValue(value: any, type?: DataType, selectOptions?: SelectO
         case 'number':
             // Potentially format numbers (e.g., locale-specific separators, precision)
             // For now, just convert to string
-             return String(value);
+            return String(value);
         case 'text':
         case 'email':
         default:
@@ -93,65 +93,79 @@ export function parseValueFromInput(value: string, type?: DataType): any {
 }
 
 /** Validate input value against column schema */
-export function validateInput(value: any, schemaCol: ColumnSchema | undefined, colKey: string, verbose: boolean): boolean {
-    if (!schemaCol) return true; // No schema, always valid
-
+export function validateInput(value: any, schemaCol: ColumnSchema | undefined, colKey: string, verbose: boolean): {
+    success: boolean;
+} | {
+    success: false;
+    error: string;
+    errorType: ValidationErrorType;
+} {
+    if (!schemaCol) return { success: true }; // No schema, always valid
+    const colLabel = schemaCol.label || colKey;
     // Check required
     if (schemaCol.required && (value === null || value === undefined || value === "")) {
-        log('warn', verbose, `Validation failed: Column "${colKey}" is required.`);
-        return false;
+        const error = `Column "${colLabel}" is required.`;
+        log('warn', verbose, `Validation failed: ${error}.`);
+        return { success: false, error, errorType: 'required' };
     }
 
     // Skip further checks if value is null/empty and not required
-    if (value === null || value === undefined || value === "") return true;
+    if (value === null || value === undefined || value === "") return { success: true };
 
     // Check type-specific constraints
     switch (schemaCol.type) {
         case 'text':
             if (schemaCol.maxlength && typeof value === 'string' && value.length > schemaCol.maxlength) {
-                log('warn', verbose, `Validation failed: Column "${colKey}" exceeds max length of ${schemaCol.maxlength}.`);
-                return false;
+                const error = `Column "${colLabel}" exceeds max length of ${schemaCol.maxlength}.`;
+                log('warn', verbose, `Validation failed: ${error}.`);
+                return { success: false, error, errorType: 'maxlength' };
             }
             break;
         case 'email':
             // Basic email regex (consider using a more robust library for production)
             if (typeof value !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
-                log('warn', verbose, `Validation failed: Invalid email format for column "${colKey}".`);
-                return false;
+                const error = `Invalid email format for column "${colLabel}".`;
+                log('warn', verbose, `Validation failed: ${error}.`);
+                return { success: false, error, errorType: 'value' };
             }
             break;
         case 'number':
-             if (typeof value !== 'number') {
-                log('warn', verbose, `Validation failed: Column "${colKey}" expects a number.`);
-                return false;
+            if (typeof value !== 'number') {
+                const error = `Column "${colLabel}" expects a number.`;
+                log('warn', verbose, `Validation failed: ${error}.`);
+                return { success: false, error, errorType: 'value' };
             }
             if (schemaCol.decimal === false && !Number.isInteger(value)) {
-                 log('warn', verbose, `Validation failed: Column "${colKey}" expects an integer.`);
-                 return false;
+                const error = `Column "${colLabel}" expects an integer.`;
+                log('warn', verbose, `Validation failed: ${error}.`);
+                return { success: false, error, errorType: 'value' };
             }
             // Add min/max checks if needed
-             break;
+            break;
         case 'date':
-             // Check if it's a valid date string (YYYY-MM-DD)
-             if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value) || isNaN(new Date(value + "T00:00:00Z").getTime())) {
-                log('warn', verbose, `Validation failed: Invalid date format (YYYY-MM-DD) for column "${colKey}".`);
-                 return false;
-             }
-             break;
+            // Check if it's a valid date string (YYYY-MM-DD)
+            if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value) || isNaN(new Date(value + "T00:00:00Z").getTime())) {
+                const error = `Invalid date format (YYYY-MM-DD) for column "${colLabel}".`;
+                log('warn', verbose, `Validation failed: ${error}.`);
+                return { success: false, error, errorType: 'value' };
+            }
+            break;
         case 'boolean':
-             if (typeof value !== 'boolean') {
-                 log('warn', verbose, `Validation failed: Column "${colKey}" expects a boolean.`);
-                 return false;
-             }
-             break;
+            if (typeof value !== 'boolean') {
+                const error = `Column "${colLabel}" expects a boolean.`;
+                log('warn', verbose, `Validation failed: ${error}.`);
+                return { success: false, error, errorType: 'value' };
+            }
+            break;
         case 'select':
             // Check if the value exists in the provided options (allow null for blank)
-             if (value !== null && schemaCol.values && !schemaCol.values.some(opt => opt.id === value)) {
-                 log('warn', verbose, `Validation failed: Invalid selection for column "${colKey}".`);
-                 return false;
-             }
-             break;
+            if (value !== null && schemaCol.values && !schemaCol.values.some(opt => opt.id === value)) {
+                const error = `Invalid selection for column "${colLabel}".`;
+                log('warn', verbose, `Validation failed: ${error}.`);
+                return { success: false, error, errorType: 'value' };
+            }
+            break;
     }
 
-    return true; // All checks passed
+    return { success: true }; // All checks passed
 } 

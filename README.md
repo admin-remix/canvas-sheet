@@ -2,6 +2,8 @@
 
 A lightweight, high-performance spreadsheet component built on the HTML5 Canvas API for modern web applications. Unlike other canvas-based spreadsheet libraries, Canvas-Sheet uses a **schema-based approach** that gives you strong typing, validation, and custom editors for each data type.
 
+Demo: https://admin-remix.github.io/canvas-sheet
+
 ## Features
 
 - **Schema-based data model** with typed columns, validation, and field-specific configuration
@@ -29,6 +31,8 @@ npm install canvas-sheet
 
 ```javascript
 import { Spreadsheet } from 'canvas-sheet';
+// basic input and dropdown styles
+import "canvas-sheet/dist/spreadsheet.css";
 
 // Define the schema for your spreadsheet
 const schema = {
@@ -71,6 +75,8 @@ const spreadsheet = new Spreadsheet(
 
 ### Using Dropdown/Select Fields
 
+You can dynamically control which cells are disabled based on row data
+
 ```javascript
 const schema = {
   // ... other fields
@@ -81,7 +87,12 @@ const schema = {
       { id: 1, name: "Active" },
       { id: 2, name: "Pending" },
       { id: 3, name: "Inactive" }
-    ]
+    ],
+    // custom cell disabling logic
+    disabled: (rowData, rowIndex)=>{
+      console.log('Row index', rowIndex);
+      return rowData.isRestricted && rowData.locationId === 1
+    },
   }
 };
 ```
@@ -99,28 +110,7 @@ spreadsheet.setData(newData);
 spreadsheet.updateCell(rowIndex, 'fieldName', newValue);
 ```
 
-### Custom Cell Disabling Logic
-
-You can dynamically control which cells are disabled based on row data:
-
-```javascript
-// Disable the locationId cell if isRestricted is true AND locationId is 1
-function customIsCellDisabled(rowIndex, colKey, rowData) {
-  return colKey === "locationId" && rowData.isRestricted && rowData.locationId === 1;
-}
-
-// Then pass it in the options
-const spreadsheet = new Spreadsheet(
-  "spreadsheet-container",
-  schema,
-  data,
-  {
-    isCellDisabled: customIsCellDisabled
-  }
-);
-```
-
-### Cell Update Callbacks
+### Cell Update and Selection Callbacks
 
 You can implement custom logic when cells are updated, including adding loading states and validation:
 
@@ -132,20 +122,24 @@ const spreadsheet = new Spreadsheet(
   {
     onCellsUpdate: (rows) => {
       // Example: Show loading and then error state for email fields from a certain domain
-      const row = rows[0];
-      if (row.columnKeys.includes('email') && row.data.email && row.data.email.endsWith('@sample.net')) {
-        // Set loading state
-        spreadsheet.updateCell(row.rowIndex, 'loading:email', true);
-        
-        // Simulate async validation
-        setTimeout(() => {
-          // Remove loading state
-          spreadsheet.updateCell(row.rowIndex, 'loading:email', null);
-          // Set error state
-          spreadsheet.updateCell(row.rowIndex, 'error:email', "Invalid email domain");
-        }, 2000);
+      for (const row of rows) {
+        if (row.columnKeys.includes('email') && row.data.email && row.data.email.endsWith('@sample.net')) {
+          // Set loading state
+          spreadsheet.updateCell(row.rowIndex, 'loading:email', true);
+          
+          // Simulate async validation
+          setTimeout(() => {
+            // Remove loading state
+            spreadsheet.updateCell(row.rowIndex, 'loading:email', null);
+            // Set error state
+            spreadsheet.updateCell(row.rowIndex, 'error:email', "Invalid email domain");
+          }, 2000);
+        }
       }
-    }
+    },
+    onCellSelected: (rowIndex, colKey, rowData) => {
+      console.log('Selected', rowIndex, colKey, rowData[colKey]);
+    },
   }
 );
 ```
@@ -226,7 +220,10 @@ const schema = {
       { id: 1, name: "Active" },
       { id: 2, name: "Pending" },
       { id: 3, name: "Inactive" }
-    ]
+    ],
+    disabled: (data)=>{
+      return data.status === 3 && !data.isActive;
+    }
   }
 };
 ```

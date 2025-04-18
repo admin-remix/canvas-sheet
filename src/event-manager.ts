@@ -1,6 +1,7 @@
 import {
     RequiredSpreadsheetOptions,
-    CellCoords
+    CellCoords,
+    ValidationError
 } from './types';
 import { EditingManager } from './editing-manager';
 import { InteractionManager } from './interaction-manager';
@@ -27,11 +28,9 @@ export class EventManager {
     private resizeTimeout: number | null = null;
     private _ignoreNextClick = false; // Flag to ignore click after drag mouseup
     private isCtrl = false;
-    private _customEventHandler: ((event: Event) => void)|null = null;
-    
+    private _customEventHandler: ((event: Event) => void) | null = null;
+
     // Touch events state
-    private touchStartX: number | null = null;
-    private touchStartY: number | null = null;
     private lastTouchX: number | null = null;
     private lastTouchY: number | null = null;
     private isTouching: boolean = false;
@@ -67,7 +66,7 @@ export class EventManager {
         this.interactionManager.setEditingManager(this.editingManager);
     }
 
-    public bindEvents(customEventHandler: ((event: Event) => void)|null = null): void {
+    public bindEvents(customEventHandler: ((event: Event) => void) | null = null): void {
         this._customEventHandler = customEventHandler;
         // Container Events
         this.container.addEventListener('wheel', this._handleWheel.bind(this));
@@ -83,7 +82,10 @@ export class EventManager {
         // Document/Window Events
         document.addEventListener('mousemove', this._handleDocumentMouseMove.bind(this));
         document.addEventListener('mouseup', this._handleDocumentMouseUp.bind(this));
-        window.addEventListener('resize', this._handleResize.bind(this));
+        // add resize observer listener instead of window resize event
+        new ResizeObserver(() => {
+            this._handleResize();
+        }).observe(this.container);
         document.addEventListener('mousedown', this._handleGlobalMouseDown.bind(this), true); // Use capture phase
         document.addEventListener('keydown', this._handleDocumentKeyDown.bind(this));
         document.addEventListener('keyup', this._handleDocumentKeyUp.bind(this));
@@ -98,6 +100,8 @@ export class EventManager {
 
         // Editing Manager binds its own internal events (blur, keydown on input/dropdown)
         this.editingManager.bindInternalEvents();
+
+
     }
 
     // --- Event Handlers ---
@@ -112,7 +116,7 @@ export class EventManager {
     private _handleWheel(event: WheelEvent): void {
         const amount = event.deltaY;
         event.preventDefault();
-        const { scrollTop, scrollLeft } = this.interactionManager.moveScroll(event.shiftKey ? amount: 0, event.shiftKey ? 0 : amount);
+        const { scrollTop, scrollLeft } = this.interactionManager.moveScroll(event.shiftKey ? amount : 0, event.shiftKey ? 0 : amount);
         this.stateManager.updateScroll(scrollTop, scrollLeft);
         this._handleScroll();
     }
@@ -206,10 +210,10 @@ export class EventManager {
                 this.editingManager.deactivateEditor(true);
             }
         } else if (this.editingManager.isDropdownVisible()) {
-             this.editingManager.hideDropdown();
+            this.editingManager.hideDropdown();
         }
 
-         // --- Handle Selections & Clear Other States ---
+        // --- Handle Selections & Clear Other States ---
         const currentCopied = this.stateManager.isCopyActive(); // Check if any copy state is active
 
         if (isRowNumberClick && coords && coords.row !== null) {
@@ -235,23 +239,23 @@ export class EventManager {
             let columnsCleared = false;
             // If cell changed, explicitly clear other selections
             if (cellChanged) {
-                 rowsCleared = this.interactionManager.clearSelections();
-                 rangeCleared = this.stateManager.clearSelectionRange();
+                rowsCleared = this.interactionManager.clearSelections();
+                rangeCleared = this.stateManager.clearSelectionRange();
             }
             //const copyCleared = currentCopied ? this.interactionManager.clearCopiedCell() : false;
             redrawNeeded = cellChanged || rowsCleared || rangeCleared;// || copyCleared;
         }
         else {
-             // Click outside
-             const cellCleared = this.stateManager.setActiveCell(null);
-             let rowsCleared = false;
-             let rangeCleared = false;
-             if (cellCleared) { // If active cell was cleared, clear others too
-                 rowsCleared = this.interactionManager.clearSelections();
-                 rangeCleared = this.stateManager.clearSelectionRange();
-             }
-             const copyCleared = currentCopied ? this.interactionManager.clearCopiedCell() : false;
-             redrawNeeded = cellCleared || rowsCleared || rangeCleared || copyCleared;
+            // Click outside
+            const cellCleared = this.stateManager.setActiveCell(null);
+            let rowsCleared = false;
+            let rangeCleared = false;
+            if (cellCleared) { // If active cell was cleared, clear others too
+                rowsCleared = this.interactionManager.clearSelections();
+                rangeCleared = this.stateManager.clearSelectionRange();
+            }
+            const copyCleared = currentCopied ? this.interactionManager.clearCopiedCell() : false;
+            redrawNeeded = cellCleared || rowsCleared || rangeCleared || copyCleared;
         }
 
         // Final Redraw
@@ -262,7 +266,7 @@ export class EventManager {
 
     private _handleCanvasMouseDown(event: MouseEvent): void {
         this._ignoreNextClick = false;
-         // Prioritize resize/fill handle detection
+        // Prioritize resize/fill handle detection
         const resizeTarget = this.interactionManager.checkResizeHandles(event);
         if (resizeTarget) {
             event.preventDefault();
@@ -285,12 +289,12 @@ export class EventManager {
         // If not resizing or dragging fill handle, check for cell click to start selection drag
         const coords = this._getCoordsFromEvent(event);
         if (coords && coords.row !== null && coords.col !== null) {
-             // Deactivate editor if clicking on a different cell
+            // Deactivate editor if clicking on a different cell
             if (this.editingManager.isEditorActive()) {
-                 const editor = this.stateManager.getActiveEditor();
-                 if (coords.row !== editor?.row || coords.col !== editor?.col) {
-                     this.editingManager.deactivateEditor(true);
-                 }
+                const editor = this.stateManager.getActiveEditor();
+                if (coords.row !== editor?.row || coords.col !== editor?.col) {
+                    this.editingManager.deactivateEditor(true);
+                }
             }
 
             if (event.shiftKey && hasActiveCell && coords.row !== activeCell?.row && coords.col !== activeCell?.col) {
@@ -381,8 +385,8 @@ export class EventManager {
                 let rowsCleared = false;
                 let rangeCleared = false;
                 if (cellCleared) {
-                     rowsCleared = this.interactionManager.clearSelections();
-                     rangeCleared = this.stateManager.clearSelectionRange();
+                    rowsCleared = this.interactionManager.clearSelections();
+                    rangeCleared = this.stateManager.clearSelectionRange();
                 }
                 const copyCleared = this.interactionManager.clearCopiedCell();
                 needsRedraw = cellCleared || rowsCleared || rangeCleared || copyCleared;
@@ -426,7 +430,8 @@ export class EventManager {
             return;
         }
         const activeCell = this.stateManager.getActiveCell();
-        const isCellDisabled = activeCell && activeCell.row !== null && activeCell.col !== null && this.stateManager.isCellDisabled(activeCell.row, activeCell.col);
+        const isActiveCellValid = activeCell && activeCell.row !== null && activeCell.col !== null;
+        const isCellDisabled = isActiveCellValid && this.stateManager.isCellDisabled(activeCell.row!, activeCell.col!);
 
         if (event.key === 'Delete' || event.key === 'Backspace') {
             const selectedColumn = this.stateManager.getSelectedColumn();
@@ -434,10 +439,25 @@ export class EventManager {
                 redrawNeeded = this.interactionManager.deleteSelectedRows();
                 event.preventDefault();
                 // deleteSelectedRows handles recalculations internally
-            } else if (activeCell && activeCell.row !== null && activeCell.col !== null) {
-                if(!isCellDisabled){
-                    const cleared = this.stateManager.updateCell(activeCell.row, this.stateManager.getColumnKey(activeCell.col), null);
-                    redrawNeeded = cleared;
+            } else if (isActiveCellValid) {
+                const { row, col } = activeCell;
+                const colKey = this.stateManager.getColumnKey(col!);
+                if (!isCellDisabled) {
+                    const currentValue = this.stateManager.getCellData(row!, col!);
+                    try {
+                        const cleared = this.stateManager.updateCell(row!, colKey, null, true);
+                        redrawNeeded = cleared;
+                    } catch (error: unknown) {
+                        log('warn', this.options.verbose, error);
+                        if (error instanceof ValidationError) {
+                            redrawNeeded = true;
+                            if (error.errorType === 'required' && !currentValue) {
+                                this.stateManager.updateCell(row!, `error:${colKey}`, error.message);
+                            } else {
+                                this.renderer.setTemporaryError(row!, col!);
+                            }
+                        }
+                    }
                 }
                 event.preventDefault();
             } else if (event.key === 'Delete' && selectedColumn !== null && this.stateManager.getColumnKey(selectedColumn)?.startsWith('custom:')) {
@@ -447,24 +467,24 @@ export class EventManager {
                 event.preventDefault();
             }
         } else if (event.key.startsWith('Arrow')) {
-             if (activeCell) {
-                 let rowDelta = 0;
-                 let colDelta = 0;
-                 if (event.key === 'ArrowUp') rowDelta = -1;
-                 else if (event.key === 'ArrowDown') rowDelta = 1;
-                 else if (event.key === 'ArrowLeft') colDelta = -1;
-                 else if (event.key === 'ArrowRight') colDelta = 1;
+            if (activeCell) {
+                let rowDelta = 0;
+                let colDelta = 0;
+                if (event.key === 'ArrowUp') rowDelta = -1;
+                else if (event.key === 'ArrowDown') rowDelta = 1;
+                else if (event.key === 'ArrowLeft') colDelta = -1;
+                else if (event.key === 'ArrowRight') colDelta = 1;
 
-                 if (rowDelta !== 0 || colDelta !== 0) {
-                     // moveActiveCell handles finding next cell, setting state, and activating editor (which redraws)
-                     redrawNeeded = this.interactionManager.moveActiveCell(rowDelta, colDelta, false);
-                     if (redrawNeeded) {
+                if (rowDelta !== 0 || colDelta !== 0) {
+                    // moveActiveCell handles finding next cell, setting state, and activating editor (which redraws)
+                    redrawNeeded = this.interactionManager.moveActiveCell(rowDelta, colDelta, false);
+                    if (redrawNeeded) {
                         this.interactionManager.clearSelections();
                         this.stateManager.clearSelectionRange();
-                     }
-                     event.preventDefault();
-                 }
-             }
+                    }
+                    event.preventDefault();
+                }
+            }
         } else if (event.key === 'Enter' && activeCell) {
             if (!isCellDisabled && activeCell.row !== null && activeCell.col !== null) {
                 this.editingManager.activateEditor(activeCell.row, activeCell.col);
@@ -491,7 +511,7 @@ export class EventManager {
         if (resizeNeeded) {
             this._customEventHandler?.call(this, new CustomEvent('resize'));
             // no need to redraw here, resize will trigger a redraw
-        }else if (redrawNeeded) {
+        } else if (redrawNeeded) {
             this.renderer.draw();
         }
     }
@@ -505,7 +525,7 @@ export class EventManager {
         const textData = event.clipboardData.getData('text/plain');
         if (!textData) return;
 
-        if(this.interactionManager.paste()) {
+        if (this.interactionManager.paste()) {
             event.preventDefault();
             this.renderer.draw();
             return;
@@ -514,7 +534,7 @@ export class EventManager {
         const activeCell = this.stateManager.getActiveCell();
         const selectionRange = this.stateManager.getNormalizedSelectionRange();
         const selectedColumn = this.stateManager.getSelectedColumn();
-        
+
         // Check for selected column paste - this takes precedence
         if (selectedColumn !== null) {
             // For external paste to column, we'll just use the first value from the clipboard
@@ -522,7 +542,7 @@ export class EventManager {
             if (value) {
                 log('log', this.options.verbose, "Handling column paste from clipboard");
                 event.preventDefault();
-                
+
                 // Convert and paste using the interaction manager
                 const changed = this.interactionManager.pasteToColumnExternal(selectedColumn, value);
                 if (changed) {
@@ -531,7 +551,7 @@ export class EventManager {
             }
             return;
         }
-        
+
         const targetRange = selectionRange;
         const targetCell = (!targetRange && activeCell) ? activeCell : null;
 
@@ -554,11 +574,11 @@ export class EventManager {
             changed = this.interactionManager.pasteRangeToRangeExternal(targetRange, parsedRows);
         } else if (targetCell && targetCell.row !== null && targetCell.col !== null) {
             if (isSingleValuePaste) {
-                 // Paste single text value to the active cell (check type)
-                 changed = this.interactionManager.pasteSingleValueExternal(targetCell, parsedRows[0][0]);
+                // Paste single text value to the active cell (check type)
+                changed = this.interactionManager.pasteSingleValueExternal(targetCell, parsedRows[0][0]);
             } else {
-                 // Paste multi-line/tabbed text starting from the active cell
-                 changed = this.interactionManager.pasteRangeFromTopLeftExternal(targetCell, parsedRows);
+                // Paste multi-line/tabbed text starting from the active cell
+                changed = this.interactionManager.pasteRangeFromTopLeftExternal(targetCell, parsedRows);
             }
         }
 
@@ -621,13 +641,13 @@ export class EventManager {
         }
 
         if (targetRow === null && targetCol === null && contentX > rowNumberWidth && contentY < headerHeight) {
-             // Clicked in header area, but not on resize handles (handled in mousedown)
-             // Treat as no specific cell coordinate
-             return null;
+            // Clicked in header area, but not on resize handles (handled in mousedown)
+            // Treat as no specific cell coordinate
+            return null;
         }
-        if (targetRow === null && targetCol === null && contentX < rowNumberWidth && contentY < headerHeight){
-             // Clicked in corner box
-             return null;
+        if (targetRow === null && targetCol === null && contentX < rowNumberWidth && contentY < headerHeight) {
+            // Clicked in corner box
+            return null;
         }
 
 
@@ -674,22 +694,20 @@ export class EventManager {
     private _handleTouchStart(event: TouchEvent): void {
         // Prevent default to avoid page scrolling
         event.preventDefault();
-        
+
         if (event.touches.length === 1) {
             const touch = event.touches[0];
-            this.touchStartX = touch.clientX;
-            this.touchStartY = touch.clientY;
             this.lastTouchX = touch.clientX;
             this.lastTouchY = touch.clientY;
             this.isTouching = true;
             this.lastTouchTime = Date.now();
-            
+
             // Cancel any ongoing kinetic scrolling
             if (this.kineticScrollInterval !== null) {
                 window.clearInterval(this.kineticScrollInterval);
                 this.kineticScrollInterval = null;
             }
-            
+
             // Deactivate editor/dropdown immediately
             this.editingManager.deactivateEditor(false);
             this.editingManager.hideDropdown();
@@ -698,18 +716,18 @@ export class EventManager {
 
     private _handleTouchMove(event: TouchEvent): void {
         if (!this.isTouching || !this.lastTouchX || !this.lastTouchY) return;
-        
+
         event.preventDefault();
-        
+
         if (event.touches.length === 1) {
             const touch = event.touches[0];
             const currentX = touch.clientX;
             const currentY = touch.clientY;
-            
+
             // Calculate delta movement
             const deltaX = this.lastTouchX - currentX;
             const deltaY = this.lastTouchY - currentY;
-            
+
             // Calculate velocity for kinetic scrolling
             const currentTime = Date.now();
             const timeElapsed = currentTime - this.lastTouchTime;
@@ -717,12 +735,12 @@ export class EventManager {
                 this.touchVelocityX = deltaX / timeElapsed * 15; // Scale factor for kinetic feel
                 this.touchVelocityY = deltaY / timeElapsed * 15;
             }
-            
+
             // Perform the scroll
             const { scrollTop, scrollLeft } = this.interactionManager.moveScroll(deltaX, deltaY);
             this.stateManager.updateScroll(scrollTop, scrollLeft);
             this._handleScroll();
-            
+
             // Update last positions and time
             this.lastTouchX = currentX;
             this.lastTouchY = currentY;
@@ -733,7 +751,7 @@ export class EventManager {
     private _handleTouchEnd(event: TouchEvent): void {
         event.preventDefault();
         this.isTouching = false;
-        
+
         // Start kinetic scrolling if velocity is significant
         if (Math.abs(this.touchVelocityX) > 0.5 || Math.abs(this.touchVelocityY) > 0.5) {
             this._startKineticScroll();
@@ -745,23 +763,23 @@ export class EventManager {
         if (this.kineticScrollInterval !== null) {
             window.clearInterval(this.kineticScrollInterval);
         }
-        
+
         // Start the kinetic scrolling animation
         this.kineticScrollInterval = window.setInterval(() => {
             // Apply friction to slow down gradually
             this.touchVelocityX *= 0.95;
             this.touchVelocityY *= 0.95;
-            
+
             // Stop if velocity becomes negligible
             if (Math.abs(this.touchVelocityX) < 0.5 && Math.abs(this.touchVelocityY) < 0.5) {
                 window.clearInterval(this.kineticScrollInterval!);
                 this.kineticScrollInterval = null;
                 return;
             }
-            
+
             // Perform the scroll with the current velocity
             const { scrollTop, scrollLeft } = this.interactionManager.moveScroll(
-                this.touchVelocityX, 
+                this.touchVelocityX,
                 this.touchVelocityY
             );
             this.stateManager.updateScroll(scrollTop, scrollLeft);

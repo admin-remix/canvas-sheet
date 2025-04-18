@@ -1,11 +1,9 @@
-// src/spreadsheet.ts
-
 import {
     SpreadsheetSchema,
     DataRow,
     SpreadsheetOptions,
     ColumnSchema,
-    CellUpdateEvent
+    ValidationError
 } from './types';
 import { DEFAULT_OPTIONS } from './config';
 import { DomManager } from './dom-manager';
@@ -108,10 +106,32 @@ export class Spreadsheet {
     }
 
     public updateCell(rowIndex: number, colKey: string, value: any): void {
-        const updated = this.stateManager.updateCell(rowIndex, colKey, value);
-        if (updated) {
-            this.draw();
+        let redrawNeeded = false;
+        try {
+            const updated = this.stateManager.updateCell(rowIndex, colKey, value, true);
+            if (!updated) return;
+            redrawNeeded = true;
+        } catch (error: unknown) {
+            if (error instanceof ValidationError) {
+                this.stateManager.updateCell(rowIndex, `error:${colKey}`, error.message);
+                redrawNeeded = true;
+            } else {
+                log('warn', this.options.verbose, error);
+            }
         }
+        if (redrawNeeded) this.draw();
+    }
+
+    public getSelectedCell(): { row: number, colKey: string } | null {
+        const cell = this.stateManager.getActiveCell();
+        if (!cell || !cell.row || !cell.col) return null;
+        return { row: cell.row!, colKey: this.stateManager.getColumnKey(cell.col!) };
+    }
+
+    public getRow(rowIndex: number): DataRow | null {
+        const row = this.stateManager.getRowData(rowIndex);
+        if (!row) return null;
+        return row;
     }
 
     // --- Helper to expose redrawing for managers ---

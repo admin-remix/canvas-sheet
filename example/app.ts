@@ -7,7 +7,7 @@ const schema: SpreadsheetSchema = {
   name: {
     type: "text",
     required: true,
-    maxlength: 50,
+    maxlength: 20,
     label: "Full Name",
   },
   email: {
@@ -33,6 +33,10 @@ const schema: SpreadsheetSchema = {
       { id: 9, name: "Moscow" },
       { id: 10, name: "Beijing" },
     ],
+    // custom cell disabling logic
+    disabled: (rowData: DataRow)=>{
+      return rowData.isRestricted && rowData.locationId === 1
+    },
   },
   isRestricted: { type: "boolean", label: "Restricted" },
   salary: { type: "number", label: "Salary" },
@@ -51,7 +55,6 @@ function generateRandomData(numRows: number): DataRow[] {
     notes: `Notes for Person ${i + 1}`,
   }));
 }
-
 
 // --- Sample Data ---
 const sampleData = !window.location.search.includes('bigdata') ? [
@@ -79,7 +82,7 @@ const sampleData = !window.location.search.includes('bigdata') ? [
     id: 3,
     name: "Charlie Brown",
     email: "charlie@testing.org",
-    ["error:email"]: "Invalid email",
+    ["error:email"]: "User does not exist",
     dob: "1998-02-10",
     locationId: 2,
     isRestricted: false,
@@ -319,12 +322,6 @@ const sampleData = !window.location.search.includes('bigdata') ? [
   },
 ] : generateRandomData(20000);
 
-// --- Custom Cell Disabling Logic ---
-function customIsCellDisabled(_rowIndex: number, colKey: string, rowData: DataRow) {
-  // Example: Disable the locationId column if 'isRestricted' is true AND location is 'New York' (id: 1)
-  return colKey === "locationId" && rowData.isRestricted && rowData.locationId === 1;
-}
-
 // --- Instantiate the Spreadsheet ---
 document.addEventListener("DOMContentLoaded", () => {
   document.getElementById('data-size')!.textContent = sampleData.length.toString();
@@ -338,17 +335,25 @@ document.addEventListener("DOMContentLoaded", () => {
         // Optional: Override default options here
         // cellWidth: 180,
         selectedRowBgColor: '#e0e7ff', // light-blue
-        isCellDisabled: customIsCellDisabled, // Pass the custom disabling function
         onCellsUpdate: (rows: CellUpdateEvent[]) => {
           // custom loading and error state with a specific column updated value checking
-          const row = rows[0];
-          if (row.columnKeys.includes('email') && row.data.email && row.data.email.endsWith('@sample.net')) {
-            spreadsheet?.updateCell(row.rowIndex, 'loading:email', true);
-            setTimeout(() => {
-              spreadsheet?.updateCell(row.rowIndex, 'loading:email', null);
-              spreadsheet?.updateCell(row.rowIndex, 'error:email', "error");
-            }, 2000);
+          for(const row of rows) {
+            if (row.columnKeys.includes('email') && row.data.email && row.data.email.endsWith('@sample.net')) {
+              spreadsheet?.updateCell(row.rowIndex, 'loading:email', true);
+              setTimeout(() => {
+                spreadsheet?.updateCell(row.rowIndex, 'loading:email', null);
+                spreadsheet?.updateCell(row.rowIndex, 'error:email', `Account ${row.data.email} does not exist`);
+                // selected cell returns row index and column key
+                const selectedCell = spreadsheet?.getSelectedCell();
+                if (selectedCell?.row === row.rowIndex && selectedCell.colKey === 'email') {
+                  document.getElementById('error-container')!.textContent = `Account ${row.data.email} does not exist`;
+                }
+              }, 2000);
+            }
           }
+        },
+        onCellSelected: (_rowIndex: number, colKey: string, rowData: DataRow) => {
+          document.getElementById('error-container')!.textContent = rowData[`error:${colKey}`] || '';
         },
         verbose: true,
       }

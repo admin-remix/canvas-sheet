@@ -1,5 +1,3 @@
-// src/dimension-calculator.ts
-
 import { RequiredSpreadsheetOptions } from './types';
 import { StateManager } from './state-manager';
 import { log } from './utils';

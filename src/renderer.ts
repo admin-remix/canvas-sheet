@@ -1,22 +1,17 @@
-// src/renderer.ts
-
 import {
     RequiredSpreadsheetOptions,
-    DataRow,
-    ColumnSchema,
     CellBounds,
-    CellCoords
 } from './types';
 import { StateManager } from './state-manager';
 import { DimensionCalculator } from './dimension-calculator';
 import { formatValue } from './utils';
-import { DISABLED_FIELD_PREFIX } from './config';
 
 export class Renderer {
     private ctx: CanvasRenderingContext2D;
     private options: RequiredSpreadsheetOptions;
     private stateManager: StateManager;
     private dimensionCalculator: DimensionCalculator;
+    private temporaryErrors: Map<string, { expireAt: number }> = new Map();
 
     constructor(
         ctx: CanvasRenderingContext2D,
@@ -30,13 +25,38 @@ export class Renderer {
         this.dimensionCalculator = dimensionCalculator;
     }
 
+    /**
+     * Sets a temporary error indicator for a cell
+     * @param row Row index
+     * @param col Column index
+     */
+    public setTemporaryError(row: number, col: number): void {
+        const { temporaryErrorTimeout } = this.options;
+        // temporary error animation is disabled if timeout is not set
+        if (!temporaryErrorTimeout) return;
+        const key = `${row}:${col}`;
+        const expireAt = Date.now() + temporaryErrorTimeout;
+
+        // Add to temporary errors map
+        this.temporaryErrors.set(key, { expireAt });
+
+        // Set timeout to clear the error
+        setTimeout(() => {
+            this.temporaryErrors.delete(key);
+            this.draw(); // Redraw to update display
+        }, temporaryErrorTimeout);
+    }
+
     public draw(): void {
         this.ctx.save();
         this.ctx.font = this.options.font;
         this._clearCanvas();
 
+        // Clean up expired temporary errors before drawing
+        this._cleanupExpiredErrors();
+
         this.ctx.translate(-this.stateManager.getScrollLeft(), -this.stateManager.getScrollTop());
-        
+
         this._drawHeaders();
         this._drawRowNumbers();
         this._drawCells();
@@ -50,6 +70,15 @@ export class Renderer {
         // // Draw the corner box fixed relative to the viewport
         this._drawCornerBox();
         this.ctx.restore();
+    }
+
+    private _cleanupExpiredErrors(): void {
+        const now = Date.now();
+        for (const [key, { expireAt }] of this.temporaryErrors.entries()) {
+            if (now >= expireAt) {
+                this.temporaryErrors.delete(key);
+            }
+        }
     }
 
     private _clearCanvas(): void {
@@ -127,7 +156,7 @@ export class Renderer {
         this.ctx.font = headerFont;
         this.ctx.textAlign = headerTextAlign;
         this.ctx.textBaseline = "middle";
-        
+
 
         let currentX = this.dimensionCalculator.getColumnLeft(visibleColStart);
 
@@ -140,14 +169,14 @@ export class Renderer {
             const colWidth = columnWidths[col];
             const isColumnSelected = selectedColumn === col;
 
-            let customBgColor:string|null = null;
+            let customBgColor: string | null = null;
             // Highlight selected column headers or if custom column
             if (isColumnSelected) {
                 customBgColor = this.options.selectedHeaderBgColor; // Reuse the same color as selected row numbers
             } else if (colKey.startsWith('custom:')) {
                 customBgColor = this.options.customHeaderBgColor;
             }
-            if(customBgColor) {
+            if (customBgColor) {
                 this.ctx.fillStyle = customBgColor;
                 this.ctx.fillRect(currentX, 0, colWidth, headerHeight);
             }
@@ -155,12 +184,12 @@ export class Renderer {
             // Draw text centered in the column
             this.ctx.fillStyle = isColumnSelected ? this.options.selectedHeaderTextColor : headerTextColor;
             let textX = currentX + padding;
-            if(headerTextAlign === 'center') {
+            if (headerTextAlign === 'center') {
                 textX = currentX + colWidth / 2;
-            } else if(headerTextAlign === 'right') {
+            } else if (headerTextAlign === 'right') {
                 textX = currentX + colWidth - padding;
             }
-            if(!headerClipText) {
+            if (!headerClipText) {
                 this.ctx.fillText(
                     headerText,
                     textX,
@@ -366,6 +395,9 @@ export class Renderer {
                 const isColumnSelected = selectedColumn === col;
                 const isCellLoading = data[row]?.[`loading:${colKey}`];
 
+                // Check if this cell has a temporary error
+                const hasTemporaryError = this.temporaryErrors.has(`${row}:${col}`);
+
                 // Check if the current cell is within the selection range
                 const isInSelectionRange = selectionRange &&
                     row >= selectionRange.start.row! && row <= selectionRange.end.row! &&
@@ -388,7 +420,7 @@ export class Renderer {
                 if (isActive && !isEditing) { // 6. Active cell overrides everything (if not editing)
                     currentCellBg = activeCellBgColor;
                 }
-                if (currentCellError) { // 7. Error overrides everything
+                if (currentCellError || hasTemporaryError) { // 7. Error overrides everything
                     currentCellBg = errorCellBgColor;
                 }
 
@@ -410,11 +442,19 @@ export class Renderer {
                     if (isCellLoading) {
                         this.ctx.fillStyle = loadingTextColor;
                         this.ctx.fillText("(Loading...)", textX, textY, colWidth - padding * 2);
-                    }else{
+                    } else {
                         const value = data[row]?.[colKey];
-                        const formattedValue = formatValue(value, schemaCol?.type, schemaCol?.values);
+                        let formattedValue = formatValue(value, schemaCol?.type, schemaCol?.values);
+                        if (!formattedValue && currentCellError) {
+                            formattedValue = `${currentCellError}`.includes('required') ? '(required)' : currentCellError;
+                        }
                         if (formattedValue !== null && formattedValue !== undefined && formattedValue !== '') {
-                            this.ctx.fillStyle = isDisabled ? disabledCellTextColor : isEditing ? placeholderTextColor : currentCellError ? errorTextColor : textColor;
+                            // Apply error text color for both permanent and temporary errors
+                            this.ctx.fillStyle = isDisabled ? disabledCellTextColor :
+                                isEditing ? placeholderTextColor :
+                                    (currentCellError || hasTemporaryError) ? errorTextColor :
+                                        textColor;
+
                             if (textAlign === 'center') {
                                 textX = currentX + colWidth / 2;
                             } else if (textAlign === 'right') {
@@ -539,7 +579,7 @@ export class Renderer {
 
         // Draw the main highlight border
         if (primaryHighlightBounds) {
-             this.ctx.strokeRect(
+            this.ctx.strokeRect(
                 primaryHighlightBounds.x + 1, // Offset slightly for inside border
                 primaryHighlightBounds.y + 1,
                 primaryHighlightBounds.width - 2,
@@ -589,14 +629,14 @@ export class Renderer {
 
         // Determine if we're dragging down or up
         const isDraggingDown = endRow >= startRow;
-        
+
         let dragStartY, dragRangeHeight;
-        
+
         if (isDraggingDown) {
             // Dragging downward - start from bottom of start cell
             const startRowY = this.dimensionCalculator.getRowTop(startRow);
             dragStartY = startRowY + rowHeights[startRow];
-            
+
             // Calculate height from rows after start row to end row (inclusive)
             dragRangeHeight = 0;
             for (let r = startRow + 1; r <= endRow; r++) {
@@ -606,7 +646,7 @@ export class Renderer {
         } else {
             // Dragging upward - start from top of end row
             dragStartY = this.dimensionCalculator.getRowTop(endRow);
-            
+
             // Calculate height from end row to the row before start row (inclusive)
             dragRangeHeight = 0;
             for (let r = endRow; r < startRow; r++) {
@@ -649,8 +689,8 @@ export class Renderer {
 
         if (copiedRange) {
             // Highlight copied range
-            const startBounds = this.getCellBounds(copiedRange.start.row!, copiedRange.start.col!); 
-            const endBounds = this.getCellBounds(copiedRange.end.row!, copiedRange.end.col!);     
+            const startBounds = this.getCellBounds(copiedRange.start.row!, copiedRange.start.col!);
+            const endBounds = this.getCellBounds(copiedRange.end.row!, copiedRange.end.col!);
             if (startBounds && endBounds) {
                 highlightBounds = {
                     x: startBounds.x,
@@ -661,7 +701,7 @@ export class Renderer {
             }
         } else if (copiedCell && copiedCell.row !== null && copiedCell.col !== null) {
             // Highlight single copied cell
-             highlightBounds = this.getCellBounds(copiedCell.row, copiedCell.col);
+            highlightBounds = this.getCellBounds(copiedCell.row, copiedCell.col);
         }
 
         if (!highlightBounds) return; // Bounds not visible or invalid
@@ -673,9 +713,9 @@ export class Renderer {
 
         // Draw dashed border slightly inside bounds for better alignment
         this.ctx.strokeRect(
-            highlightBounds.x + 0.5, 
-            highlightBounds.y + 0.5, 
-            highlightBounds.width - 1, 
+            highlightBounds.x + 0.5,
+            highlightBounds.y + 0.5,
+            highlightBounds.width - 1,
             highlightBounds.height - 1
         );
 
@@ -688,17 +728,17 @@ export class Renderer {
         const { highlightBorderColor } = this.options;
         const totalContentHeight = this.stateManager.getTotalContentHeight();
         const columnWidths = this.stateManager.getColumnWidths();
-        
+
         // Get column position and width
         const columnLeft = this.dimensionCalculator.getColumnLeft(selectedColumn);
         const columnWidth = columnWidths[selectedColumn];
-        
+
         if (!columnWidth) return;
-        
+
         this.ctx.save();
         this.ctx.strokeStyle = highlightBorderColor; // Blue border color
         this.ctx.lineWidth = 2;
-        
+
         // Draw border around the entire column
         this.ctx.strokeRect(
             columnLeft + 1,
@@ -706,7 +746,7 @@ export class Renderer {
             columnWidth - 2,
             totalContentHeight - 2
         );
-        
+
         this.ctx.restore();
     }
 
@@ -826,8 +866,8 @@ export class Renderer {
         const handleRadius = fillHandleSize / 2;
 
         // Calculate center based on viewport coordinates from getCellBounds
-        const handleCenterX = cellBounds.x + cellBounds.width - handleRadius -1; // Slightly inside
-        const handleCenterY = cellBounds.y + cellBounds.height - handleRadius -1;
+        const handleCenterX = cellBounds.x + cellBounds.width - handleRadius - 1; // Slightly inside
+        const handleCenterY = cellBounds.y + cellBounds.height - handleRadius - 1;
 
         // Return bounds centered around the calculated center point
         return {

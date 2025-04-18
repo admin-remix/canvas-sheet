@@ -1,5 +1,3 @@
-// src/dom-manager.ts
-
 export class DomManager {
     private container: HTMLElement;
     private canvas: HTMLCanvasElement;
@@ -20,7 +18,7 @@ export class DomManager {
         this.systemScrollbarWidth = this.getSystemScrollbarWidth() + 1;
         // Canvas setup
         this.canvas = document.createElement('canvas');
-        
+
         const ctx = this.canvas.getContext('2d');
         if (!ctx) {
             throw new Error("Failed to get 2D context from canvas");
@@ -122,7 +120,7 @@ export class DomManager {
         this.container.setAttribute('data-height', `${height}`);
         this.hScrollbar.innerHTML = `<div class="placeholder" style="width: ${width}px; height: 1px;"></div>`;
         this.vScrollbar.innerHTML = `<div class="placeholder" style="width: 1px; height: ${height}px;"></div>`;
-        
+
         const canvasWidth = this.container.clientWidth - this.systemScrollbarWidth;
         const canvasHeight = this.container.clientHeight - this.systemScrollbarWidth;
         this.canvas.width = canvasWidth;
