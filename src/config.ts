@@ -43,6 +43,7 @@ export const DEFAULT_OPTIONS: RequiredSpreadsheetOptions = {
     copyHighlightBorderDash: [4, 3], // Dash pattern (e.g., [dashLength, gapLength])
     resizeHandleSize: 5,
     temporaryErrorTimeout: 2000,
+    customDatePicker: false,
     verbose: false,
 };
 

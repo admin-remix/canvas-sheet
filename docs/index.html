@@ -51,8 +51,9 @@
         display: block;
       }
     </style>
-    <script type="module" crossorigin src="./assets/index-DQhd5Rle.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-DTd2RFhv.css">
+    <script type="module" crossorigin src="./assets/index.html-Cs1rYYY8.js"></script>
+    <link rel="modulepreload" crossorigin href="./assets/spreadsheet-Do2pMhK_.js">
+    <link rel="stylesheet" crossorigin href="./assets/spreadsheet-DTd2RFhv.css">
   </head>
   <body class="p-4 bg-gray-100">
     <aside
@@ -151,6 +152,32 @@
           </li>
           <li>
             <a
+              href="custom-datepicker.html"
+              class="flex items-center p-2 text-gray-900 rounded-lg dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700 group"
+            >
+              <svg
+                class="w-5 h-5 text-gray-800 dark:text-white"
+                aria-hidden="true"
+                xmlns="http://www.w3.org/2000/svg"
+                width="24"
+                height="24"
+                fill="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  fill-rule="evenodd"
+                  d="M18 5.05h1a2 2 0 0 1 2 2v2H3v-2a2 2 0 0 1 2-2h1v-1a1 1 0 1 1 2 0v1h3v-1a1 1 0 1 1 2 0v1h3v-1a1 1 0 1 1 2 0v1Zm-15 6v8a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-8H3ZM11 18a1 1 0 1 0 2 0v-1h1a1 1 0 1 0 0-2h-1v-1a1 1 0 1 0-2 0v1h-1a1 1 0 1 0 0 2h1v1Z"
+                  clip-rule="evenodd"
+                />
+              </svg>
+
+              <span class="flex-1 ms-3 whitespace-nowrap"
+                >Custom Date Picker</span
+              >
+            </a>
+          </li>
+          <li>
+            <a
               href="?bigdata=1"
               class="flex items-center p-2 text-gray-900 rounded-lg dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700 group"
             >
@@ -233,6 +260,7 @@
       <p>Showing (<span id="data-size">...</span>) rows</p>
       <div id="spreadsheet-container" class="spreadsheet-container"></div>
       <div id="error-container" class="mt-4 text-red-500"></div>
+      <input type="text" id="input-test" />
     </div>
     <script>
       document.addEventListener("DOMContentLoaded", () => {

@@ -134,6 +134,17 @@ export class Spreadsheet {
         return row;
     }
 
+    public focus() {
+        this.domManager.focusContainer();
+    }
+    public setValueFromCustomEditor(rowIndex: number, colKey: string, value: any) {
+        this.focus()
+        if (this.editingManager.isEditorActive()) {
+            this.editingManager.deactivateEditor(false, true);
+        }
+        this.updateCell(rowIndex, colKey, value);
+    }
+
     // --- Helper to expose redrawing for managers ---
     public redraw(): void {
         this.draw();

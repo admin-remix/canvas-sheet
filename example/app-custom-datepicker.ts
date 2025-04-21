@@ -325,6 +325,25 @@ const sampleData = !window.location.search.includes('bigdata') ? [
 function updateRowSizeText(length: number) {
   document.getElementById('data-size')!.textContent = length.toString();
 }
+let selectedCellForEditor: { rowIndex: number, colKey: string, rowData: DataRow, bounds: CellBounds } | null = null;
+function toggleModal(show: boolean) {
+  const modal = document.getElementById('modal-container')!;
+  if (show) {
+    modal.classList.remove('hidden');
+  } else {
+    modal.classList.add('hidden');
+  }
+}
+function openDatePicker(rowIndex: number, colKey: string, rowData: DataRow, bounds: CellBounds) {
+  selectedCellForEditor = { rowIndex, colKey, rowData, bounds };
+  const datePicker = document.getElementById('date-picker') as HTMLInputElement;
+  datePicker.value = rowData[colKey] as string;
+  toggleModal(true);
+  setTimeout(() => {
+    datePicker.focus();
+    datePicker.showPicker();
+  }, 100);
+}
 // --- Instantiate the Spreadsheet ---
 document.addEventListener("DOMContentLoaded", () => {
   updateRowSizeText(sampleData.length);
@@ -358,6 +377,14 @@ document.addEventListener("DOMContentLoaded", () => {
         onCellSelected: (_rowIndex: number, colKey: string, rowData: DataRow) => {
           document.getElementById('error-container')!.textContent = rowData[`error:${colKey}`] || '';
         },
+        onRowDeleted: (rows: DataRow[]) => {
+          updateRowSizeText(spreadsheet?.getData().length || 0);
+          console.log("deleted rows", rows);
+        },
+        customDatePicker: true,
+        onEditorOpen: (rowIndex: number, colKey: string, rowData: DataRow, bounds: CellBounds) => {
+          openDatePicker(rowIndex, colKey, rowData, bounds);
+        },
         verbose: true,
       }
     );
@@ -379,5 +406,14 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   document.getElementById("add-column")?.addEventListener("click", () => {
     spreadsheet?.addColumn("new-column", { type: "text", label: "New Column" });
+  });
+  document.getElementById('close-modal')?.addEventListener("click", () => {
+    toggleModal(false);
+    const datePicker = document.getElementById('date-picker') as HTMLInputElement;
+    console.log("datePicker", datePicker.value);
+    setTimeout(() => {
+      if (!selectedCellForEditor) return;
+      spreadsheet?.setValueFromCustomEditor(selectedCellForEditor.rowIndex, selectedCellForEditor.colKey, datePicker.value);
+    }, 100);
   });
 });

@@ -22,6 +22,12 @@ export default defineConfig({
     sourcemap: false, // Generate source maps for the production build
     // Empty the output directory before building
     emptyOutDir: true,
+    rollupOptions: {
+      input: {
+        "index.html": path.resolve(__dirname, 'example/index.html'),
+        "custom-datepicker.html": path.resolve(__dirname, 'example/custom-datepicker.html'),
+      }
+    }
   },
 
   // --- Resolve aliases to make imports cleaner ---

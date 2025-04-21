@@ -106,6 +106,7 @@ export interface SpreadsheetOptions {
     copyHighlightBorderColor?: string;
     copyHighlightBorderDash?: number[];
     temporaryErrorTimeout?: number;
+    customDatePicker?: boolean;
     verbose?: boolean;
 }
 
@@ -118,6 +119,8 @@ export interface CellUpdateEvent {
 interface SpreadsheetEvents {
     onCellsUpdate?: (rows: CellUpdateEvent[]) => void;
     onCellSelected?: (rowIndex: number, colKey: string, rowData: DataRow) => void;
+    onEditorOpen?: (rowIndex: number, colKey: string, rowData: DataRow, bounds: CellBounds) => void;
+    onRowDeleted?: (rows: DataRow[]) => void;
 }
 
 // Required version of options for internal use

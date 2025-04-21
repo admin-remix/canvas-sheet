@@ -152,6 +152,19 @@ export class DomManager {
         return this.vScrollbar.scrollTop;
     }
 
+    public canVScrollUp(): boolean {
+        return this.vScrollbar.scrollTop > 0;
+    }
+    public canVScrollDown(): boolean {
+        return this.vScrollbar.scrollTop + this.vScrollbar.clientHeight < this.vScrollbar.scrollHeight;
+    }
+    public canHScrollRight(): boolean {
+        return this.hScrollbar.scrollLeft + this.hScrollbar.clientWidth < this.hScrollbar.scrollWidth;
+    }
+    public canHScrollLeft(): boolean {
+        return this.hScrollbar.scrollLeft > 0;
+    }
+
     public getCanvas(): HTMLCanvasElement {
         return this.canvas;
     }

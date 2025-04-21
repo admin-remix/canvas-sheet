@@ -71,16 +71,22 @@ export class EditingManager {
     }
 
     public activateEditor(rowIndex: number, colIndex: number, initialChar?: string): void {
+        const { customDatePicker, verbose, font, onEditorOpen } = this.options;
+
         const colKey = this.stateManager.getColumnKey(colIndex);
         const rowData = this.stateManager.getRowData(rowIndex);
+        if (!rowData) {
+            log('warn', verbose, `Cannot activate editor: Cell ${rowIndex},${colIndex} row data not found.`);
+            return;
+        }
         // If the cell is loading, prevent editing
         if (rowData?.[`loading:${colKey}`]) {
-            log('log', this.options.verbose, `Edit prevented: Cell ${rowIndex},${colIndex} is loading.`);
+            log('log', verbose, `Edit prevented: Cell ${rowIndex},${colIndex} is loading.`);
             return;
         }
         // Should already be checked by event handler, but double-check
         if (this.stateManager.isCellDisabled(rowIndex, colIndex)) {
-            log('log', this.options.verbose, `Edit prevented: Cell ${rowIndex},${colIndex} is disabled.`);
+            log('log', verbose, `Edit prevented: Cell ${rowIndex},${colIndex} is disabled.`);
             return;
         }
 
@@ -91,9 +97,12 @@ export class EditingManager {
 
         const bounds = this.renderer.getCellBounds(rowIndex, colIndex);
         if (!bounds) {
-            log('warn', this.options.verbose, `Cannot activate editor: Cell ${rowIndex},${colIndex} bounds not found (likely not visible).`);
+            log('warn', verbose, `Cannot activate editor: Cell ${rowIndex},${colIndex} bounds not found (likely not visible).`);
             return;
         }
+        // check if the selected cell bound need to be scrolled into view
+        const { scrollLeft, scrollTop } = this.interactionManager.bringBoundsIntoView(bounds);
+
         const schema = this.stateManager.getSchemaForColumn(colIndex);
         const cellValue = rowData?.[colKey];
         this.stateManager.setActiveEditor({
@@ -105,10 +114,21 @@ export class EditingManager {
 
         const { x, y, width: editorWidth, height: editorHeight } = bounds;
         // because the canvas is translated, we need to subtract the scroll position
-        const editorX = x - this.stateManager.getScrollLeft();
-        const editorY = y - this.stateManager.getScrollTop();
+        const editorX = x - scrollLeft;
+        const editorY = y - scrollTop;
 
-        if (schema?.type === 'select' || schema?.type === 'boolean') {
+        if (schema?.type === 'date' && customDatePicker && onEditorOpen) {
+            try {
+                onEditorOpen(rowIndex, colKey, rowData, {
+                    x: editorX,
+                    y: editorY,
+                    width: editorWidth,
+                    height: editorHeight
+                });
+            } catch (error) {
+                log('error', verbose, `Error calling onEditorOpen: ${error}`);
+            }
+        } else if (schema?.type === 'select' || schema?.type === 'boolean') {
             this._showDropdown(rowIndex, colIndex, schema, editorX, editorY, editorWidth, editorHeight);
         } else {
             // Configure and show the text input editor
@@ -117,7 +137,7 @@ export class EditingManager {
             this.editorInput.style.top = `${editorY}px`;
             this.editorInput.style.width = `${editorWidth}px`;
             this.editorInput.style.height = `${editorHeight}px`;
-            this.editorInput.style.font = this.options.font;
+            this.editorInput.style.font = font;
 
             // Set input type based on schema
             if (schema?.type === 'number') {

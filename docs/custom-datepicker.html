@@ -51,6 +51,9 @@
         display: block;
       }
     </style>
+    <script type="module" crossorigin src="./assets/custom-datepicker.html-BjX3GTLn.js"></script>
+    <link rel="modulepreload" crossorigin href="./assets/spreadsheet-Do2pMhK_.js">
+    <link rel="stylesheet" crossorigin href="./assets/spreadsheet-DTd2RFhv.css">
   </head>
   <body class="p-4 bg-gray-100">
     <aside
@@ -149,7 +152,7 @@
           </li>
           <li>
             <a
-              href="custom-datepicker.html"
+              href="index.html"
               class="flex items-center p-2 text-gray-900 rounded-lg dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700 group"
             >
               <svg
@@ -163,14 +166,12 @@
               >
                 <path
                   fill-rule="evenodd"
-                  d="M18 5.05h1a2 2 0 0 1 2 2v2H3v-2a2 2 0 0 1 2-2h1v-1a1 1 0 1 1 2 0v1h3v-1a1 1 0 1 1 2 0v1h3v-1a1 1 0 1 1 2 0v1Zm-15 6v8a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-8H3ZM11 18a1 1 0 1 0 2 0v-1h1a1 1 0 1 0 0-2h-1v-1a1 1 0 1 0-2 0v1h-1a1 1 0 1 0 0 2h1v1Z"
+                  d="M8.6 5.2A1 1 0 0 0 7 6v12a1 1 0 0 0 1.6.8l8-6a1 1 0 0 0 0-1.6l-8-6Z"
                   clip-rule="evenodd"
                 />
               </svg>
 
-              <span class="flex-1 ms-3 whitespace-nowrap"
-                >Custom Date Picker</span
-              >
+              <span class="flex-1 ms-3 whitespace-nowrap">Basic Usage</span>
             </a>
           </li>
           <li>
@@ -253,11 +254,35 @@
       </div>
     </aside>
     <div class="p-2 md:p-4 ml-0 md:ml-64" id="content">
-      <h2 class="text-2xl font-bold block lg:hidden">canvas-sheet</h2>
+      <h2 class="text-2xl font-bold">Custom date picker example</h2>
       <p>Showing (<span id="data-size">...</span>) rows</p>
       <div id="spreadsheet-container" class="spreadsheet-container"></div>
       <div id="error-container" class="mt-4 text-red-500"></div>
-      <input type="text" id="input-test" />
+    </div>
+    <div
+      id="modal-container"
+      class="fixed top-0 left-0 w-full h-full bg-black bg-opacity-50 flex items-center justify-center hidden"
+    >
+      <div class="bg-white p-4 rounded-md">
+        <h2 class="text-2xl font-bold mb-2">Date Picker</h2>
+        <p class="text-gray-500 mb-4">Show your own date picker here</p>
+        <div class="flex items-center justify-center mb-4">
+          <p class="mr-2 font-bold">Date:</p>
+          <input
+            type="date"
+            id="date-picker"
+            class="border-2 border-gray-300 rounded-md p-2 h-10"
+          />
+        </div>
+        <div class="flex items-center justify-end">
+          <button
+            id="close-modal"
+            class="bg-blue-500 text-white p-2 rounded-md"
+          >
+            Save
+          </button>
+        </div>
+      </div>
     </div>
     <script>
       document.addEventListener("DOMContentLoaded", () => {
@@ -279,6 +304,5 @@
         });
       });
     </script>
-    <script type="module" src="app.js"></script>
   </body>
 </html>

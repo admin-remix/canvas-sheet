@@ -106,18 +106,17 @@ export class EventManager {
 
     // --- Event Handlers ---
     private _handleScroll() {
-        // Deactivate editor/dropdown immediately on scroll
-        this.editingManager.deactivateEditor(false); // Don't save changes on scroll
-        this.editingManager.hideDropdown();
-        // Recalculate visible range and redraw
-        this.dimensionCalculator.calculateVisibleRange();
-        this.renderer.draw();
+        this.interactionManager.onScroll();
     }
     private _handleWheel(event: WheelEvent): void {
         const amount = event.deltaY;
+        const horizontal = event.shiftKey;
+        // if we can't scroll the canvas, let the parent scroll
+        if (!this.interactionManager.canScrollMore(amount, !horizontal)) {
+            return;
+        }
         event.preventDefault();
-        const { scrollTop, scrollLeft } = this.interactionManager.moveScroll(event.shiftKey ? amount : 0, event.shiftKey ? 0 : amount);
-        this.stateManager.updateScroll(scrollTop, scrollLeft);
+        this.interactionManager.moveScroll(horizontal ? amount : 0, horizontal ? 0 : amount);
         this._handleScroll();
     }
     private _handleHScroll(event: Event) {
@@ -230,21 +229,6 @@ export class EventManager {
                 redrawNeeded = columnsChanged || copyCleared;
             }
         }
-        else if (isCellClick && coords && coords.row !== null) {
-            /////////////// This section is not used because of mouse up event handling
-            /////////////// TODO: cleanup unused code
-            const cellChanged = this.stateManager.setActiveCell(coords);
-            let rowsCleared = false;
-            let rangeCleared = false;
-            let columnsCleared = false;
-            // If cell changed, explicitly clear other selections
-            if (cellChanged) {
-                rowsCleared = this.interactionManager.clearSelections();
-                rangeCleared = this.stateManager.clearSelectionRange();
-            }
-            //const copyCleared = currentCopied ? this.interactionManager.clearCopiedCell() : false;
-            redrawNeeded = cellChanged || rowsCleared || rangeCleared;// || copyCleared;
-        }
         else {
             // Click outside
             const cellCleared = this.stateManager.setActiveCell(null);
@@ -337,11 +321,11 @@ export class EventManager {
     }
 
     private _handleDocumentMouseUp(event: MouseEvent): void {
-        let wasDraggingSelection = false;
+        let shouldIgnoreNextClick = false;
         // Order matters: check drag selection first
         const selectedCell = this.stateManager.getActiveCell();
         if (this.stateManager.getIsDraggingSelection()) {
-            wasDraggingSelection = true;
+            shouldIgnoreNextClick = true;
             this.interactionManager.endSelectionDrag();
         } else if (event.shiftKey && selectedCell && selectedCell.row !== null && selectedCell.col !== null) {
             // shift click to select a range
@@ -351,12 +335,13 @@ export class EventManager {
                 this.interactionManager.updateSelectionDrag(coords);
                 this.interactionManager.endSelectionDrag();
                 this.renderer.draw(); // redraw after selection drag is complete because no one else will draw
-                wasDraggingSelection = true;
+                shouldIgnoreNextClick = true;
                 log('log', this.options.verbose, `shift click received: ${selectedCell.row},${selectedCell.col} -> ${coords.row},${coords.col}`);
             }
         }
         if (this.stateManager.isResizing()) {
             this.interactionManager.endResize();
+            shouldIgnoreNextClick = true;
         }
         if (this.stateManager.isDraggingFillHandle()) {
             this.interactionManager.endFillHandleDrag(); // Handles redraw internally
@@ -366,7 +351,7 @@ export class EventManager {
         this.interactionManager.updateCursorStyle(event);
 
         // If we just finished a drag selection, ignore the next click event
-        if (wasDraggingSelection) {
+        if (shouldIgnoreNextClick) {
             this._ignoreNextClick = true;
         }
     }
@@ -375,7 +360,9 @@ export class EventManager {
     private _handleGlobalMouseDown(event: MouseEvent): void {
         if (this.stateManager.isDraggingFillHandle() || this.stateManager.isResizing() || this.stateManager.getIsDraggingSelection()) return;
 
-        if (!this.container.contains(event.target as Node)) {
+        // check mouse coordinates and focus on the container
+        if (!this.container.contains(event.target as Node) && document.activeElement === this.container) {
+            log('log', this.options.verbose, "Outside click on container");
             let needsRedraw = false;
             if (this.editingManager.isEditorActive() || this.editingManager.isDropdownVisible()) {
                 this.editingManager.deactivateEditor(true);
@@ -492,6 +479,14 @@ export class EventManager {
                 event.preventDefault();
             }
         } else if (event.key === 'Tab' && activeCell) {
+            if (document.activeElement !== this.container && !this.container.contains(document.activeElement as Node)) {
+                // revert tab focus back to the container
+                if (document.activeElement === document.body) {
+                    this.domManager.focusContainer();
+                }
+                // must return here because the active element is not the container
+                return;
+            }
             // moveActiveCell handles finding next cell, setting state, and activating editor (which redraws)
             redrawNeeded = this.interactionManager.moveActiveCell(0, event.shiftKey ? -1 : 1);
             // clear selections and selection range after moving
@@ -737,8 +732,7 @@ export class EventManager {
             }
 
             // Perform the scroll
-            const { scrollTop, scrollLeft } = this.interactionManager.moveScroll(deltaX, deltaY);
-            this.stateManager.updateScroll(scrollTop, scrollLeft);
+            this.interactionManager.moveScroll(deltaX, deltaY);
             this._handleScroll();
 
             // Update last positions and time
@@ -778,11 +772,10 @@ export class EventManager {
             }
 
             // Perform the scroll with the current velocity
-            const { scrollTop, scrollLeft } = this.interactionManager.moveScroll(
+            this.interactionManager.moveScroll(
                 this.touchVelocityX,
                 this.touchVelocityY
             );
-            this.stateManager.updateScroll(scrollTop, scrollLeft);
             this._handleScroll();
         }, 16); // ~60fps
     }

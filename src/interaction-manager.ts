@@ -3,7 +3,8 @@ import {
     CellCoords,
     DataType,
     ColumnSchema,
-    CellUpdateEvent
+    CellUpdateEvent,
+    CellBounds
 } from './types';
 import { StateManager } from './state-manager';
 import { Renderer } from './renderer';
@@ -20,6 +21,7 @@ export class InteractionManager {
     private domManager: DomManager;
     private editingManager!: EditingManager; // Use definite assignment assertion
     private lastPasteHandledAt: Date | null = null;// used to prevent multiple pastes in a row
+    private ignoreNextScrollTimeout: number | null = null;
 
     constructor(
         options: RequiredSpreadsheetOptions,
@@ -41,11 +43,71 @@ export class InteractionManager {
         this.editingManager = editingManager;
     }
 
-    public moveScroll(deltaX: number, deltaY: number, setScroll: boolean = false) {
+    public canScrollMore(delta: number, vertical: boolean): boolean {
+        if (vertical) {
+            return delta > 0 ? this.domManager.canVScrollDown() : this.domManager.canVScrollUp();
+        } else {
+            return delta > 0 ? this.domManager.canHScrollRight() : this.domManager.canHScrollLeft();
+        }
+    }
+    public moveScroll(deltaX: number, deltaY: number, isAbsolute: boolean = false): void {
+        const scrollTop = this.domManager.setVScrollPosition(isAbsolute ? deltaY : this.domManager.getVScrollPosition() + deltaY);
+        const scrollLeft = this.domManager.setHScrollPosition(isAbsolute ? deltaX : this.domManager.getHScrollPosition() + deltaX);
+        this.stateManager.updateScroll(scrollTop, scrollLeft);
+    }
+
+    public bringBoundsIntoView(bounds: CellBounds): { scrollLeft: number, scrollTop: number } {
+        const scrollLeft = this.domManager.getHScrollPosition();
+        const scrollTop = this.domManager.getVScrollPosition();
+        const canvasRect = this.domManager.getCanvasBoundingClientRect();
+        const boundsX = bounds.x - scrollLeft;
+        const boundsY = bounds.y - scrollTop;
+        const boundsWidth = bounds.width;
+        const boundsHeight = bounds.height;
+        let newScrollLeft = scrollLeft;
+        let newScrollTop = scrollTop;
+
+        if (boundsX < 0) {
+            newScrollLeft += boundsX;
+        } else if (boundsX + boundsWidth > canvasRect.width) {
+            newScrollLeft += boundsX + boundsWidth - canvasRect.width;
+        }
+
+        if (boundsY < 0) {
+            newScrollTop += boundsY;
+        } else if (boundsY + boundsHeight > canvasRect.height) {
+            newScrollTop += boundsY + boundsHeight - canvasRect.height;
+        }
+
+        if (newScrollLeft !== scrollLeft || newScrollTop !== scrollTop) {
+            this.moveScroll(newScrollLeft, newScrollTop, true);
+        }
+        this.ignoreNextScrollTimeout = null; // make sure we don't ignore our current scroll
+        this.onScroll(false);
+        this.ignoreNextScrollTimeout = setTimeout(() => {
+            this.ignoreNextScrollTimeout = null;
+        }, 10); // our manual scroll will trigger a new scroll event, so we need to ignore the next one
         return {
-            scrollTop: this.domManager.setVScrollPosition(setScroll ? deltaY : this.domManager.getVScrollPosition() + deltaY),
-            scrollLeft: this.domManager.setHScrollPosition(setScroll ? deltaX : this.domManager.getHScrollPosition() + deltaX)
+            scrollLeft: newScrollLeft,
+            scrollTop: newScrollTop,
         };
+    }
+
+    public onScroll(hideEditor: boolean = true) {
+        if (this.ignoreNextScrollTimeout) {
+            clearTimeout(this.ignoreNextScrollTimeout);
+            this.ignoreNextScrollTimeout = null;
+            return;
+        }
+        if (hideEditor) {
+            // Deactivate editor/dropdown immediately on scroll
+            this.editingManager.deactivateEditor(false); // Don't save changes on scroll
+            this.editingManager.hideDropdown();
+        }
+
+        // Recalculate visible range and redraw
+        this.dimensionCalculator.calculateVisibleRange();
+        this.renderer.draw();
     }
 
     // --- Row Selection ---
@@ -928,10 +990,16 @@ export class InteractionManager {
         const selectedRows = this.stateManager.getSelectedRows();
         if (selectedRows.size === 0) return false;
 
-        const rowsToDelete = Array.from(selectedRows).sort((a, b) => b - a);
+        const rowsToDelete = Array.from(selectedRows);
         log('log', this.options.verbose, "Deleting rows:", rowsToDelete);
 
+        const selectedRowData = rowsToDelete.map(rowIndex => this.stateManager.getRowData(rowIndex)!).filter(row => row);
         let deletedCount = this.stateManager.deleteRows(rowsToDelete);
+        try {
+            this.options.onRowDeleted?.(selectedRowData);
+        } catch (error) {
+            log('error', this.options.verbose, `Error calling onRowDeleted: ${error}`);
+        }
 
         if (deletedCount > 0) {
             this.clearSelections();

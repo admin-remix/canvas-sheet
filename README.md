@@ -120,6 +120,7 @@ const spreadsheet = new Spreadsheet(
   schema,
   data,
   {
+    // ... other options
     onCellsUpdate: (rows) => {
       // Example: Show loading and then error state for email fields from a certain domain
       for (const row of rows) {
@@ -140,6 +141,51 @@ const spreadsheet = new Spreadsheet(
     onCellSelected: (rowIndex, colKey, rowData) => {
       console.log('Selected', rowIndex, colKey, rowData[colKey]);
     },
+    // ... other options
+  }
+);
+```
+
+
+### Custom Date Picker Support
+
+The native date picker is used by default. Enable the `customDatePicker` option which will trigger the `onEditorOpen` callback each time a date field is opened. When user selects a date from your custom date picker, call the `setValueFromCustomEditor` method to set the value of the cell which restores focus to the spreadsheet automatically.
+
+```javascript
+let spreadsheet;
+let selectedCellForEditor;
+function openDatePicker(rowIndex: number, colKey: string, rowData: DataRow, bounds: CellBounds) {
+  selectedCellForEditor = { rowIndex, colKey, rowData, bounds };
+  const selectedDate = rowData[colKey];
+  const positionX = bounds.x;
+  const positionY = bounds.y;
+  const width = bounds.width;
+  const height = bounds.height;
+  console.log('open custom date picker', selectedDate, "at", {
+    positionX,
+    positionY,
+    width,
+    height
+  });
+  // or show a modal with a date picker
+}
+// call the "setValueFromCustomEditor" method to set the value of the cell after the date is selected
+function closeDatePicker(value: string) {
+  spreadsheet?.setValueFromCustomEditor(selectedCellForEditor.rowIndex, selectedCellForEditor.colKey, value);
+  selectedCellForEditor = null;
+}
+
+spreadsheet = new Spreadsheet(
+  "spreadsheet-container",
+  schema,
+  data,
+  {
+    // ... other options
+    customDatePicker: true,
+    onEditorOpen: (rowIndex: number, colKey: string, rowData: DataRow, bounds: CellBounds) => {
+      openDatePicker(rowIndex, colKey, rowData, bounds);
+    },
+    // ... other options
   }
 );
 ```
@@ -176,6 +222,10 @@ const options = {
   textAlign: 'left',
   padding: 8,
   verbose: false
+
+  // Custom date picker support
+  customDatePicker: false,
+  onEditorOpen: (rowIndex, colKey, rowData, bounds) => void,
 };
 ```
 

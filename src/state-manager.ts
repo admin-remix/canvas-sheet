@@ -530,9 +530,9 @@ export class StateManager {
     /** Updates disabled states for all rows */
     private _updateAllDisabledStates(): void {
         log('log', this.options.verbose, "Updating all disabled states...");
-        this.data.forEach((_, rowIndex) => {
+        for (let rowIndex = 0; rowIndex < this.data.length; rowIndex++) {
             this.updateDisabledStatesForRow(rowIndex);
-        });
+        }
         log('log', this.options.verbose, "Finished updating all disabled states.");
     }
 
