@@ -14,7 +14,7 @@ import { EditingManager } from './editing-manager';
 import { InteractionManager } from './interaction-manager';
 import { StateManager } from './state-manager';
 import { log } from './utils';
-export type { SpreadsheetSchema, DataRow, SpreadsheetOptions, ColumnSchema, CellUpdateEvent, CellBounds } from './types';
+export type * from './types';
 
 export class Spreadsheet {
     private container: HTMLElement;
@@ -76,7 +76,7 @@ export class Spreadsheet {
 
     private onDataUpdate(top: number = 0, left: number = 0) {
         // Need to re-initialize sizes, recalculate dimensions, and redraw
-        this.dimensionCalculator.initializeSizes(this.stateManager.getData().length);
+        this.dimensionCalculator.initializeSizes(this.stateManager.dataLength);
         this.domManager.updateCanvasSize(this.stateManager.getTotalContentWidth(), this.stateManager.getTotalContentHeight());
         this.dimensionCalculator.calculateDimensions(this.container.clientWidth, this.container.clientHeight);
         this.interactionManager.moveScroll(left, top, true);
@@ -121,6 +121,32 @@ export class Spreadsheet {
         }
         if (redrawNeeded) this.draw();
     }
+    /**
+     * Update multiple cells at once
+     * @param inputs - An array of objects with rowIndex, colKey, and updated value properties
+     * @returns An array of row indices that were updated
+     */
+    public updateCells(inputs: { rowIndex: number, colKey: string, value: any }[]): number[] {
+        let redrawNeeded = false;
+        const updatedRows = new Set<number>();
+        for (const { rowIndex, colKey, value } of inputs) {
+            try {
+                const updated = this.stateManager.updateCell(rowIndex, colKey, value, true);
+                if (!updated) continue;
+                updatedRows.add(rowIndex);
+                redrawNeeded = true;
+            } catch (error: unknown) {
+                if (error instanceof ValidationError) {
+                    this.stateManager.updateCell(rowIndex, `error:${colKey}`, error.message);
+                    redrawNeeded = true;
+                } else {
+                    log('warn', this.options.verbose, error);
+                }
+            }
+        }
+        if (redrawNeeded) this.draw();
+        return Array.from(updatedRows);
+    }
 
     public getSelectedCell(): { row: number, colKey: string } | null {
         const cell = this.stateManager.getActiveCell();
@@ -131,7 +157,7 @@ export class Spreadsheet {
     public getRow(rowIndex: number): DataRow | null {
         const row = this.stateManager.getRowData(rowIndex);
         if (!row) return null;
-        return row;
+        return JSON.parse(JSON.stringify(row));// Deep copy
     }
 
     public focus() {

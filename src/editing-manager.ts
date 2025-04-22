@@ -294,21 +294,21 @@ export class EditingManager {
     ): Promise<void> {
         this.dropdownItems = [];
         this.dropdownList.innerHTML = ''; // Clear previous items
-        const defaultValue = { id: null, name: '(Blank)' };
+        const defaultValues = schemaCol?.nullable ? [{ id: null, name: '(Blank)' }] : [];
         // Populate dropdown items based on type
         if (schemaCol?.type === 'boolean') {
             this.dropdownItems = [
                 { id: true, name: 'True' },
                 { id: false, name: 'False' },
-                defaultValue, // Option for clearing the value
+                ...defaultValues, // Option for clearing the value if nullable
             ];
         } else if (schemaCol?.type === 'select' && (schemaCol.values || schemaCol.filterValues)) {
             const filterValues = schemaCol.filterValues?.(this.stateManager.getRowData(rowIndex) || {}, rowIndex);
             if (!filterValues) {
-                this.dropdownItems = [defaultValue, ...(schemaCol.values || [])];
+                this.dropdownItems = [...defaultValues, ...(schemaCol.values || [])];
             } else {
                 const filterValuesResult = await filterValues;
-                this.dropdownItems = [defaultValue, ...(filterValuesResult || [])];
+                this.dropdownItems = [...defaultValues, ...(filterValuesResult || [])];
             }
         } else {
             log('warn', this.options.verbose, `Dropdown requested for non-dropdown type: ${schemaCol?.type}`);
@@ -318,7 +318,7 @@ export class EditingManager {
         // Create list elements
         this.dropdownItems.forEach((item, index) => {
             const li = document.createElement('li');
-            li.className = `spreadsheet-dropdown-item${item.id === null && item.name === '(Blank)' ? ' spreadsheet-dropdown-item-blank' : ''}`;
+            li.className = `spreadsheet-dropdown-item${item.id === null ? ' spreadsheet-dropdown-item-blank' : ''}`;
             li.textContent = item.name;
             li.dataset.index = String(index);
             // Store the actual ID value (could be boolean, number, string, null)

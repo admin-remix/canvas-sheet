@@ -7,7 +7,7 @@ export function log(type: 'log' | 'warn' | 'error', verbose: boolean, ...args: a
 }
 
 /** Format cell value for display */
-export function formatValue(value: any, type?: DataType, selectOptions?: SelectOption[]): string {
+export function formatValue(value: any, type?: DataType, cachedDropdownOptions?: Map<string | number, string>): string {
     if (value === null || value === undefined) return "";
 
     switch (type) {
@@ -29,9 +29,9 @@ export function formatValue(value: any, type?: DataType, selectOptions?: SelectO
         case 'boolean':
             return value === true ? "True" : value === false ? "False" : "";
         case 'select':
-            if (selectOptions) {
-                const selectedOption = selectOptions.find(v => v.id === value);
-                return selectedOption ? selectedOption.name : "";
+            if (cachedDropdownOptions) {
+                const selectedOption = cachedDropdownOptions.get(value);
+                return selectedOption ? selectedOption : "";
             }
             return ""; // Fallback if no options provided
         case 'number':

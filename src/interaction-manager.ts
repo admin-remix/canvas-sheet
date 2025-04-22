@@ -207,9 +207,9 @@ export class InteractionManager {
         const viewportY = event.clientY - rect.top;
         const contentX = viewportX + this.stateManager.getScrollLeft();
         const contentY = viewportY + this.stateManager.getScrollTop();
-        const { headerHeight, rowNumberWidth, resizeHandleSize } = this.options;
+        const { headerHeight, rowNumberWidth, resizeHandleSize, defaultRowHeight } = this.options;
         const columns = this.stateManager.getColumns();
-        const data = this.stateManager.getData();
+        const dataLength = this.stateManager.dataLength;
         const columnWidths = this.stateManager.getColumnWidths();
         const rowHeights = this.stateManager.getRowHeights();
 
@@ -230,8 +230,8 @@ export class InteractionManager {
         // Check Row Resize Handles (in row number area)
         if (contentX < rowNumberWidth && contentY > headerHeight) {
             let currentY = headerHeight;
-            for (let row = 0; row < data.length; row++) {
-                const rowHeight = rowHeights[row];
+            for (let row = 0; row < dataLength; row++) {
+                const rowHeight = rowHeights.get(row) || defaultRowHeight;
                 const borderY = currentY + rowHeight;
                 if (Math.abs(contentY - borderY) <= resizeHandleSize) {
                     this._startRowResize(row, event.clientY);
@@ -291,17 +291,14 @@ export class InteractionManager {
         } else if (rowResizeState.isResizing && rowResizeState.rowIndex !== null && rowResizeState.startY !== null) {
             const { minRowHeight, maxRowHeight } = this.options;
             const deltaY = event.clientY - rowResizeState.startY;
-            const originalHeights = this.stateManager.getRowHeights();
             const rowIndex = rowResizeState.rowIndex;
-            const originalHeight = originalHeights[rowIndex];
+            const originalHeight = this.stateManager.getRowHeight(rowIndex);
             let newHeight = originalHeight + deltaY;
 
             newHeight = Math.max(minRowHeight, Math.min(newHeight, maxRowHeight));
 
             if (newHeight !== originalHeight) {
-                const newHeights = [...originalHeights];
-                newHeights[rowIndex] = newHeight;
-                this.stateManager.setRowHeights(newHeights);
+                this.stateManager.setRowHeight(rowIndex, newHeight);
                 this.stateManager.setResizeRowState({ ...rowResizeState, startY: event.clientY }); // Update startY
                 this.dimensionCalculator.calculateTotalSize();
                 this.dimensionCalculator.calculateVisibleRange();
@@ -320,7 +317,7 @@ export class InteractionManager {
             this.stateManager.setResizeColumnState({ isResizing: false, columnIndex: null, startX: null });
         }
         if (rowResizeState.isResizing) {
-            log('log', this.options.verbose, `Finished row resize for index ${rowResizeState.rowIndex}. New height: ${this.stateManager.getRowHeights()[rowResizeState.rowIndex!]}`);
+            log('log', this.options.verbose, `Finished row resize for index ${rowResizeState.rowIndex}. New height: ${this.stateManager.getRowHeight(rowResizeState.rowIndex!)}`);
             this.stateManager.setResizeRowState({ isResizing: false, rowIndex: null, startY: null });
         }
         // Cursor update is handled by mouse move/up handler
@@ -335,9 +332,9 @@ export class InteractionManager {
         const viewportY = event.clientY - rect.top;
         const contentX = viewportX + scrollLeft;
         const contentY = viewportY + scrollTop;
-        const { headerHeight, rowNumberWidth, resizeHandleSize } = this.options;
+        const { headerHeight, rowNumberWidth, resizeHandleSize, defaultRowHeight } = this.options;
         const columns = this.stateManager.getColumns();
-        const data = this.stateManager.getData();
+        const dataLength = this.stateManager.dataLength;
         const columnWidths = this.stateManager.getColumnWidths();
         const rowHeights = this.stateManager.getRowHeights();
 
@@ -360,8 +357,8 @@ export class InteractionManager {
         // Check Row Resize Handles
         if (newCursor === 'default' && contentX < rowNumberWidth && contentY > headerHeight && scrollLeft < rowNumberWidth) {
             let currentY = headerHeight;
-            for (let row = 0; row < data.length; row++) {
-                const borderY = currentY + rowHeights[row];
+            for (let row = 0; row < dataLength; row++) {
+                const borderY = currentY + (rowHeights.get(row) || defaultRowHeight);
                 if (Math.abs(contentY - borderY) <= resizeHandleSize) {
                     newCursor = 'row-resize';
                     break;
@@ -427,14 +424,14 @@ export class InteractionManager {
 
         const rect = this.domManager.getCanvasBoundingClientRect();
         const viewportY = event.clientY - rect.top + this.stateManager.getScrollTop();
-        const headerHeight = this.options.headerHeight;
+        const { headerHeight, defaultRowHeight } = this.options;
         const rowHeights = this.stateManager.getRowHeights();
-        const dataLength = this.stateManager.getData().length;
+        const dataLength = this.stateManager.dataLength;
 
         let targetRow: number | null = null;
         let currentY = headerHeight;
         for (let i = 0; i < dataLength; i++) {
-            const rowHeight = rowHeights[i];
+            const rowHeight = rowHeights.get(i) || defaultRowHeight;
             if (viewportY >= currentY && viewportY < currentY + rowHeight) {
                 targetRow = i;
                 break;
@@ -497,7 +494,7 @@ export class InteractionManager {
         const sourceColumnKey = this.stateManager.getColumnKey(startCol);
         const sourceType = sourceSchema?.type;
         let changed = false;
-        const dataLength = this.stateManager.getData().length; // Cache length
+        const dataLength = this.stateManager.dataLength; // Cache length
 
         // Determine direction and set proper loop bounds
         const isFillingDown = endRow >= startRow;
@@ -843,7 +840,7 @@ export class InteractionManager {
         const numRowsToPaste = rangeData.length;
         const numColsToPaste = rangeData[0]?.length || 0;
         let changed = false;
-        const totalRows = this.stateManager.getData().length;
+        const totalRows = this.stateManager.dataLength;
         const totalCols = this.stateManager.getColumns().length;
         const affectedRows: number[] = [];
         const affectedColumns = new Set<string>();
@@ -1007,7 +1004,7 @@ export class InteractionManager {
             this.clearCopiedCell();
 
             // Recalculate everything after deletion
-            this.dimensionCalculator.initializeSizes(this.stateManager.getData().length);
+            this.dimensionCalculator.initializeSizes(this.stateManager.dataLength);
             this.dimensionCalculator.calculateDimensions(this.stateManager.getViewportWidth(), this.stateManager.getViewportHeight());
             this.domManager.updateCanvasSize(this.stateManager.getTotalContentWidth(), this.stateManager.getTotalContentHeight());
             return true; // Indicate redraw needed
@@ -1081,7 +1078,7 @@ export class InteractionManager {
 
         let currentRow = currentActiveCell.row;
         let currentCol = currentActiveCell.col;
-        const numRows = this.stateManager.getData().length;
+        const numRows = this.stateManager.dataLength;
         const numCols = this.stateManager.getColumns().length;
 
         // Simple move first
@@ -1178,7 +1175,7 @@ export class InteractionManager {
         const numRowsToPaste = rangeData.length;
         const numColsToPaste = rangeData[0]?.length || 0;
         let changed = false;
-        const totalRows = this.stateManager.getData().length;
+        const totalRows = this.stateManager.dataLength;
         const totalCols = this.stateManager.getColumns().length;
         const affectedRows: number[] = [];
         const affectedColumns = new Set<string>();
@@ -1315,7 +1312,7 @@ export class InteractionManager {
     public pasteToColumnExternal(columnIndex: number, value: string): boolean {
         log('log', this.options.verbose, `External paste to entire column ${columnIndex}`);
         const schemaColumn = this.stateManager.getSchemaForColumn(columnIndex);
-        const data = this.stateManager.getData();
+        const dataLength = this.stateManager.dataLength;
         let changedAny = false;
 
         if (value === undefined || value === null) {
@@ -1327,7 +1324,7 @@ export class InteractionManager {
         const convertedValue = this._convertValueForTargetType(value, schemaColumn);
         // Apply to all cells in the column
         const affectedRows: number[] = [];
-        for (let rowIndex = 0; rowIndex < data.length; rowIndex++) {
+        for (let rowIndex = 0; rowIndex < dataLength; rowIndex++) {
             // Skip disabled cells
             if (this.stateManager.isCellDisabled(rowIndex, columnIndex)) continue;
 

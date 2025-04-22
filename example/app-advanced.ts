@@ -1,6 +1,14 @@
-import { DataRow, Spreadsheet, SpreadsheetSchema, CellUpdateEvent, CellBounds } from "canvas-sheet";
+import { DataRow, Spreadsheet, SpreadsheetSchema, CellUpdateEvent, CellBounds, BulkSearchDropdownEvent, BulkSearchDropdownResponse } from "canvas-sheet";
 import "@/spreadsheet.css"; // basic styles
 
+const DOMAINS = [
+  "example.com",
+  "sample.net",
+  "testing.org",
+  "sample.com",
+  "testing.net",
+  "example.net"
+]
 const LOCATIONS = [
   { id: 1, name: "New York" },
   { id: 2, name: "London" },
@@ -76,7 +84,10 @@ const schema: SpreadsheetSchema = {
     },
     // custom dropdown filtering logic
     filterValues: (rowData: DataRow) => {
-      return DEPARTMENTS.filter(d => !d.locationId || d.locationId === rowData.locationId);
+      return [
+        { id: null, name: '(Empty)' },
+        ...DEPARTMENTS.filter(d => !d.locationId || d.locationId === rowData.locationId)
+      ];
     },
   },
   // checkoutId: {
@@ -85,7 +96,7 @@ const schema: SpreadsheetSchema = {
   //   filterValues: (rowData: DataRow) => {
   //     return getAsyncData(rowData);
   // },
-  isRestricted: { type: "boolean", label: "Restricted" },
+  isRestricted: { type: "boolean", label: "Restricted", nullable: true },
   salary: { type: "number", label: "Salary" },
   notes: { type: "text", label: "Notes" },
 };
@@ -106,12 +117,12 @@ function generateRandomData(numRows: number): DataRow[] {
     return {
       id: i + 1,
       name: `Person ${i + 1}`,
-      email: `person${i + 1}@example.com`,
+      email: `person${i + 1}@${DOMAINS[Math.floor(Math.random() * DOMAINS.length)]}`,
       dob: Math.random() < 0.5 ? null : new Date(Math.floor(Math.random() * 10000000000)).toISOString().split('T')[0],
       locationId,
       departmentId,
       isRestricted: Math.random() < 0.5,
-      salary: Math.floor(Math.random() * 100000) + 50000,
+      salary: Math.floor(Math.random() * 100000) + 10000,
       notes: `Notes for Person ${i + 1}`,
     }
   });
@@ -412,24 +423,14 @@ const sampleData = !window.location.search.includes('bigdata') ? [
 function updateRowSizeText(length: number) {
   document.getElementById('data-size')!.textContent = length.toString();
 }
-let selectedCellForEditor: { rowIndex: number, colKey: string, rowData: DataRow, bounds: CellBounds } | null = null;
-function toggleModal(show: boolean) {
-  const modal = document.getElementById('modal-container')!;
-  if (show) {
-    modal.classList.remove('hidden');
-  } else {
-    modal.classList.add('hidden');
-  }
-}
-function openDatePicker(rowIndex: number, colKey: string, rowData: DataRow, bounds: CellBounds) {
-  selectedCellForEditor = { rowIndex, colKey, rowData, bounds };
-  const datePicker = document.getElementById('date-picker') as HTMLInputElement;
-  datePicker.value = rowData[colKey] as string;
-  toggleModal(true);
-  setTimeout(() => {
-    datePicker.focus();
-    datePicker.showPicker();
-  }, 100);
+
+async function getBulkSearchDropdown(events: BulkSearchDropdownEvent[]) {
+  return events.map(event => {
+    return {
+      colKey: event.colKey,
+      values: [],
+    };
+  });
 }
 // --- Instantiate the Spreadsheet ---
 document.addEventListener("DOMContentLoaded", () => {
@@ -445,19 +446,27 @@ document.addEventListener("DOMContentLoaded", () => {
         // cellWidth: 180,
         selectedRowBgColor: '#e0e7ff', // light-blue
         onCellsUpdate: (rows: CellUpdateEvent[]) => {
+          // selected cell returns row index and column key
+          const selectedCell = spreadsheet?.getSelectedCell();
           // custom loading and error state with a specific column updated value checking
           for (const row of rows) {
             if (row.columnKeys.includes('email') && row.data.email && row.data.email.endsWith('@sample.net')) {
+              // update single cell
               spreadsheet?.updateCell(row.rowIndex, 'loading:email', true);
               setTimeout(() => {
-                spreadsheet?.updateCell(row.rowIndex, 'loading:email', null);
-                spreadsheet?.updateCell(row.rowIndex, 'error:email', `Account ${row.data.email} does not exist`);
-                // selected cell returns row index and column key
-                const selectedCell = spreadsheet?.getSelectedCell();
+                // update multiple cells at once which is more efficient than updating one by one
+                spreadsheet?.updateCells([
+                  { rowIndex: row.rowIndex, colKey: 'loading:email', value: null },
+                  { rowIndex: row.rowIndex, colKey: 'error:email', value: `Account ${row.data.email} does not exist` }
+                ]);
+                // also update our own error state display for the email column
                 if (selectedCell?.row === row.rowIndex && selectedCell.colKey === 'email') {
                   document.getElementById('error-container')!.textContent = `Account ${row.data.email} does not exist`;
                 }
               }, 2000);
+            } else if (row.columnKeys.includes('locationId') && !row.data.locationId && row.data.departmentId) {
+              // reset departmentId when locationId is cleared
+              spreadsheet?.updateCell(row.rowIndex, 'departmentId', null);
             }
           }
         },
@@ -468,10 +477,7 @@ document.addEventListener("DOMContentLoaded", () => {
           updateRowSizeText(spreadsheet?.getData().length || 0);
           console.log("deleted rows", rows);
         },
-        customDatePicker: true,
-        onEditorOpen: (rowIndex: number, colKey: string, rowData: DataRow, bounds: CellBounds) => {
-          openDatePicker(rowIndex, colKey, rowData, bounds);
-        },
+        bulkSearchDropdown: getBulkSearchDropdown,
         verbose: true,
       }
     );
@@ -493,14 +499,5 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   document.getElementById("add-column")?.addEventListener("click", () => {
     spreadsheet?.addColumn("new-column", { type: "text", label: "New Column" });
-  });
-  document.getElementById('close-modal')?.addEventListener("click", () => {
-    toggleModal(false);
-    const datePicker = document.getElementById('date-picker') as HTMLInputElement;
-    console.log("datePicker", datePicker.value);
-    setTimeout(() => {
-      if (!selectedCellForEditor) return;
-      spreadsheet?.setValueFromCustomEditor(selectedCellForEditor.rowIndex, selectedCellForEditor.colKey, datePicker.value);
-    }, 100);
   });
 });

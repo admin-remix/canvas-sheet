@@ -16,11 +16,9 @@ export class DimensionCalculator {
 
     public initializeSizes(rowCount: number): void {
         const columnWidths = this.stateManager.getColumns().map(() => this.options.defaultColumnWidth);
-        const rowHeights = Array(rowCount).fill(this.options.defaultRowHeight);
+        // we will not set default row heights here, because only the updated row heights will be stored in the StateManager
         this.stateManager.setColumnWidths(columnWidths);
-        this.stateManager.setRowHeights(rowHeights);
         log('log', this.options.verbose, "Initialized column widths:", columnWidths);
-        log('log', this.options.verbose, "Initialized row heights:", rowHeights);
         this.calculateTotalSize();
     }
 
@@ -41,15 +39,14 @@ export class DimensionCalculator {
         let totalWidth = this.options.rowNumberWidth;
         this.stateManager.getColumnWidths().forEach(width => totalWidth += width);
 
-        let totalHeight = this.options.headerHeight;
-        this.stateManager.getRowHeights().forEach(height => totalHeight += height);
+        const totalHeight = this.options.headerHeight + this.stateManager.getTotalRowHeight();
 
         this.stateManager.updateTotalContentSize(totalWidth, totalHeight);
     }
 
     public calculateVisibleRange(): void {
-        const { headerHeight, rowNumberWidth } = this.options;
-        const data = this.stateManager.getData();
+        const { headerHeight, rowNumberWidth, defaultRowHeight } = this.options;
+        const dataLength = this.stateManager.dataLength;
         const columns = this.stateManager.getColumns();
         const columnWidths = this.stateManager.getColumnWidths();
         const rowHeights = this.stateManager.getRowHeights();
@@ -84,9 +81,9 @@ export class DimensionCalculator {
         // Calculate Visible Rows
         let currentY = headerHeight;
         let visibleRowStart = -1;
-        let visibleRowEnd = data.length - 1;
-        for (let row = 0; row < data.length; row++) {
-            const rowHeight = rowHeights[row];
+        let visibleRowEnd = dataLength - 1;
+        for (let row = 0; row < dataLength; row++) {
+            const rowHeight = rowHeights.get(row) || defaultRowHeight;
             const rowBottom = currentY + rowHeight;
             if (rowBottom > scrollTop && currentY < scrollTop + viewportHeight) {
                 if (visibleRowStart === -1) {
@@ -124,10 +121,13 @@ export class DimensionCalculator {
     }
 
     public getRowTop(rowIndex: number): number {
-        let top = this.options.headerHeight;
-        const rowHeights = this.stateManager.getRowHeights();
-        for (let i = 0; i < rowIndex; i++) {
-            top += rowHeights[i];
+        let top = this.options.headerHeight + (rowIndex * this.options.defaultRowHeight);
+        // Use direct access for better performance when calculating row positions
+        const rowHeights = this.stateManager.getRowHeights().entries();
+        for (const [index, height] of rowHeights) {
+            if (index < rowIndex) {
+                top += height - this.options.defaultRowHeight;
+            }
         }
         return top;
     }

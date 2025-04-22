@@ -281,7 +281,7 @@ export class EventManager {
                 }
             }
 
-            if (event.shiftKey && hasActiveCell && coords.row !== activeCell?.row && coords.col !== activeCell?.col) {
+            if (event.shiftKey && hasActiveCell && (coords.row !== activeCell?.row || coords.col !== activeCell?.col)) {
                 // shift click to select a range
                 log('log', this.options.verbose, `shift click detected at ${activeCell?.row},${activeCell?.col} -> ${coords.row},${coords.col}`);
                 event.preventDefault();
@@ -590,9 +590,9 @@ export class EventManager {
         const canvasY = event.clientY - rect.top;
         const contentX = canvasX + this.stateManager.getScrollLeft();
         const contentY = canvasY + this.stateManager.getScrollTop();
-        const { headerHeight, rowNumberWidth } = this.options;
+        const { headerHeight, rowNumberWidth, defaultRowHeight } = this.options;
         // Get dimensions directly from state/calculator as needed
-        const dataLength = this.stateManager.getData().length; // More efficient than getData()
+        const dataLength = this.stateManager.dataLength; // More efficient than getData()
         const columns = this.stateManager.getColumns();
         const rowHeights = this.stateManager.getRowHeights();
         const columnWidths = this.stateManager.getColumnWidths();
@@ -604,7 +604,7 @@ export class EventManager {
         if (contentY >= headerHeight) {
             let currentY = headerHeight;
             for (let i = 0; i < dataLength; i++) { // Use cached length
-                const rowHeight = rowHeights[i] || this.options.defaultRowHeight;
+                const rowHeight = rowHeights.get(i) || defaultRowHeight;
                 if (contentY >= currentY && contentY < currentY + rowHeight) {
                     targetRow = i;
                     break;

@@ -23,7 +23,7 @@ export class StateManager {
 
     // --- Core State ---
     private columnWidths: number[] = [];
-    private rowHeights: number[] = [];
+    private rowHeights: Map<number, number> = new Map();
     private scrollTop: number = 0;
     private scrollLeft: number = 0;
     private viewportWidth: number = 0;
@@ -54,6 +54,8 @@ export class StateManager {
     private resizeColumnState: ResizeColumnState = { isResizing: false, columnIndex: null, startX: null };
     private resizeRowState: ResizeRowState = { isResizing: false, rowIndex: null, startY: null };
 
+    public cachedDropdownOptionsByColumn: Map<string, Map<string | number, string>> = new Map();
+
     constructor(schema: SpreadsheetSchema, initialData: DataRow[], options: RequiredSpreadsheetOptions) {
         this.schema = schema;
         this.columns = Object.keys(schema);
@@ -61,7 +63,29 @@ export class StateManager {
         this.options = options;
         // Initial data processing and size calculation is handled after construction
         // via setInitialData and subsequent dimension calculations
+        this._addCachedDropdownOptions();
     }
+
+    private _addCachedDropdownOptions(): void {
+        const dropdownColumns = Object.keys(this.schema).filter(key => this.schema[key].type === 'select');
+        if (!dropdownColumns.length) return;
+        for (const colKey of dropdownColumns) {
+            const schemaCol = this.schema[colKey];
+            if (!schemaCol.values) continue;
+            const newOptions = new Map<string | number, string>(schemaCol.values.map(option => [option.id, option.name]));
+            let existingOptions = this.cachedDropdownOptionsByColumn.get(colKey);
+            if (existingOptions?.size) {
+                existingOptions = new Map([...existingOptions, ...newOptions]);
+            } else {
+                existingOptions = newOptions;
+            }
+            this.cachedDropdownOptionsByColumn.set(
+                colKey,
+                existingOptions
+            );
+        }
+    }
+
 
     // --- Initialization ---
     public setInitialData(data: DataRow[]): void {
@@ -72,7 +96,9 @@ export class StateManager {
     }
 
     // --- Data Access / Modification ---
-
+    public get dataLength(): number {
+        return this.data.length;
+    }
     public getData(): DataRow[] {
         // Return a deep copy to prevent direct modification of internal state
         // Exclude internal disabled fields
@@ -195,9 +221,7 @@ export class StateManager {
             if (rowIndex >= 0 && rowIndex < this.data.length) {
                 this.data.splice(rowIndex, 1);
                 // Also remove corresponding height entry
-                if (rowIndex < this.rowHeights.length) {
-                    this.rowHeights.splice(rowIndex, 1);
-                }
+                this.rowHeights.delete(rowIndex);
                 deletedCount++;
             }
         });
@@ -234,12 +258,36 @@ export class StateManager {
         this.columnWidths = widths;
     }
 
-    public getRowHeights(): number[] {
+    public getRowHeights(): Map<number, number> {
         return this.rowHeights;
     }
 
-    public setRowHeights(heights: number[]): void {
-        this.rowHeights = heights;
+    public getTotalRowHeight(): number {
+        let totalHeight = this.data.length * this.options.defaultRowHeight;
+        // forEach on map iterates over the values
+        this.rowHeights.forEach((height) => {
+            totalHeight += height - this.options.defaultRowHeight;
+        });
+        return totalHeight;
+    }
+
+    /**
+     * Gets the height for a specific row, using the default height if not specified
+     */
+    public getRowHeight(rowIndex: number): number {
+        return this.rowHeights.get(rowIndex) || this.options.defaultRowHeight;
+    }
+
+    /**
+     * Sets the height for a specific row
+     */
+    public setRowHeight(rowIndex: number, height: number): void {
+        if (height === this.options.defaultRowHeight) {
+            // No need to store default heights
+            this.rowHeights.delete(rowIndex);
+        } else {
+            this.rowHeights.set(rowIndex, height);
+        }
     }
 
     public getTotalContentWidth(): number {

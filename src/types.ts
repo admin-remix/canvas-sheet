@@ -17,6 +17,7 @@ export interface ColumnSchema {
     filterValues?: (rowData: DataRow, rowIndex: number) => SelectOption[] | Promise<SelectOption[]>; // Optional dynamic filtering
     error?: string;
     loading?: boolean;
+    nullable?: boolean;
 }
 
 export interface SpreadsheetSchema {
@@ -115,7 +116,17 @@ export interface SpreadsheetOptions {
 export interface CellUpdateEvent {
     rowIndex: number;
     columnKeys: string[];
-    data: any;
+    data: DataRow;
+}
+export interface BulkSearchDropdownEvent {
+    rowIndex: number;
+    colKey: string;
+    rowData: DataRow;
+    searchTerm: string;
+}
+export interface BulkSearchDropdownResponse {
+    colKey: string;
+    values: SelectOption[];
 }
 
 interface SpreadsheetEvents {
@@ -123,6 +134,7 @@ interface SpreadsheetEvents {
     onCellSelected?: (rowIndex: number, colKey: string, rowData: DataRow) => void;
     onEditorOpen?: (rowIndex: number, colKey: string, rowData: DataRow, bounds: CellBounds) => void;
     onRowDeleted?: (rows: DataRow[]) => void;
+    bulkSearchDropdown?: (events: BulkSearchDropdownEvent[]) => Promise<BulkSearchDropdownResponse[]>;
 }
 
 // Required version of options for internal use
