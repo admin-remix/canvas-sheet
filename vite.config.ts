@@ -26,6 +26,7 @@ export default defineConfig({
       input: {
         "index.html": path.resolve(__dirname, 'example/index.html'),
         "custom-datepicker.html": path.resolve(__dirname, 'example/custom-datepicker.html'),
+        "advanced.html": path.resolve(__dirname, 'example/advanced.html'),
       }
     }
   },

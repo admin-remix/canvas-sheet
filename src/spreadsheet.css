@@ -30,10 +30,17 @@
   padding: 0.5rem 0.75rem; /* py-2 px-3 */
   cursor: pointer;
   white-space: nowrap;
+  background-color: white;
 }
-.spreadsheet-dropdown-item:hover,
-.spreadsheet-dropdown-item.highlighted {
-  background-color: #f3f4f6; /* gray-100 */
+.spreadsheet-dropdown-item-blank {
+  color: #4c515c; /* gray-500 */
+  font-style: italic;
+}
+.spreadsheet-dropdown-item:hover{
+  background-color: #f3f4f6 !important; /* gray-100 */
+}
+.spreadsheet-dropdown-item.highlighted{
+  background-color: #dbeafe !important; /* blue-100 */
 }
 .spreadsheet-dropdown-item.hidden {
   display: none;

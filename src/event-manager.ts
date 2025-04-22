@@ -361,10 +361,10 @@ export class EventManager {
         if (this.stateManager.isDraggingFillHandle() || this.stateManager.isResizing() || this.stateManager.getIsDraggingSelection()) return;
 
         // check mouse coordinates and focus on the container
-        if (!this.container.contains(event.target as Node) && document.activeElement === this.container) {
+        if (!this.container.contains(event.target as Node)) {
             log('log', this.options.verbose, "Outside click on container");
             let needsRedraw = false;
-            if (this.editingManager.isEditorActive() || this.editingManager.isDropdownVisible()) {
+            if (this.editingManager.isEditorActive(true) || this.editingManager.isDropdownVisible()) {
                 this.editingManager.deactivateEditor(true);
             } else {
                 // Clear all selection state if clicking outside

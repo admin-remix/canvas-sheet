@@ -1,7 +1,7 @@
 export type DataType = 'text' | 'number' | 'boolean' | 'date' | 'select' | 'email';
 
 export interface SelectOption {
-    id: any;
+    id: string | number;
     name: string;
 }
 
@@ -14,6 +14,7 @@ export interface ColumnSchema {
     decimal?: boolean;      // For 'number' type (false means integer)
     maxlength?: number;     // For 'text' type
     disabled?: (rowData: DataRow, rowIndex: number) => boolean; // Optional dynamic disabling
+    filterValues?: (rowData: DataRow, rowIndex: number) => SelectOption[] | Promise<SelectOption[]>; // Optional dynamic filtering
     error?: string;
     loading?: boolean;
 }
@@ -43,6 +44,7 @@ export interface ActiveEditorState {
     col: number;
     type?: DataType;
     originalValue: any;
+    isCustomEditor?: boolean;
 }
 
 export interface DragState {

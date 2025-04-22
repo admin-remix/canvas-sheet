@@ -14,7 +14,7 @@ import { EditingManager } from './editing-manager';
 import { InteractionManager } from './interaction-manager';
 import { StateManager } from './state-manager';
 import { log } from './utils';
-export type { SpreadsheetSchema, DataRow, SpreadsheetOptions, ColumnSchema, CellUpdateEvent } from './types';
+export type { SpreadsheetSchema, DataRow, SpreadsheetOptions, ColumnSchema, CellUpdateEvent, CellBounds } from './types';
 
 export class Spreadsheet {
     private container: HTMLElement;
