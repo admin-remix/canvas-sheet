@@ -10,7 +10,8 @@ import {
     DataType,
     ColumnSchema,
     CellUpdateEvent,
-    ValidationError
+    ValidationError,
+    SelectOption
 } from './types';
 import { DISABLED_FIELD_PREFIX } from './config';
 import { log, validateInput } from './utils';
@@ -66,23 +67,28 @@ export class StateManager {
         this._addCachedDropdownOptions();
     }
 
+    public addCachedDropdownOptionForColumn(colKey: string, values?: SelectOption[]): void {
+        const schemaCol = this.schema[colKey];
+        const valuesToUse = values || schemaCol.values;
+        if (schemaCol.type !== 'select' || !valuesToUse) return;
+        const newOptions = new Map<string | number, string>(valuesToUse.map(option => [option.id, option.name]));
+        let existingOptions = this.cachedDropdownOptionsByColumn.get(colKey);
+        if (existingOptions?.size) {
+            existingOptions = new Map([...existingOptions, ...newOptions]);
+        } else {
+            existingOptions = newOptions;
+        }
+        this.cachedDropdownOptionsByColumn.set(
+            colKey,
+            existingOptions
+        );
+    }
+
     private _addCachedDropdownOptions(): void {
         const dropdownColumns = Object.keys(this.schema).filter(key => this.schema[key].type === 'select');
         if (!dropdownColumns.length) return;
         for (const colKey of dropdownColumns) {
-            const schemaCol = this.schema[colKey];
-            if (!schemaCol.values) continue;
-            const newOptions = new Map<string | number, string>(schemaCol.values.map(option => [option.id, option.name]));
-            let existingOptions = this.cachedDropdownOptionsByColumn.get(colKey);
-            if (existingOptions?.size) {
-                existingOptions = new Map([...existingOptions, ...newOptions]);
-            } else {
-                existingOptions = newOptions;
-            }
-            this.cachedDropdownOptionsByColumn.set(
-                colKey,
-                existingOptions
-            );
+            this.addCachedDropdownOptionForColumn(colKey);
         }
     }
 
@@ -162,7 +168,7 @@ export class StateManager {
             return false;
         }
         const schemaCol = this.schema[colKey];
-        const validationResult = validateInput(value, schemaCol, colKey, this.options.verbose);
+        const validationResult = validateInput(value, schemaCol, colKey, this.cachedDropdownOptionsByColumn.get(colKey), this.options.verbose);
         if ('error' in validationResult) {
             log('warn', this.options.verbose, `updateCell: Validation failed for ${colKey}. Value not set.`);
             if (throwError) {
@@ -692,6 +698,7 @@ export class StateManager {
         this.columns.push(newField);
         this.columnWidths.push(this.options.defaultColumnWidth);
         this.schema[newField] = colSchema;
+        this.addCachedDropdownOptionForColumn(newField);
         return newColIndex;
     }
 
@@ -704,5 +711,6 @@ export class StateManager {
         this.data.forEach(row => {
             delete row[colKey];
         });
+        this.cachedDropdownOptionsByColumn.delete(colKey);
     }
 } 

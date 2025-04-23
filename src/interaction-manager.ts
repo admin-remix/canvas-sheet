@@ -685,7 +685,7 @@ export class InteractionManager {
         if (targetSchema?.type !== valueType && value !== null) {
             log('log', this.options.verbose, `Type mismatch (Copied: ${valueType}, Target: ${targetSchema?.type}) - attempting conversion.`);
             // We'll try to convert the value to match the target schema
-            const convertedValue = this._convertValueForTargetType(value, targetSchema);
+            const convertedValue = this._convertValueForTargetType(value, targetColKey, targetSchema);
             if (convertedValue === null) {
                 log('log', this.options.verbose, `Paste cancelled: Cannot convert value between types.`);
                 return false;
@@ -693,7 +693,7 @@ export class InteractionManager {
             value = convertedValue;
         }
         const currentValue = this.stateManager.getCellData(targetRow, targetCol);
-        const validationResult = validateInput(value, targetSchema, targetColKey, this.options.verbose);
+        const validationResult = validateInput(value, targetSchema, targetColKey, this.stateManager.cachedDropdownOptionsByColumn.get(targetColKey), this.options.verbose);
         if ('error' in validationResult) {
             log('log', this.options.verbose, validationResult.error);
             if (validationResult.errorType === 'required' && !currentValue) {
@@ -730,13 +730,13 @@ export class InteractionManager {
                 // Handle type conversion if needed
                 let valueToUse = value;
                 if (targetSchema?.type !== valueType && value !== null) {
-                    valueToUse = this._convertValueForTargetType(value, targetSchema);
+                    valueToUse = this._convertValueForTargetType(value, targetColKey, targetSchema);
                     if (valueToUse === null) continue; // Skip if conversion not possible
                 }
 
                 const currentValue = this.stateManager.getCellData(row, col);
                 // Validate value for the target cell
-                const validationResult = validateInput(valueToUse, targetSchema, targetColKey, this.options.verbose);
+                const validationResult = validateInput(valueToUse, targetSchema, targetColKey, this.stateManager.cachedDropdownOptionsByColumn.get(targetColKey), this.options.verbose);
                 if ('error' in validationResult) {
                     log('warn', this.options.verbose, validationResult.error);
                     if (validationResult.errorType === 'required' && !currentValue) {
@@ -771,7 +771,7 @@ export class InteractionManager {
     }
 
     /** Helper method to convert values between different data types */
-    private _convertValueForTargetType(value: any, schema?: ColumnSchema): any {
+    private _convertValueForTargetType(value: any, colKey: string, schema?: ColumnSchema): any {
         const targetType = schema?.type;
         if (value === null || value === undefined || targetType === undefined) {
             return null;
@@ -811,20 +811,16 @@ export class InteractionManager {
 
             case 'select':
                 // For select, we need to check if the value matches any option id or name
-                if (schema?.values) {
-                    // Try to match by id
-                    let option = schema.values.find(opt => String(opt.id) === stringValue);
-
-                    // If not found by id, try to match by name
-                    if (!option) {
-                        option = schema.values.find(opt =>
-                            opt.name.toLowerCase() === stringValue.toLowerCase());
-                    }
-
-                    return option ? option.id : null;
-                }
-                return null;
-
+                const cachedOptions = this.stateManager.cachedDropdownOptionsByColumn.get(colKey);
+                if (!cachedOptions) return null;
+                // Try to match by raw id
+                if (cachedOptions.has(value)) return value;
+                // Try to match by string value id if the original value is not a string
+                if (typeof value !== 'string' && cachedOptions.has(stringValue)) return stringValue;
+                // If not found by id, try to match by name
+                const option = Array.from(cachedOptions.entries()).find(([_key, option]) =>
+                    option.toLowerCase() === stringValue.toLowerCase());
+                return option ? option[0] : null;
             default:
                 return null;
         }
@@ -865,12 +861,12 @@ export class InteractionManager {
                 // Handle type conversion if needed
                 let valueToUse = valueToPaste;
                 if (valueToUse !== null) {
-                    valueToUse = this._convertValueForTargetType(valueToPaste, targetSchema);
+                    valueToUse = this._convertValueForTargetType(valueToPaste, targetColKey, targetSchema);
                     if (valueToUse === null) continue; // Skip if conversion not possible
                 }
 
                 const currentValue = this.stateManager.getCellData(targetRow, targetCol);
-                const validationResult = validateInput(valueToUse, targetSchema, targetColKey, this.options.verbose);
+                const validationResult = validateInput(valueToUse, targetSchema, targetColKey, this.stateManager.cachedDropdownOptionsByColumn.get(targetColKey), this.options.verbose);
                 if ('error' in validationResult) {
                     log('warn', this.options.verbose, validationResult.error);
                     if (validationResult.errorType === 'required' && !currentValue) {
@@ -934,13 +930,13 @@ export class InteractionManager {
                 // Handle type conversion if needed
                 let valueToUse = valueToPaste;
                 if (valueToUse !== null) {
-                    valueToUse = this._convertValueForTargetType(valueToPaste, targetSchema);
+                    valueToUse = this._convertValueForTargetType(valueToPaste, targetColKey, targetSchema);
                     if (valueToUse === null) continue; // Skip if conversion not possible
                 }
 
                 const currentValue = this.stateManager.getCellData(row, col);
                 // Validate value
-                const validationResult = validateInput(valueToUse, targetSchema, targetColKey, this.options.verbose);
+                const validationResult = validateInput(valueToUse, targetSchema, targetColKey, this.stateManager.cachedDropdownOptionsByColumn.get(targetColKey), this.options.verbose);
                 if ('error' in validationResult) {
                     log('warn', this.options.verbose, validationResult.error);
                     if (validationResult.errorType === 'required' && !currentValue) {
@@ -1144,6 +1140,11 @@ export class InteractionManager {
             // Activate the editor in the new cell
             this.editingManager.activateEditor(nextRow, nextCol);
             // activateEditor will handle the redraw
+        } else {
+            const bounds = this.renderer.getCellBounds(nextRow, nextCol);
+            if (bounds) {
+                this.bringBoundsIntoView(bounds);
+            }
         }
         return true;
     }
@@ -1204,7 +1205,7 @@ export class InteractionManager {
                 }
 
                 const currentValue = this.stateManager.getCellData(targetRow, targetCol);
-                const validationResult = validateInput(valueToPaste, targetSchema, targetColKey, this.options.verbose);
+                const validationResult = validateInput(valueToPaste, targetSchema, targetColKey, this.stateManager.cachedDropdownOptionsByColumn.get(targetColKey), this.options.verbose);
                 if ('error' in validationResult) {
                     log('warn', this.options.verbose, validationResult.error);
                     if (validationResult.errorType === 'required' && !currentValue) {
@@ -1265,11 +1266,11 @@ export class InteractionManager {
                 if (this.stateManager.isCellDisabled(row, col)) continue;
 
                 // Convert based on target cell type
-                const convertedValue = this._convertValueForTargetType(valueToPaste, targetSchema);
+                const convertedValue = this._convertValueForTargetType(valueToPaste, targetColKey, targetSchema);
                 if (convertedValue === null) continue; // Skip if conversion not possible
 
                 const currentValue = this.stateManager.getCellData(row, col);
-                const validationResult = validateInput(convertedValue, targetSchema, targetColKey, this.options.verbose);
+                const validationResult = validateInput(convertedValue, targetSchema, targetColKey, this.stateManager.cachedDropdownOptionsByColumn.get(targetColKey), this.options.verbose);
                 if ('error' in validationResult) {
                     log('warn', this.options.verbose, validationResult.error);
                     if (validationResult.errorType === 'required' && !currentValue) {
@@ -1319,9 +1320,9 @@ export class InteractionManager {
             log('log', this.options.verbose, "No value to paste to column");
             return false;
         }
-
+        const colKey = this.stateManager.getColumnKey(columnIndex);
         // Convert value to correct type for the column
-        const convertedValue = this._convertValueForTargetType(value, schemaColumn);
+        const convertedValue = this._convertValueForTargetType(value, colKey, schemaColumn);
         // Apply to all cells in the column
         const affectedRows: number[] = [];
         for (let rowIndex = 0; rowIndex < dataLength; rowIndex++) {
@@ -1338,7 +1339,7 @@ export class InteractionManager {
 
         // Update disabled states after all changes
         if (changedAny) {
-            this._batchUpdateCellsAndNotify(affectedRows, [this.stateManager.getColumnKey(columnIndex)]);
+            this._batchUpdateCellsAndNotify(affectedRows, [colKey]);
             this.renderer.draw();
         }
 

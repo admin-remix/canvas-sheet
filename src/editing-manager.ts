@@ -133,7 +133,7 @@ export class EditingManager {
                 log('error', verbose, `Error calling onEditorOpen: ${error}`);
             }
         } else if (schema?.type === 'select' || schema?.type === 'boolean') {
-            this._showDropdown(rowIndex, schema, editorX, editorY, editorWidth, editorHeight);
+            this._showDropdown(rowIndex, colKey, schema, editorX, editorY, editorWidth, editorHeight);
             return;
         } else {
             // Configure and show the text input editor
@@ -193,7 +193,7 @@ export class EditingManager {
                     const schemaCol = this.stateManager.getSchemaForColumn(col);
                     const colKey = this.stateManager.getColumnKey(col);
                     const newValue = parseValueFromInput(newValueRaw, schemaCol?.type);
-                    const validationResult = validateInput(newValue, schemaCol, colKey, this.options.verbose);
+                    const validationResult = validateInput(newValue, schemaCol, colKey, this.stateManager.cachedDropdownOptionsByColumn.get(colKey), this.options.verbose);
                     if ('error' in validationResult) {
                         log('log', this.options.verbose, validationResult.error);
                         // Potentially show an error message to the user here
@@ -286,6 +286,7 @@ export class EditingManager {
 
     private async _showDropdown(
         rowIndex: number,
+        colKey: string,
         schemaCol: ColumnSchema | undefined,
         boundsX: number,
         boundsY: number,
@@ -303,13 +304,23 @@ export class EditingManager {
                 ...defaultValues, // Option for clearing the value if nullable
             ];
         } else if (schemaCol?.type === 'select' && (schemaCol.values || schemaCol.filterValues)) {
-            const filterValues = schemaCol.filterValues?.(this.stateManager.getRowData(rowIndex) || {}, rowIndex);
-            if (!filterValues) {
-                this.dropdownItems = [...defaultValues, ...(schemaCol.values || [])];
-            } else {
-                const filterValuesResult = await filterValues;
-                this.dropdownItems = [...defaultValues, ...(filterValuesResult || [])];
+            let valuesToAdd = schemaCol.values || [];
+            {
+                const filterValues = schemaCol.filterValues?.(this.stateManager.getRowData(rowIndex) || {}, rowIndex);
+                if (filterValues && filterValues instanceof Promise) {
+                    this.stateManager.updateCell(rowIndex, `loading:${colKey}`, true);
+                    this.renderer.draw();
+                    const filterValuesResult = await filterValues;
+                    this.stateManager.removeCellValue(rowIndex, `loading:${colKey}`);
+                    if (filterValuesResult?.length) {
+                        valuesToAdd = filterValuesResult || [];
+                        this.stateManager.addCachedDropdownOptionForColumn(colKey, valuesToAdd);
+                    }
+                } else if (filterValues) {
+                    valuesToAdd = filterValues;
+                }
             }
+            this.dropdownItems = [...defaultValues, ...valuesToAdd];
         } else {
             log('warn', this.options.verbose, `Dropdown requested for non-dropdown type: ${schemaCol?.type}`);
             return;

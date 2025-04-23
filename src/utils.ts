@@ -93,7 +93,7 @@ export function parseValueFromInput(value: string, type?: DataType): any {
 }
 
 /** Validate input value against column schema */
-export function validateInput(value: any, schemaCol: ColumnSchema | undefined, colKey: string, verbose: boolean): {
+export function validateInput(value: any, schemaCol: ColumnSchema | undefined, colKey: string, dropdownOptions: Map<string | number, string> | undefined, verbose: boolean): {
     success: boolean;
 } | {
     success: false;
@@ -159,7 +159,7 @@ export function validateInput(value: any, schemaCol: ColumnSchema | undefined, c
             break;
         case 'select':
             // Check if the value exists in the provided options (allow null for blank)
-            if (value !== null && schemaCol.values && !schemaCol.values.some(opt => opt.id === value)) {
+            if (value !== null && dropdownOptions && !dropdownOptions.has(value)) {
                 const error = `Invalid selection for column "${colLabel}".`;
                 log('warn', verbose, `Validation failed: ${error}.`);
                 return { success: false, error, errorType: 'value' };
@@ -168,4 +168,12 @@ export function validateInput(value: any, schemaCol: ColumnSchema | undefined, c
     }
 
     return { success: true }; // All checks passed
-} 
+}
+
+export function chunkArray<T>(array: T[], chunkSize: number): T[][] {
+    const chunks: T[][] = [];
+    for (let i = 0; i < array.length; i += chunkSize) {
+        chunks.push(array.slice(i, i + chunkSize));
+    }
+    return chunks;
+}

@@ -13,7 +13,7 @@ import { EventManager } from './event-manager';
 import { EditingManager } from './editing-manager';
 import { InteractionManager } from './interaction-manager';
 import { StateManager } from './state-manager';
-import { log } from './utils';
+import { chunkArray, log } from './utils';
 export type * from './types';
 
 export class Spreadsheet {
@@ -85,8 +85,47 @@ export class Spreadsheet {
 
     // --- Public API Methods (delegated to managers) ---
 
-    public getData(): DataRow[] {
-        return this.stateManager.getData();
+    public async getData(raw = false): Promise<DataRow[]> {
+        let chunks: DataRow[][] = [];
+        {
+            const data = this.stateManager.getData();
+            if (raw) return Promise.resolve(data);
+            // split the array into chunks of 1000
+            chunks = chunkArray(data, 1000);
+        }
+        let dataToReturn: DataRow[] = [];
+        const schema = this.stateManager.getSchema();
+        const recursivePromise = (chunkIndex: number) => {
+            return new Promise((resolve) => {
+                if (chunkIndex >= chunks.length) return resolve(false);
+                for (const row of chunks[chunkIndex]) {
+                    let hasErrors = false;
+                    for (const col of Object.keys(row)) {
+                        if (col.startsWith('error:') || (schema[col]?.required && (row[col] ?? "") === "")) {
+                            hasErrors = true;
+                            break;
+                        }
+                        if (col.includes(':')) {
+                            delete row[col];
+                        }
+                    }
+                    if (hasErrors) {
+                        continue;
+                    }
+                    dataToReturn.push(row);
+                }
+                if (chunkIndex === chunks.length - 1) return resolve(true);
+                setTimeout(() => {
+                    resolve(recursivePromise(chunkIndex + 1));
+                }, 0);
+            });
+        }
+        await recursivePromise(0);
+        return dataToReturn;
+    }
+
+    public get rowCount(): number {
+        return this.stateManager.dataLength;
     }
 
     public setData(newData: DataRow[]): void {

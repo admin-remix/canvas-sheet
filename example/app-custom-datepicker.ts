@@ -378,7 +378,7 @@ document.addEventListener("DOMContentLoaded", () => {
           document.getElementById('error-container')!.textContent = rowData[`error:${colKey}`] || '';
         },
         onRowDeleted: (rows: DataRow[]) => {
-          updateRowSizeText(spreadsheet?.getData().length || 0);
+          updateRowSizeText(spreadsheet?.rowCount || 0);
           console.log("deleted rows", rows);
         },
         customDatePicker: true,
@@ -390,8 +390,8 @@ document.addEventListener("DOMContentLoaded", () => {
     );
 
     // Example of using the API after instantiation
-    setTimeout(() => {
-      console.log("data", spreadsheet?.getData());
+    setTimeout(async () => {
+      console.log("data", await spreadsheet?.getData());
     }, 2000);
   } catch (error) {
     console.error("Failed to initialize spreadsheet:", error);

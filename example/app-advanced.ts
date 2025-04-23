@@ -1,4 +1,4 @@
-import { DataRow, Spreadsheet, SpreadsheetSchema, CellUpdateEvent, CellBounds, BulkSearchDropdownEvent, BulkSearchDropdownResponse } from "canvas-sheet";
+import { DataRow, Spreadsheet, SpreadsheetSchema, CellUpdateEvent } from "canvas-sheet";
 import "@/spreadsheet.css"; // basic styles
 
 const DOMAINS = [
@@ -34,16 +34,20 @@ const DEPARTMENTS = [
   { id: 9, name: "IT", locationId: 3 },
   { id: 10, name: "Management", locationId: 10 },
 ]
-// async function getAsyncData(rowData: DataRow) {
-//   return new Promise(resolve => {
-//     setTimeout(() => {
-
-//     }, 1000 + (Math.random() * 2000));
-//   });
-// }
+async function getAsyncData(rowData: DataRow) {
+  return new Promise(resolve => {
+    setTimeout(() => {
+      if (rowData.locationId) {
+        resolve(Array.from({ length: rowData.locationId + 1 }, (_, i) => ({ id: i + 1, name: `Checkout ${i + 1}` })));
+      } else {
+        resolve([]);
+      }
+    }, 1000 + (Math.random() * 2000));
+  });
+}
 // --- Schema Definition ---
 const schema: SpreadsheetSchema = {
-  id: { type: "number", decimal: false, label: "ID" },
+  id: { type: "number", decimal: false, label: "ID", required: true },
   name: {
     type: "text",
     required: true,
@@ -90,12 +94,11 @@ const schema: SpreadsheetSchema = {
       ];
     },
   },
-  // checkoutId: {
-  //   type: "select",
-  //   label: "Checkout",
-  //   filterValues: (rowData: DataRow) => {
-  //     return getAsyncData(rowData);
-  // },
+  checkoutId: {
+    type: "select",
+    label: "Checkout",
+    filterValues: getAsyncData,
+  },
   isRestricted: { type: "boolean", label: "Restricted", nullable: true },
   salary: { type: "number", label: "Salary" },
   notes: { type: "text", label: "Notes" },
@@ -423,15 +426,6 @@ const sampleData = !window.location.search.includes('bigdata') ? [
 function updateRowSizeText(length: number) {
   document.getElementById('data-size')!.textContent = length.toString();
 }
-
-async function getBulkSearchDropdown(events: BulkSearchDropdownEvent[]) {
-  return events.map(event => {
-    return {
-      colKey: event.colKey,
-      values: [],
-    };
-  });
-}
 // --- Instantiate the Spreadsheet ---
 document.addEventListener("DOMContentLoaded", () => {
   updateRowSizeText(sampleData.length);
@@ -474,17 +468,19 @@ document.addEventListener("DOMContentLoaded", () => {
           document.getElementById('error-container')!.textContent = rowData[`error:${colKey}`] || '';
         },
         onRowDeleted: (rows: DataRow[]) => {
-          updateRowSizeText(spreadsheet?.getData().length || 0);
+          updateRowSizeText(spreadsheet?.rowCount || 0);
           console.log("deleted rows", rows);
         },
-        bulkSearchDropdown: getBulkSearchDropdown,
         verbose: true,
       }
     );
 
     // Example of using the API after instantiation
-    setTimeout(() => {
-      console.log("data", spreadsheet?.getData());
+    setTimeout(async () => {
+      console.time("data filter time");
+      const data = await spreadsheet?.getData();
+      console.timeEnd("data filter time");
+      console.log("data", data.length);
     }, 2000);
   } catch (error) {
     console.error("Failed to initialize spreadsheet:", error);
@@ -498,6 +494,15 @@ document.addEventListener("DOMContentLoaded", () => {
     updateRowSizeText(newRowIndex + 1);
   });
   document.getElementById("add-column")?.addEventListener("click", () => {
-    spreadsheet?.addColumn("new-column", { type: "text", label: "New Column" });
+    spreadsheet?.addColumn("status", {
+      type: "select",
+      label: "Status",
+      values: [
+        { id: 'Open', name: "Open" },
+        { id: 'Closed', name: "Closed" },
+        { id: 'InProgress', name: "In Progress" },
+      ],
+      nullable: true,
+    });
   });
 });

@@ -101,7 +101,16 @@ export class EventManager {
         // Editing Manager binds its own internal events (blur, keydown on input/dropdown)
         this.editingManager.bindInternalEvents();
 
-
+        // Prevent arrow key navigation in the spreadsheet
+        window.addEventListener('keydown', (event) => {
+            if (event.key.startsWith('Arrow') && document.activeElement === this.container) {
+                const activeCell = this.stateManager.getActiveCell();
+                const isActiveCellValid = activeCell && activeCell.row !== null && activeCell.col !== null;
+                if (activeCell && isActiveCellValid) {
+                    event.preventDefault();
+                }
+            }
+        });
     }
 
     // --- Event Handlers ---
@@ -454,7 +463,7 @@ export class EventManager {
                 event.preventDefault();
             }
         } else if (event.key.startsWith('Arrow')) {
-            if (activeCell) {
+            if (activeCell && isActiveCellValid) {
                 let rowDelta = 0;
                 let colDelta = 0;
                 if (event.key === 'ArrowUp') rowDelta = -1;

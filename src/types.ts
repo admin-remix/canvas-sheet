@@ -10,7 +10,6 @@ export interface ColumnSchema {
     label?: string;
     required?: boolean;
     values?: SelectOption[]; // For 'select' type
-    formatOptions?: any;    // e.g., { decimalPlaces: 2, locale: 'en-US' }
     decimal?: boolean;      // For 'number' type (false means integer)
     maxlength?: number;     // For 'text' type
     disabled?: (rowData: DataRow, rowIndex: number) => boolean; // Optional dynamic disabling
@@ -118,23 +117,24 @@ export interface CellUpdateEvent {
     columnKeys: string[];
     data: DataRow;
 }
-export interface BulkSearchDropdownEvent {
-    rowIndex: number;
-    colKey: string;
-    rowData: DataRow;
-    searchTerm: string;
-}
-export interface BulkSearchDropdownResponse {
-    colKey: string;
-    values: SelectOption[];
-}
+// TODO: Implement bulk search dropdown
+// export interface BulkSearchDropdownEvent {
+//     rowIndex: number;
+//     colKey: string;
+//     rowData: DataRow;
+//     searchTerm: string;
+// }
+// export interface BulkSearchDropdownResponse {
+//     colKey: string;
+//     values: SelectOption[];
+// }
 
 interface SpreadsheetEvents {
     onCellsUpdate?: (rows: CellUpdateEvent[]) => void;
     onCellSelected?: (rowIndex: number, colKey: string, rowData: DataRow) => void;
     onEditorOpen?: (rowIndex: number, colKey: string, rowData: DataRow, bounds: CellBounds) => void;
     onRowDeleted?: (rows: DataRow[]) => void;
-    bulkSearchDropdown?: (events: BulkSearchDropdownEvent[]) => Promise<BulkSearchDropdownResponse[]>;
+    //bulkSearchDropdown?: (events: BulkSearchDropdownEvent[]) => Promise<BulkSearchDropdownResponse[]>;
 }
 
 // Required version of options for internal use
