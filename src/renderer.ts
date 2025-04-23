@@ -173,7 +173,7 @@ export class Renderer {
             // Highlight selected column headers or if custom column
             if (isColumnSelected) {
                 customBgColor = this.options.selectedHeaderBgColor; // Reuse the same color as selected row numbers
-            } else if (colKey.startsWith('custom:')) {
+            } else if (schemaCol?.removable) {
                 customBgColor = this.options.customHeaderBgColor;
             }
             if (customBgColor) {

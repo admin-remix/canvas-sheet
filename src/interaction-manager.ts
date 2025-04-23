@@ -22,6 +22,7 @@ export class InteractionManager {
     private editingManager!: EditingManager; // Use definite assignment assertion
     private lastPasteHandledAt: Date | null = null;// used to prevent multiple pastes in a row
     private ignoreNextScrollTimeout: number | null = null;
+    private _customEventHandler: ((event: Event) => void) | null = null;
 
     constructor(
         options: RequiredSpreadsheetOptions,
@@ -36,6 +37,14 @@ export class InteractionManager {
         this.dimensionCalculator = dimensionCalculator;
         this.domManager = domManager;
         // editingManager will be set via setter injection after all managers are created
+    }
+
+    public bindCustomEvents(customEventHandler: ((event: Event) => void) | null = null): void {
+        this._customEventHandler = customEventHandler;
+    }
+
+    public triggerCustomEvent(eventName: "resize"): void {
+        this._customEventHandler?.call(this, new CustomEvent(eventName));
     }
 
     // Setter for circular dependency
@@ -1000,9 +1009,7 @@ export class InteractionManager {
             this.clearCopiedCell();
 
             // Recalculate everything after deletion
-            this.dimensionCalculator.initializeSizes(this.stateManager.dataLength);
-            this.dimensionCalculator.calculateDimensions(this.stateManager.getViewportWidth(), this.stateManager.getViewportHeight());
-            this.domManager.updateCanvasSize(this.stateManager.getTotalContentWidth(), this.stateManager.getTotalContentHeight());
+            this.triggerCustomEvent('resize');
             return true; // Indicate redraw needed
         }
         return false;

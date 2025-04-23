@@ -17,6 +17,7 @@ export interface ColumnSchema {
     error?: string;
     loading?: boolean;
     nullable?: boolean;
+    removable?: boolean;
 }
 
 export interface SpreadsheetSchema {
@@ -134,6 +135,7 @@ interface SpreadsheetEvents {
     onCellSelected?: (rowIndex: number, colKey: string, rowData: DataRow) => void;
     onEditorOpen?: (rowIndex: number, colKey: string, rowData: DataRow, bounds: CellBounds) => void;
     onRowDeleted?: (rows: DataRow[]) => void;
+    onColumnDelete?: (colIndex: number, schema: ColumnSchema) => void;
     //bulkSearchDropdown?: (events: BulkSearchDropdownEvent[]) => Promise<BulkSearchDropdownResponse[]>;
 }
 

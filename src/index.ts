@@ -42,6 +42,11 @@ export class Spreadsheet {
         this.dimensionCalculator = new DimensionCalculator(this.options, this.stateManager, this.domManager);
         this.renderer = new Renderer(this.domManager.getContext(), this.options, this.stateManager, this.dimensionCalculator);
         this.interactionManager = new InteractionManager(this.options, this.stateManager, this.renderer, this.dimensionCalculator, this.domManager);
+        this.interactionManager.bindCustomEvents((event: Event) => {
+            if (event.type === 'resize') {
+                this.onDataUpdate();
+            }
+        });
         this.editingManager = new EditingManager(this.container, this.options, this.stateManager, this.domManager, this.renderer, this.interactionManager);
         this.eventManager = new EventManager(
             this.container,
@@ -58,11 +63,7 @@ export class Spreadsheet {
         this.dimensionCalculator.initializeSizes(data.length);
         this.domManager.setup(this.stateManager.getTotalContentWidth(), this.stateManager.getTotalContentHeight());
         this.dimensionCalculator.calculateDimensions(this.container.clientWidth, this.container.clientHeight);
-        this.eventManager.bindEvents((event: Event) => {
-            if (event.type === 'resize') {
-                this.onDataUpdate();
-            }
-        });
+        this.eventManager.bindEvents();
         this.draw();
 
         log('log', this.options.verbose, "Spreadsheet initialized");
@@ -85,16 +86,20 @@ export class Spreadsheet {
 
     // --- Public API Methods (delegated to managers) ---
 
-    public async getData(raw = false): Promise<DataRow[]> {
+    public async getData(options?: {
+        raw?: boolean;
+        visibleColumnsOnly?: boolean;
+    }): Promise<DataRow[]> {
         let chunks: DataRow[][] = [];
         {
             const data = this.stateManager.getData();
-            if (raw) return Promise.resolve(data);
+            if (options?.raw) return Promise.resolve(data);
             // split the array into chunks of 1000
             chunks = chunkArray(data, 1000);
         }
         let dataToReturn: DataRow[] = [];
         const schema = this.stateManager.getSchema();
+        const columns = new Set(this.stateManager.getColumns());
         const recursivePromise = (chunkIndex: number) => {
             return new Promise((resolve) => {
                 if (chunkIndex >= chunks.length) return resolve(false);
@@ -104,6 +109,11 @@ export class Spreadsheet {
                         if (col.startsWith('error:') || (schema[col]?.required && (row[col] ?? "") === "")) {
                             hasErrors = true;
                             break;
+                        }
+                        if (columns.has(col)) continue;
+                        if (options?.visibleColumnsOnly && !columns.has(col)) {
+                            delete row[col];
+                            continue;
                         }
                         if (col.includes(':')) {
                             delete row[col];
@@ -142,6 +152,21 @@ export class Spreadsheet {
         const newColIndex = this.stateManager.addColumn(fieldName, colSchema);
         this.onDataUpdate(0, this.container.scrollWidth);
         return newColIndex;
+    }
+    public removeColumnByIndex(colIndex: number): void {
+        const columns = this.stateManager.getColumns();
+        if (colIndex < 0 || colIndex >= columns.length) {
+            throw new Error(`Column index ${colIndex} is out of bounds`);
+        }
+        this.stateManager.removeColumn(colIndex);
+        this.onDataUpdate(0, this.container.scrollWidth);
+    }
+    public removeColumnByKey(colKey: string): void {
+        const colIndex = this.stateManager.getColumns().indexOf(colKey);
+        if (colIndex < 0) {
+            throw new Error(`Column key ${colKey} not found`);
+        }
+        this.removeColumnByIndex(colIndex);
     }
 
     public updateCell(rowIndex: number, colKey: string, value: any): void {

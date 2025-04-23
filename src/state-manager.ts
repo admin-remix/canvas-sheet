@@ -690,15 +690,14 @@ export class StateManager {
     }
 
     public addColumn(fieldName: string, colSchema: ColumnSchema): number {
-        const newField = `custom:${fieldName}`;
-        if (this.schema[newField]) {
+        if (this.schema[fieldName]) {
             throw new Error(`Column ${fieldName} already exists`);
         }
         const newColIndex = this.columns.length;
-        this.columns.push(newField);
+        this.columns.push(fieldName);
         this.columnWidths.push(this.options.defaultColumnWidth);
-        this.schema[newField] = colSchema;
-        this.addCachedDropdownOptionForColumn(newField);
+        this.schema[fieldName] = colSchema;
+        this.addCachedDropdownOptionForColumn(fieldName);
         return newColIndex;
     }
 

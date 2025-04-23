@@ -1,4 +1,4 @@
-import { DataRow, Spreadsheet, SpreadsheetSchema, CellUpdateEvent } from "canvas-sheet";
+import { DataRow, Spreadsheet, SpreadsheetSchema, CellUpdateEvent, ColumnSchema } from "canvas-sheet";
 import "@/spreadsheet.css"; // basic styles
 
 const DOMAINS = [
@@ -471,6 +471,12 @@ document.addEventListener("DOMContentLoaded", () => {
           updateRowSizeText(spreadsheet?.rowCount || 0);
           console.log("deleted rows", rows);
         },
+        onColumnDelete: (colIndex: number, schema: ColumnSchema) => {
+          console.log("deleting column", colIndex);
+          if (confirm(`Are you sure you want to delete column ${schema.label}?`)) {
+            spreadsheet?.removeColumnByIndex(colIndex);
+          }
+        },
         verbose: true,
       }
     );
@@ -503,6 +509,11 @@ document.addEventListener("DOMContentLoaded", () => {
         { id: 'InProgress', name: "In Progress" },
       ],
       nullable: true,
+      removable: true
     });
+  });
+  document.getElementById("save")?.addEventListener("click", async () => {
+    const data = await spreadsheet?.getData();
+    console.log("data", data);
   });
 });
