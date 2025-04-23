@@ -1,7 +1,7 @@
 export type DataType = 'text' | 'number' | 'boolean' | 'date' | 'select' | 'email';
 
 export interface SelectOption {
-    id: any;
+    id: string | number;
     name: string;
 }
 
@@ -10,12 +10,14 @@ export interface ColumnSchema {
     label?: string;
     required?: boolean;
     values?: SelectOption[]; // For 'select' type
-    formatOptions?: any;    // e.g., { decimalPlaces: 2, locale: 'en-US' }
     decimal?: boolean;      // For 'number' type (false means integer)
     maxlength?: number;     // For 'text' type
     disabled?: (rowData: DataRow, rowIndex: number) => boolean; // Optional dynamic disabling
+    filterValues?: (rowData: DataRow, rowIndex: number) => SelectOption[] | Promise<SelectOption[]>; // Optional dynamic filtering
     error?: string;
     loading?: boolean;
+    nullable?: boolean;
+    removable?: boolean;
 }
 
 export interface SpreadsheetSchema {
@@ -43,6 +45,7 @@ export interface ActiveEditorState {
     col: number;
     type?: DataType;
     originalValue: any;
+    isCustomEditor?: boolean;
 }
 
 export interface DragState {
@@ -113,14 +116,27 @@ export interface SpreadsheetOptions {
 export interface CellUpdateEvent {
     rowIndex: number;
     columnKeys: string[];
-    data: any;
+    data: DataRow;
 }
+// TODO: Implement bulk search dropdown
+// export interface BulkSearchDropdownEvent {
+//     rowIndex: number;
+//     colKey: string;
+//     rowData: DataRow;
+//     searchTerm: string;
+// }
+// export interface BulkSearchDropdownResponse {
+//     colKey: string;
+//     values: SelectOption[];
+// }
 
 interface SpreadsheetEvents {
     onCellsUpdate?: (rows: CellUpdateEvent[]) => void;
     onCellSelected?: (rowIndex: number, colKey: string, rowData: DataRow) => void;
     onEditorOpen?: (rowIndex: number, colKey: string, rowData: DataRow, bounds: CellBounds) => void;
     onRowDeleted?: (rows: DataRow[]) => void;
+    onColumnDelete?: (colIndex: number, schema: ColumnSchema) => void;
+    //bulkSearchDropdown?: (events: BulkSearchDropdownEvent[]) => Promise<BulkSearchDropdownResponse[]>;
 }
 
 // Required version of options for internal use

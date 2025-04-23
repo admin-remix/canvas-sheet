@@ -28,7 +28,6 @@ export class EventManager {
     private resizeTimeout: number | null = null;
     private _ignoreNextClick = false; // Flag to ignore click after drag mouseup
     private isCtrl = false;
-    private _customEventHandler: ((event: Event) => void) | null = null;
 
     // Touch events state
     private lastTouchX: number | null = null;
@@ -66,8 +65,7 @@ export class EventManager {
         this.interactionManager.setEditingManager(this.editingManager);
     }
 
-    public bindEvents(customEventHandler: ((event: Event) => void) | null = null): void {
-        this._customEventHandler = customEventHandler;
+    public bindEvents(): void {
         // Container Events
         this.container.addEventListener('wheel', this._handleWheel.bind(this));
         this.hScrollbar.addEventListener('scroll', this._handleHScroll.bind(this));
@@ -101,7 +99,16 @@ export class EventManager {
         // Editing Manager binds its own internal events (blur, keydown on input/dropdown)
         this.editingManager.bindInternalEvents();
 
-
+        // Prevent arrow key navigation in the spreadsheet
+        window.addEventListener('keydown', (event) => {
+            if (event.key.startsWith('Arrow') && document.activeElement === this.container) {
+                const activeCell = this.stateManager.getActiveCell();
+                const isActiveCellValid = activeCell && activeCell.row !== null && activeCell.col !== null;
+                if (activeCell && isActiveCellValid) {
+                    event.preventDefault();
+                }
+            }
+        });
     }
 
     // --- Event Handlers ---
@@ -281,7 +288,7 @@ export class EventManager {
                 }
             }
 
-            if (event.shiftKey && hasActiveCell && coords.row !== activeCell?.row && coords.col !== activeCell?.col) {
+            if (event.shiftKey && hasActiveCell && (coords.row !== activeCell?.row || coords.col !== activeCell?.col)) {
                 // shift click to select a range
                 log('log', this.options.verbose, `shift click detected at ${activeCell?.row},${activeCell?.col} -> ${coords.row},${coords.col}`);
                 event.preventDefault();
@@ -361,10 +368,10 @@ export class EventManager {
         if (this.stateManager.isDraggingFillHandle() || this.stateManager.isResizing() || this.stateManager.getIsDraggingSelection()) return;
 
         // check mouse coordinates and focus on the container
-        if (!this.container.contains(event.target as Node) && document.activeElement === this.container) {
+        if (!this.container.contains(event.target as Node)) {
             log('log', this.options.verbose, "Outside click on container");
             let needsRedraw = false;
-            if (this.editingManager.isEditorActive() || this.editingManager.isDropdownVisible()) {
+            if (this.editingManager.isEditorActive(true) || this.editingManager.isDropdownVisible()) {
                 this.editingManager.deactivateEditor(true);
             } else {
                 // Clear all selection state if clicking outside
@@ -447,14 +454,23 @@ export class EventManager {
                     }
                 }
                 event.preventDefault();
-            } else if (event.key === 'Delete' && selectedColumn !== null && this.stateManager.getColumnKey(selectedColumn)?.startsWith('custom:')) {
-                this.stateManager.removeColumn(selectedColumn);
-                redrawNeeded = true;
-                resizeNeeded = true;
+            } else if (event.key === 'Delete' && selectedColumn !== null && this.stateManager.getSchemaForColumn(selectedColumn)?.removable) {
+                if (this.options.onColumnDelete) {
+                    try {
+                        this.options.onColumnDelete(selectedColumn, this.stateManager.getSchemaForColumn(selectedColumn)!);
+                    } catch (error: unknown) {
+                        log('warn', this.options.verbose, error);
+                    }
+                    return;
+                } else {
+                    this.stateManager.removeColumn(selectedColumn);
+                    redrawNeeded = true;
+                    resizeNeeded = true;
+                }
                 event.preventDefault();
             }
         } else if (event.key.startsWith('Arrow')) {
-            if (activeCell) {
+            if (activeCell && isActiveCellValid) {
                 let rowDelta = 0;
                 let colDelta = 0;
                 if (event.key === 'ArrowUp') rowDelta = -1;
@@ -504,7 +520,7 @@ export class EventManager {
 
         // Redraw if Delete/Backspace on rows caused a state change
         if (resizeNeeded) {
-            this._customEventHandler?.call(this, new CustomEvent('resize'));
+            this.interactionManager.triggerCustomEvent('resize');
             // no need to redraw here, resize will trigger a redraw
         } else if (redrawNeeded) {
             this.renderer.draw();
@@ -590,9 +606,9 @@ export class EventManager {
         const canvasY = event.clientY - rect.top;
         const contentX = canvasX + this.stateManager.getScrollLeft();
         const contentY = canvasY + this.stateManager.getScrollTop();
-        const { headerHeight, rowNumberWidth } = this.options;
+        const { headerHeight, rowNumberWidth, defaultRowHeight } = this.options;
         // Get dimensions directly from state/calculator as needed
-        const dataLength = this.stateManager.getData().length; // More efficient than getData()
+        const dataLength = this.stateManager.dataLength; // More efficient than getData()
         const columns = this.stateManager.getColumns();
         const rowHeights = this.stateManager.getRowHeights();
         const columnWidths = this.stateManager.getColumnWidths();
@@ -604,7 +620,7 @@ export class EventManager {
         if (contentY >= headerHeight) {
             let currentY = headerHeight;
             for (let i = 0; i < dataLength; i++) { // Use cached length
-                const rowHeight = rowHeights[i] || this.options.defaultRowHeight;
+                const rowHeight = rowHeights.get(i) || defaultRowHeight;
                 if (contentY >= currentY && contentY < currentY + rowHeight) {
                     targetRow = i;
                     break;

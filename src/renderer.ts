@@ -173,7 +173,7 @@ export class Renderer {
             // Highlight selected column headers or if custom column
             if (isColumnSelected) {
                 customBgColor = this.options.selectedHeaderBgColor; // Reuse the same color as selected row numbers
-            } else if (colKey.startsWith('custom:')) {
+            } else if (schemaCol?.removable) {
                 customBgColor = this.options.customHeaderBgColor;
             }
             if (customBgColor) {
@@ -240,10 +240,11 @@ export class Renderer {
             selectedRowNumberBgColor,
             textColor,
             gridLineColor,
+            defaultRowHeight
         } = this.options;
-        const data = this.stateManager.getData();
+        const dataLength = this.stateManager.dataLength;
         const totalContentHeight = this.stateManager.getTotalContentHeight();
-        if (data.length) {
+        if (dataLength) {
             const rowHeights = this.stateManager.getRowHeights();
             const selectedRows = this.stateManager.getSelectedRows();
             const visibleRowStart = this.stateManager.getVisibleRowStartIndex();
@@ -282,9 +283,9 @@ export class Renderer {
             let currentY = this.dimensionCalculator.getRowTop(visibleRowStart);
 
             for (let row = visibleRowStart; row <= visibleRowEnd; row++) {
-                if (row < 0 || row >= data.length) continue;
+                if (row < 0 || row >= dataLength) continue;
 
-                const rowHeight = rowHeights[row];
+                const rowHeight = rowHeights.get(row) || defaultRowHeight;
 
                 // Highlight selected row number background
                 if (selectedRows.has(row)) {
@@ -341,9 +342,10 @@ export class Renderer {
             errorCellBgColor,
             errorTextColor,
             loadingTextColor,
-            placeholderTextColor
+            placeholderTextColor,
+            defaultRowHeight
         } = this.options;
-        const data = this.stateManager.getData();
+        const dataLength = this.stateManager.dataLength;
         const columns = this.stateManager.getColumns();
         const schema = this.stateManager.getSchema();
         const rowHeights = this.stateManager.getRowHeights();
@@ -378,9 +380,9 @@ export class Renderer {
         let currentY = this.dimensionCalculator.getRowTop(visibleRowStart);
 
         for (let row = visibleRowStart; row <= visibleRowEnd; row++) {
-            if (row < 0 || row >= data.length) continue;
-
-            const rowHeight = rowHeights[row];
+            if (row < 0 || row >= dataLength) continue;
+            const data = this.stateManager.getRowData(row);
+            const rowHeight = rowHeights.get(row) || defaultRowHeight;
             const isRowSelected = selectedRows.has(row);
             let currentX = this.dimensionCalculator.getColumnLeft(visibleColStart);
 
@@ -390,12 +392,12 @@ export class Renderer {
                 const colWidth = columnWidths[col];
                 const colKey = columns[col];
                 const schemaCol = schema[colKey];
-                const currentCellError = data[row]?.[`error:${colKey}`];
+                const currentCellError = data?.[`error:${colKey}`];
                 const isDisabled = this.stateManager.isCellDisabled(row, col);
                 const isActive = activeCell?.row === row && activeCell?.col === col;
                 const isEditing = this.stateManager.getActiveEditor()?.row === row && this.stateManager.getActiveEditor()?.col === col;
                 const isColumnSelected = selectedColumn === col;
-                const isCellLoading = data[row]?.[`loading:${colKey}`];
+                const isCellLoading = data?.[`loading:${colKey}`];
 
                 // Check if this cell has a temporary error
                 const hasTemporaryError = this.temporaryErrors.has(`${row}:${col}`);
@@ -445,8 +447,8 @@ export class Renderer {
                         this.ctx.fillStyle = loadingTextColor;
                         this.ctx.fillText("(Loading...)", textX, textY, colWidth - padding * 2);
                     } else {
-                        const value = data[row]?.[colKey];
-                        let formattedValue = formatValue(value, schemaCol?.type, schemaCol?.values);
+                        const value = data?.[colKey];
+                        let formattedValue = formatValue(value, schemaCol?.type, this.stateManager.cachedDropdownOptionsByColumn.get(colKey));
                         if (!formattedValue && currentCellError) {
                             formattedValue = `${currentCellError}`.includes('required') ? '(required)' : currentCellError;
                         }
@@ -474,14 +476,15 @@ export class Renderer {
             currentY += rowHeight;
         }
         this.ctx.restore();
+
     }
 
     private _drawGridLines(): void {
-        const { headerHeight, rowNumberWidth, gridLineColor } = this.options;
+        const { headerHeight, rowNumberWidth, gridLineColor, defaultRowHeight } = this.options;
         const totalWidth = this.stateManager.getTotalContentWidth();
         const totalHeight = this.stateManager.getTotalContentHeight();
         const columns = this.stateManager.getColumns();
-        const data = this.stateManager.getData();
+        const dataLength = this.stateManager.dataLength;
         const columnWidths = this.stateManager.getColumnWidths();
         const rowHeights = this.stateManager.getRowHeights();
         const viewportWidth = this.stateManager.getViewportWidth();
@@ -516,7 +519,7 @@ export class Renderer {
 
         // Horizontal lines
         let currentY = headerHeight;
-        for (let row = 0; row <= data.length; row++) {
+        for (let row = 0; row <= dataLength; row++) {
             const lineY = Math.round(currentY) - 0.5; // Align to pixel grid
             // Check if the line is within the visible vertical range
             // Since the canvas is translated, compare against viewport origin (0) and height
@@ -526,8 +529,8 @@ export class Renderer {
                 this.ctx.lineTo(totalWidth, lineY); // Draw full logical width
                 this.ctx.stroke();
             }
-            if (row < data.length) {
-                currentY += rowHeights[row];
+            if (row < dataLength) {
+                currentY += rowHeights.get(row) || defaultRowHeight;
             }
             // Optimization: Stop drawing if we've passed the bottom edge of the viewport
             if (currentY > viewportHeight + scrollTop) break;
@@ -618,10 +621,11 @@ export class Renderer {
         const { row: startRow, col: startCol } = dragStartCell;
         if (startRow === null || startCol === null) return;
 
-        const { dragRangeBorderColor } = this.options;
+        const { dragRangeBorderColor, defaultRowHeight } = this.options;
         const endRow = dragEndRow;
         const columnWidths = this.stateManager.getColumnWidths();
         const rowHeights = this.stateManager.getRowHeights();
+        const dataLength = this.stateManager.dataLength;
 
         // Ensure startCol is valid
         if (startCol < 0 || startCol >= columnWidths.length) return;
@@ -637,13 +641,13 @@ export class Renderer {
         if (isDraggingDown) {
             // Dragging downward - start from bottom of start cell
             const startRowY = this.dimensionCalculator.getRowTop(startRow);
-            dragStartY = startRowY + rowHeights[startRow];
+            dragStartY = startRowY + (rowHeights.get(startRow) || defaultRowHeight);
 
             // Calculate height from rows after start row to end row (inclusive)
             dragRangeHeight = 0;
             for (let r = startRow + 1; r <= endRow; r++) {
-                if (r >= rowHeights.length) break;
-                dragRangeHeight += rowHeights[r] || this.options.defaultRowHeight;
+                if (r >= dataLength) break;
+                dragRangeHeight += rowHeights.get(r) || defaultRowHeight;
             }
         } else {
             // Dragging upward - start from top of end row
@@ -652,8 +656,8 @@ export class Renderer {
             // Calculate height from end row to the row before start row (inclusive)
             dragRangeHeight = 0;
             for (let r = endRow; r < startRow; r++) {
-                if (r >= rowHeights.length) break;
-                dragRangeHeight += rowHeights[r] || this.options.defaultRowHeight;
+                if (r >= dataLength) break;
+                dragRangeHeight += rowHeights.get(r) || defaultRowHeight;
             }
         }
 
@@ -755,7 +759,7 @@ export class Renderer {
     private _drawSelectedRowsHighlight(): void {
         const selectedRows = this.stateManager.getSelectedRows();
         if (selectedRows.size === 0) return;
-        const { highlightBorderColor } = this.options;
+        const { highlightBorderColor, defaultRowHeight } = this.options;
         const totalContentWidth = this.stateManager.getTotalContentWidth();
         const rowHeights = this.stateManager.getRowHeights();
 
@@ -764,7 +768,7 @@ export class Renderer {
         this.ctx.lineWidth = 2;
 
         for (const row of selectedRows) {
-            const rowHeight = rowHeights[row];
+            const rowHeight = rowHeights.get(row) || defaultRowHeight;
             const rowY = this.dimensionCalculator.getRowTop(row);
 
             this.ctx.strokeRect(0, rowY, totalContentWidth, rowHeight);
@@ -817,16 +821,15 @@ export class Renderer {
 
     // --- Helper to get cell bounds in VIEWPORT coordinates --- HINT HINT
     public getCellBounds(rowIndex: number, colIndex: number): CellBounds | null {
-        const data = this.stateManager.getData();
+        const dataLength = this.stateManager.dataLength;
         const columns = this.stateManager.getColumns();
         const columnWidths = this.stateManager.getColumnWidths();
-        const rowHeights = this.stateManager.getRowHeights();
         const totalContentWidth = this.stateManager.getTotalContentWidth();
         const totalContentHeight = this.stateManager.getTotalContentHeight();
 
         if (
             rowIndex < 0 ||
-            rowIndex >= data.length ||
+            rowIndex >= dataLength ||
             colIndex < 0 ||
             colIndex >= columns.length
         ) {
@@ -834,7 +837,7 @@ export class Renderer {
         }
 
         const cellWidth = columnWidths[colIndex];
-        const cellHeight = rowHeights[rowIndex];
+        const cellHeight = this.stateManager.getRowHeight(rowIndex);
         const contentX = this.dimensionCalculator.getColumnLeft(colIndex);
         const contentY = this.dimensionCalculator.getRowTop(rowIndex);
 

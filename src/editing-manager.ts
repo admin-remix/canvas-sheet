@@ -62,8 +62,10 @@ export class EditingManager {
         this.dropdownList.addEventListener('click', this._handleDropdownItemClick.bind(this));
     }
 
-    public isEditorActive(): boolean {
-        return !!this.stateManager.getActiveEditor();
+    public isEditorActive(nonCustomEditor = false): boolean {
+        const activeEditor = this.stateManager.getActiveEditor();
+        if (!activeEditor || (nonCustomEditor && activeEditor.isCustomEditor)) return false;
+        return true;
     }
 
     public isDropdownVisible(): boolean {
@@ -105,11 +107,13 @@ export class EditingManager {
 
         const schema = this.stateManager.getSchemaForColumn(colIndex);
         const cellValue = rowData?.[colKey];
+        const isCustomEditor = (schema?.type === 'date' && customDatePicker && onEditorOpen) ? true : false;
         this.stateManager.setActiveEditor({
             row: rowIndex,
             col: colIndex,
             type: schema?.type,
             originalValue: cellValue,
+            isCustomEditor,
         });
 
         const { x, y, width: editorWidth, height: editorHeight } = bounds;
@@ -117,9 +121,9 @@ export class EditingManager {
         const editorX = x - scrollLeft;
         const editorY = y - scrollTop;
 
-        if (schema?.type === 'date' && customDatePicker && onEditorOpen) {
+        if (isCustomEditor) {
             try {
-                onEditorOpen(rowIndex, colKey, rowData, {
+                onEditorOpen?.(rowIndex, colKey, rowData, {
                     x: editorX,
                     y: editorY,
                     width: editorWidth,
@@ -129,7 +133,8 @@ export class EditingManager {
                 log('error', verbose, `Error calling onEditorOpen: ${error}`);
             }
         } else if (schema?.type === 'select' || schema?.type === 'boolean') {
-            this._showDropdown(rowIndex, colIndex, schema, editorX, editorY, editorWidth, editorHeight);
+            this._showDropdown(rowIndex, colKey, schema, editorX, editorY, editorWidth, editorHeight);
+            return;
         } else {
             // Configure and show the text input editor
             this.editorInput.style.display = 'block';
@@ -188,7 +193,7 @@ export class EditingManager {
                     const schemaCol = this.stateManager.getSchemaForColumn(col);
                     const colKey = this.stateManager.getColumnKey(col);
                     const newValue = parseValueFromInput(newValueRaw, schemaCol?.type);
-                    const validationResult = validateInput(newValue, schemaCol, colKey, this.options.verbose);
+                    const validationResult = validateInput(newValue, schemaCol, colKey, this.stateManager.cachedDropdownOptionsByColumn.get(colKey), this.options.verbose);
                     if ('error' in validationResult) {
                         log('log', this.options.verbose, validationResult.error);
                         // Potentially show an error message to the user here
@@ -279,27 +284,43 @@ export class EditingManager {
 
     // --- Dropdown Methods ---
 
-    private _showDropdown(
+    private async _showDropdown(
         rowIndex: number,
-        colIndex: number,
+        colKey: string,
         schemaCol: ColumnSchema | undefined,
         boundsX: number,
         boundsY: number,
         boundsWidth: number,
         boundsHeight: number
-    ): void {
+    ): Promise<void> {
         this.dropdownItems = [];
         this.dropdownList.innerHTML = ''; // Clear previous items
-
+        const defaultValues = schemaCol?.nullable ? [{ id: null, name: '(Blank)' }] : [];
         // Populate dropdown items based on type
         if (schemaCol?.type === 'boolean') {
             this.dropdownItems = [
                 { id: true, name: 'True' },
                 { id: false, name: 'False' },
-                { id: null, name: '(Blank)' }, // Option for clearing the value
+                ...defaultValues, // Option for clearing the value if nullable
             ];
-        } else if (schemaCol?.type === 'select' && schemaCol.values) {
-            this.dropdownItems = [{ id: null, name: '(Blank)' }, ...schemaCol.values];
+        } else if (schemaCol?.type === 'select' && (schemaCol.values || schemaCol.filterValues)) {
+            let valuesToAdd = schemaCol.values || [];
+            {
+                const filterValues = schemaCol.filterValues?.(this.stateManager.getRowData(rowIndex) || {}, rowIndex);
+                if (filterValues && filterValues instanceof Promise) {
+                    this.stateManager.updateCell(rowIndex, `loading:${colKey}`, true);
+                    this.renderer.draw();
+                    const filterValuesResult = await filterValues;
+                    this.stateManager.removeCellValue(rowIndex, `loading:${colKey}`);
+                    if (filterValuesResult?.length) {
+                        valuesToAdd = filterValuesResult || [];
+                        this.stateManager.addCachedDropdownOptionForColumn(colKey, valuesToAdd);
+                    }
+                } else if (filterValues) {
+                    valuesToAdd = filterValues;
+                }
+            }
+            this.dropdownItems = [...defaultValues, ...valuesToAdd];
         } else {
             log('warn', this.options.verbose, `Dropdown requested for non-dropdown type: ${schemaCol?.type}`);
             return;
@@ -308,15 +329,15 @@ export class EditingManager {
         // Create list elements
         this.dropdownItems.forEach((item, index) => {
             const li = document.createElement('li');
-            li.className = "spreadsheet-dropdown-item";
+            li.className = `spreadsheet-dropdown-item${item.id === null ? ' spreadsheet-dropdown-item-blank' : ''}`;
             li.textContent = item.name;
             li.dataset.index = String(index);
             // Store the actual ID value (could be boolean, number, string, null)
             li.dataset.value = String(item.id === null || item.id === undefined ? '' : item.id);
-            li.style.padding = '5px 10px';
-            li.style.cursor = 'pointer';
-            li.addEventListener('mouseenter', () => li.style.backgroundColor = '#f0f0f0');
-            li.addEventListener('mouseleave', () => li.style.backgroundColor = 'white');
+            // li.style.padding = '5px 10px';
+            // li.style.cursor = 'pointer';
+            // li.addEventListener('mouseenter', () => li.style.backgroundColor = '#f0f0f0');
+            // li.addEventListener('mouseleave', () => li.style.backgroundColor = 'white');
             this.dropdownList.appendChild(li);
         });
 
@@ -330,25 +351,31 @@ export class EditingManager {
         // Use requestAnimationFrame to measure after display:block takes effect
         requestAnimationFrame(() => {
             const dropdownRect = this.dropdown.getBoundingClientRect();
-            const containerRect = this.container.getBoundingClientRect();
+            const viewportHeight = window.innerHeight;
+            const viewportWidth = window.innerWidth;
 
-            // Adjust vertical position if it overflows container bottom
-            if (dropdownRect.bottom > containerRect.bottom && boundsY >= dropdownRect.height) {
-                this.dropdown.style.top = `${boundsY - dropdownRect.height}px`; // Position above cell
+            // Get dropdown dimensions
+            const dropdownHeight = dropdownRect.height;
+            const dropdownWidth = dropdownRect.width;
+
+            // Check if dropdown extends beyond bottom of viewport
+            if (dropdownRect.bottom > viewportHeight && boundsY >= dropdownHeight) {
+                this.dropdown.style.top = `${boundsY - dropdownHeight}px`; // Position above cell
             }
-            // Adjust horizontal position if it overflows container right
-            if (dropdownRect.right > containerRect.right) {
-                const newLeft = containerRect.right - dropdownRect.width - 5; // Add some padding
+
+            // Check if dropdown extends beyond right of viewport
+            if (dropdownRect.right > viewportWidth) {
+                const newLeft = viewportWidth - dropdownWidth - 5; // Add some padding
                 this.dropdown.style.left = `${Math.max(0, newLeft)}px`;
             }
-            // Ensure it doesn't go off the left or top edge
-            if (dropdownRect.left < containerRect.left) {
-                this.dropdown.style.left = `${containerRect.left}px`;
+
+            // Ensure dropdown doesn't go off the left edge
+            if (dropdownRect.left < 0) {
+                this.dropdown.style.left = '0px';
             }
-            if (parseFloat(this.dropdown.style.top) < containerRect.top) {
-                this.dropdown.style.top = `${containerRect.top}px`;
-            }
-            const inputHeight = ((this.dropdown.firstChild as HTMLElement)?.clientHeight || 0) + 15;// extra height cap for the input
+
+            // Calculate input height for max-height adjustment
+            const inputHeight = ((this.dropdown.firstChild as HTMLElement)?.clientHeight || 0) + 15; // extra height cap for the input
             this.dropdown.style.maxHeight = `${200 + inputHeight}px`; // Limit height updated
         });
 
@@ -360,6 +387,7 @@ export class EditingManager {
         this._updateDropdownHighlight(
             Array.from(this.dropdownList.querySelectorAll("li:not(.hidden)")) as HTMLLIElement[]
         );
+        this.renderer.draw();
     }
 
     public hideDropdown(): void {
@@ -383,8 +411,7 @@ export class EditingManager {
     private _filterDropdown(searchTerm: string): void {
         const items = this.dropdownList.querySelectorAll("li") as NodeListOf<HTMLLIElement>;
         items.forEach(item => {
-            const itemText = item.textContent?.toLowerCase() || '';
-            const isVisible = itemText.includes(searchTerm);
+            const isVisible = searchTerm ? (item.textContent?.toLowerCase() || '').includes(searchTerm) : true;
             item.classList.toggle('hidden', !isVisible);
             item.style.display = isVisible ? 'block' : 'none'; // Control visibility
         });
@@ -447,7 +474,7 @@ export class EditingManager {
             const isHighlighted = index === this.highlightedDropdownIndex;
             item.classList.toggle('highlighted', isHighlighted);
             // Basic highlight style, replace with CSS classes ideally
-            item.style.backgroundColor = isHighlighted ? '#dbeafe' : 'white';
+            item.style.backgroundColor = isHighlighted ? '#dbeafe' : 'white';// fallback when css did not load
             if (isHighlighted) {
                 // Ensure highlighted item is visible in the scrollable list
                 item.scrollIntoView({ block: 'nearest' });

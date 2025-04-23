@@ -125,15 +125,16 @@ const spreadsheet = new Spreadsheet(
       // Example: Show loading and then error state for email fields from a certain domain
       for (const row of rows) {
         if (row.columnKeys.includes('email') && row.data.email && row.data.email.endsWith('@sample.net')) {
-          // Set loading state
+          // Set loading state on single cell
           spreadsheet.updateCell(row.rowIndex, 'loading:email', true);
-          
+
           // Simulate async validation
           setTimeout(() => {
-            // Remove loading state
-            spreadsheet.updateCell(row.rowIndex, 'loading:email', null);
-            // Set error state
-            spreadsheet.updateCell(row.rowIndex, 'error:email', "Invalid email domain");
+            // update multiple cells at once which is more efficient than updating one by one
+            spreadsheet?.updateCells([
+              { rowIndex: row.rowIndex, colKey: 'loading:email', value: null },
+              { rowIndex: row.rowIndex, colKey: 'error:email', value: `Account ${row.data.email} does not exist` }
+            ]);
           }, 2000);
         }
       }
@@ -225,7 +226,17 @@ const options = {
 
   // Custom date picker support
   customDatePicker: false,
+  // when a date field is opened
   onEditorOpen: (rowIndex, colKey, rowData, bounds) => void,
+  // when user presses delete on a column header, does not delete the column
+  // you have to call "removeColumnByIndex()" to delete the column
+  onColumnDelete: (colIndex, schema) => void, 
+  // after rows are deleted
+  onRowDeleted: (rows) => void,
+  // when a cell is selected
+  onCellSelected: (rowIndex, colKey, rowData) => void,
+  // when cells are updated
+  onCellsUpdate: (rows) => void,
 };
 ```
 
@@ -283,11 +294,13 @@ const schema = {
 Canvas-Sheet handles many events automatically:
 
 - Click to select cells
-- Double-click to edit cells
+- Double-click/tab/enter to edit cells
 - Click and drag or shift click to select ranges
 - Keyboard navigation (arrow keys, tab, enter, escape)
 - Copy/paste support
 - Column/row resizing
+- Press delete on a column header to delete the column (if removable is true)
+- Press delete on selected rows to delete the rows
 
 ## Browser Support
 
