@@ -21,6 +21,7 @@ export interface ColumnSchema {
     readonly?: boolean;
     removable?: boolean;
     placeholder?: string;
+    formatter?: (value: any) => string | null;
 }
 
 export interface SpreadsheetSchema {

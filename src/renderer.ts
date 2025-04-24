@@ -466,7 +466,7 @@ export class Renderer {
 
                 // Cell Text (Skip if editing)
                 let showRenderText = true;
-                if (isEditing && !['select', 'boolean'].includes(schemaCol?.type)) {
+                if (isEditing && !['select', 'boolean', 'date'].includes(schemaCol?.type)) {
                     showRenderText = false;
                 }
 
@@ -478,7 +478,7 @@ export class Renderer {
                         this.ctx.fillText("(Loading...)", textX, textY, colWidth - padding * 2);
                     } else {
                         const value = data?.[colKey];
-                        let formattedValue = temporaryError || formatValue(value, schemaCol?.type, this.stateManager.cachedDropdownOptionsByColumn.get(colKey));
+                        let formattedValue = temporaryError ? temporaryError : schemaCol?.formatter ? schemaCol.formatter(value) : formatValue(value, schemaCol?.type, this.stateManager.cachedDropdownOptionsByColumn.get(colKey));
                         if (!formattedValue && currentCellError) {
                             formattedValue = `${currentCellError}`.includes('required') ? '(required)' : currentCellError;
                         }

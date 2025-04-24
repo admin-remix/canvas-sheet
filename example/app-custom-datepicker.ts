@@ -16,7 +16,14 @@ const schema: SpreadsheetSchema = {
     // placeholder: "Enter email",
     label: "Email Address",
   },
-  dob: { type: "date", label: "Date of Birth" },
+  dob: {
+    type: "date",
+    label: "Date of Birth",
+    formatter: (value: Date | string) => {
+      if (!value) return null;
+      return new Date(value).toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' });
+    },
+  },
   locationId: {
     type: "select",
     label: "Location",
