@@ -68,16 +68,6 @@ const schema: SpreadsheetSchema = {
     label: "Location",
     // tooltip: "Select your location",
     values: LOCATIONS,
-    // custom dropdown filtering logic
-    filterValues: (rowData: DataRow) => {
-      if (rowData.departmentId) {
-        const department = DEPARTMENTS.find(d => d.id === rowData.departmentId);
-        if (!department || !department.locationId) return LOCATIONS;
-        const location = LOCATIONS.find(l => l.id === department.locationId);
-        return location ? [location] : LOCATIONS;
-      }
-      return LOCATIONS;
-    },
     placeholder: "Select location",
   },
   departmentId: {
@@ -431,7 +421,7 @@ document.addEventListener("DOMContentLoaded", () => {
           const locationDepartmentMap = new Map<number, number[]>(
             LOCATIONS.map(l => [l.id, DEPARTMENTS.filter(d => d.locationId === l.id).map(m => m.id)])
           );
-          for (const { rowIndex, columnKeys, data } of rows) {
+          for (const { rowIndex, columnKeys, data, oldData } of rows) {
             if (columnKeys.includes('email') && data.email && data.email.endsWith('@sample.net')) {
               // update single cell
               newUpdatedRows.push({ rowIndex, colKey: 'loading:email', value: true });
@@ -446,14 +436,18 @@ document.addEventListener("DOMContentLoaded", () => {
                   document.getElementById('error-container')!.textContent = `Account ${data.email} does not exist`;
                 }
               }, 2000);
-            } else if ((columnKeys.includes('locationId') || columnKeys.includes('departmentId')) && !data.locationId && data.departmentId) {
-              // reset departmentId when locationId is cleared
-              newUpdatedRows.push({ rowIndex, colKey: 'departmentId', value: null, flashError: 'Wrong department' });
-            } else if (columnKeys.includes('departmentId') && data.departmentId && data.locationId) {
-              // validate correct department for location
-              const departmentIds = locationDepartmentMap.get(+data.locationId);
-              if (!departmentIds || !departmentIds.includes(+data.departmentId)) {
-                newUpdatedRows.push({ rowIndex, colKey: 'departmentId', value: null, flashError: 'Wrong department' });
+            } else if ((columnKeys.includes('locationId') || columnKeys.includes('departmentId'))) {
+              if (!data.locationId && data.departmentId) {
+                // reset departmentId when locationId is cleared
+                newUpdatedRows.push({ rowIndex, colKey: 'departmentId', value: oldData?.departmentId || null, flashError: 'Wrong department' });
+              } else if (data.departmentId && data.locationId) {
+                // validate correct department for location
+                const departmentIds = locationDepartmentMap.get(+data.locationId);
+                if (!departmentIds || !departmentIds.includes(+data.departmentId)) {
+                  newUpdatedRows.push({ rowIndex, colKey: 'departmentId', value: oldData?.departmentId || null, flashError: 'Wrong department' });
+                }
+              } else {
+                console.log("no locationId or departmentId", data, oldData);
               }
             }
           }

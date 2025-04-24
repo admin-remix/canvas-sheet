@@ -510,6 +510,7 @@ export class InteractionManager {
         const firstRow = isFillingDown ? startRow + 1 : endRow;
         const lastRow = isFillingDown ? endRow : startRow - 1;
         const cellUpdates: number[] = [];
+        const oldRows: any[] = [];
         for (let row = firstRow; row <= lastRow; row++) {
             if (row < 0 || row >= dataLength) continue; // Ensure row index is valid
 
@@ -530,9 +531,10 @@ export class InteractionManager {
             const currentValue = this.stateManager.getCellData(row, startCol);
             if (currentValue !== sourceValue) {
                 // Use StateManager to update the cell value internally
-                this.stateManager.updateCellInternal(row, startCol, sourceValue);
+                const oldValue = this.stateManager.updateCellInternal(row, startCol, sourceValue);
                 // Crucially, update disabled states for the row *after* changing the value
                 cellUpdates.push(row);
+                oldRows.push({ [sourceColumnKey]: oldValue });
                 changed = true;
             }
         }
@@ -542,7 +544,7 @@ export class InteractionManager {
         }
 
         if (cellUpdates.length > 0) {
-            this._batchUpdateCellsAndNotify(cellUpdates, [sourceColumnKey]);
+            this._batchUpdateCellsAndNotify(cellUpdates, [sourceColumnKey], oldRows);
         }
     }
 
@@ -551,16 +553,17 @@ export class InteractionManager {
      * This replaces the pattern of calling updateCellInternal in a loop followed by updateDisabledStatesForRow
      * @param updates List of row, column, value updates to apply
      */
-    public _batchUpdateCellsAndNotify(rows: number[], updateColumns: string[]): void {
+    public _batchUpdateCellsAndNotify(rows: number[], updateColumns: string[], oldRows?: any[]): void {
         if (!rows || rows.length === 0) return;
         // Then update disabled states for each affected row
         const updatedRows: CellUpdateEvent[] = [];
-        rows.forEach(rowIndex => {
+        rows.forEach((rowIndex, index) => {
             this.stateManager.updateDisabledStatesForRow(rowIndex);
             updatedRows.push({
                 rowIndex,
                 columnKeys: updateColumns,
-                data: this.stateManager.getRowData(rowIndex)!
+                data: this.stateManager.getRowData(rowIndex)!,
+                oldData: oldRows?.[index]
             });
         });
 
@@ -715,8 +718,8 @@ export class InteractionManager {
             this.stateManager.removeCellValue(targetRow, `error:${targetColKey}`);
         }
         if (currentValue !== value) {
-            this.stateManager.updateCellInternal(targetRow, targetCol, value);
-            this._batchUpdateCellsAndNotify([targetRow], [targetColKey]);
+            const oldValue = this.stateManager.updateCellInternal(targetRow, targetCol, value);
+            this._batchUpdateCellsAndNotify([targetRow], [targetColKey], [{ [targetColKey]: oldValue }]);
             log('log', this.options.verbose, `Pasted value ${value} to cell ${targetRow},${targetCol}`);
             return true;
         }
@@ -728,6 +731,7 @@ export class InteractionManager {
         let changed = false;
         const affectedRows: number[] = [];
         const affectedColumns: string[] = [];
+        const oldRows = new Map<number, any>();
         for (let row = targetRange.start.row!; row <= targetRange.end.row!; row++) {
             for (let col = targetRange.start.col!; col <= targetRange.end.col!; col++) {
                 const targetColKey = this.stateManager.getColumnKey(col);
@@ -761,9 +765,10 @@ export class InteractionManager {
                 }
 
                 if (currentValue !== valueToUse) {
-                    this.stateManager.updateCellInternal(row, col, valueToUse);
+                    const oldValue = this.stateManager.updateCellInternal(row, col, valueToUse);
                     affectedRows.push(row);
                     affectedColumns.push(targetColKey);
+                    oldRows.set(row, { ...oldRows.get(row), [targetColKey]: oldValue });
                     changed = true;
                 }
             }
@@ -771,7 +776,7 @@ export class InteractionManager {
 
         // Update disabled states for all affected rows
         if (affectedRows.length > 0) {
-            this._batchUpdateCellsAndNotify(affectedRows, affectedColumns);
+            this._batchUpdateCellsAndNotify(affectedRows, affectedColumns, affectedRows.map(m => oldRows.get(m)));
         }
         if (changed) {
             log('log', this.options.verbose, `Pasted single value to range [${targetRange.start.row},${targetRange.start.col}] -> [${targetRange.end.row},${targetRange.end.col}]`);
@@ -849,6 +854,7 @@ export class InteractionManager {
         const totalCols = this.stateManager.getColumns().length;
         const affectedRows: number[] = [];
         const affectedColumns = new Set<string>();
+        const oldRows = new Map<number, any>();
 
         for (let rOffset = 0; rOffset < numRowsToPaste; rOffset++) {
             const targetRow = startRow + rOffset;
@@ -891,9 +897,10 @@ export class InteractionManager {
                 }
 
                 if (currentValue !== valueToUse) {
-                    this.stateManager.updateCellInternal(targetRow, targetCol, valueToUse);
+                    const oldValue = this.stateManager.updateCellInternal(targetRow, targetCol, valueToUse);
                     rowChanged = true;
                     affectedColumns.add(targetColKey);
+                    oldRows.set(targetRow, { ...oldRows.get(targetRow), [targetColKey]: oldValue });
                 }
             }
 
@@ -904,7 +911,7 @@ export class InteractionManager {
         }
 
         if (affectedRows.length > 0) {
-            this._batchUpdateCellsAndNotify(affectedRows, Array.from(affectedColumns));
+            this._batchUpdateCellsAndNotify(affectedRows, Array.from(affectedColumns), affectedRows.map(m => oldRows.get(m)));
             log('log', this.options.verbose, `Pasted range [${numRowsToPaste}x${numColsToPaste}] starting at ${startRow},${startCol}`);
         }
 
@@ -921,6 +928,7 @@ export class InteractionManager {
         let changed = false;
         const affectedRows: number[] = [];
         const affectedColumns = new Set<string>();
+        const oldRows = new Map<number, any>();
 
         for (let row = targetRange.start.row!; row <= targetRange.end.row!; row++) {
             let rowChanged = false;
@@ -961,9 +969,10 @@ export class InteractionManager {
                 }
 
                 if (currentValue !== valueToUse) {
-                    this.stateManager.updateCellInternal(row, col, valueToUse);
+                    const oldValue = this.stateManager.updateCellInternal(row, col, valueToUse);
                     rowChanged = true;
                     affectedColumns.add(targetColKey);
+                    oldRows.set(row, { ...oldRows.get(row), [targetColKey]: oldValue });
                 }
             }
             if (rowChanged) {
@@ -973,7 +982,7 @@ export class InteractionManager {
         }
 
         if (affectedRows.length > 0) {
-            this._batchUpdateCellsAndNotify(affectedRows, Array.from(affectedColumns));
+            this._batchUpdateCellsAndNotify(affectedRows, Array.from(affectedColumns), affectedRows.map(m => oldRows.get(m)));
             log('log', this.options.verbose, `Pasted range pattern into target range [${targetRange.start.row},${targetRange.start.col}] -> [${targetRange.end.row},${targetRange.end.col}]`);
         }
 
@@ -1072,16 +1081,18 @@ export class InteractionManager {
     // --- Cell Navigation (used by editing manager on Enter/Tab) ---
     // returns true if redraw is needed
     public moveActiveCell(rowDelta: number, colDelta: number, activateEditor = true): boolean {
+        const { verbose, autoAddNewRow } = this.options;
         if (!this.editingManager) {
-            log('warn', this.options.verbose, "EditingManager not set, cannot move active cell.");
+            log('warn', verbose, "EditingManager not set, cannot move active cell.");
             return false;
         }
+        const shouldAddRow = autoAddNewRow && activateEditor;
         const currentActiveCell = this.stateManager.getActiveCell();
         if (!currentActiveCell || currentActiveCell.row === null || currentActiveCell.col === null) return false;
 
         let currentRow = currentActiveCell.row;
         let currentCol = currentActiveCell.col;
-        const numRows = this.stateManager.dataLength;
+        let numRows = this.stateManager.dataLength;
         const numCols = this.stateManager.getColumns().length;
 
         // Simple move first
@@ -1098,17 +1109,25 @@ export class InteractionManager {
         }
 
         // Check bounds
-        if (nextRow < 0 || nextRow >= numRows) {
+        if (nextRow < 0 || (nextRow >= numRows && !shouldAddRow)) {
             // Reached top/bottom edge, deactivate editing and don't move
             this.editingManager.deactivateEditor(true); // Save previous cell
             this.stateManager.setActiveCell(null);
-            log('log', this.options.verbose, "Reached grid boundary, deactivating editor.");
+            log('log', verbose, "Reached grid boundary, deactivating editor.");
             return true;
+        }
+
+        if (nextRow === numRows && shouldAddRow) {
+            // Reached bottom edge, add a new row
+            nextRow = this.stateManager.addRow();
+            // trigger resize to recalculate dimensions
+            this.triggerCustomEvent('resize');
+            numRows++;
         }
 
         // Find the next *editable* cell in the specified direction
         // This is a simplified search; a more robust one might be needed for large sparse disabled areas
-        let safetyCounter = 0;
+        let safetyCounter = (nextRow * numCols) + nextCol; // start at current cell
         const maxSearch = numRows * numCols; // Limit search iterations
 
         while (this.stateManager.isCellDisabled(nextRow, nextCol) && safetyCounter < maxSearch) {
@@ -1129,13 +1148,13 @@ export class InteractionManager {
             if (nextRow < 0 || nextRow >= numRows) {
                 this.editingManager.deactivateEditor(true); // Save previous cell
                 this.stateManager.setActiveCell(null);
-                log('warn', this.options.verbose, "Could not find next editable cell in direction.");
+                log('warn', verbose, "Could not find next editable cell in direction.");
                 return true;
             }
         }
 
         if (safetyCounter >= maxSearch) {
-            log('warn', this.options.verbose, "Max search limit reached while finding next editable cell.");
+            log('warn', verbose, "Max search limit reached while finding next editable cell.");
             this.editingManager.deactivateEditor(true);
             this.stateManager.setActiveCell(null);
             return true;

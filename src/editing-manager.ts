@@ -81,16 +81,6 @@ export class EditingManager {
             log('warn', verbose, `Cannot activate editor: Cell ${rowIndex},${colIndex} row data not found.`);
             return;
         }
-        // If the cell is loading, prevent editing
-        if (rowData?.[`loading:${colKey}`]) {
-            log('log', verbose, `Edit prevented: Cell ${rowIndex},${colIndex} is loading.`);
-            return;
-        }
-        // Should already be checked by event handler, but double-check
-        if (this.stateManager.isCellDisabled(rowIndex, colIndex)) {
-            log('log', verbose, `Edit prevented: Cell ${rowIndex},${colIndex} is disabled.`);
-            return;
-        }
 
         if (this.isEditorActive()) {
             this.deactivateEditor(true); // Deactivate previous editor first
@@ -103,14 +93,25 @@ export class EditingManager {
             return;
         }
 
+        // check if the selected cell bound need to be scrolled into view
+        const { scrollLeft, scrollTop } = this.interactionManager.bringBoundsIntoView(bounds);
+
+        // If the cell is loading, prevent editing
+        if (rowData?.[`loading:${colKey}`]) {
+            log('log', verbose, `Edit prevented: Cell ${rowIndex},${colIndex} is loading.`);
+            return;
+        }
+        // Should already be checked by event handler, but double-check
+        if (this.stateManager.isCellDisabled(rowIndex, colIndex)) {
+            log('log', verbose, `Edit prevented: Cell ${rowIndex},${colIndex} is disabled.`);
+            return;
+        }
+
         const schema = this.stateManager.getSchemaForColumn(colIndex);
         if (schema?.readonly) {
             log('log', verbose, `Edit prevented: Cell ${rowIndex},${colIndex} is readonly.`);
             return;
         }
-
-        // check if the selected cell bound need to be scrolled into view
-        const { scrollLeft, scrollTop } = this.interactionManager.bringBoundsIntoView(bounds);
 
         // clear any temporary errors for this cell
         this.renderer.clearTemporaryErrors([{ row: rowIndex, col: colIndex }]);
@@ -220,7 +221,7 @@ export class EditingManager {
                             this.stateManager.updateCellInternal(row, col, newValue); // Update data directly
                             valueChanged = true;
                             // Update disabled states for the row after the change
-                            this.interactionManager._batchUpdateCellsAndNotify([row], [colKey]);
+                            this.interactionManager._batchUpdateCellsAndNotify([row], [colKey], [{ [colKey]: originalValue }]);
                         }
                     }
                 }
@@ -520,8 +521,9 @@ export class EditingManager {
             }
 
             // Update the data in the state manager
-            this.stateManager.updateCellInternal(row, col, valueToSet);
-            this.interactionManager._batchUpdateCellsAndNotify([row], [this.stateManager.getColumnKey(col)]);// Update disabled states after change
+            const oldValue = this.stateManager.updateCellInternal(row, col, valueToSet);
+            const colKey = this.stateManager.getColumnKey(col);
+            this.interactionManager._batchUpdateCellsAndNotify([row], [colKey], [{ [colKey]: oldValue }]);// Update disabled states after change
 
             // delay the dropdown deactivation to stop the same keyup event from reopening the dropdown
             setTimeout(() => {

@@ -46,6 +46,7 @@ export const DEFAULT_OPTIONS: RequiredSpreadsheetOptions = {
     resizeHandleSize: 5,
     temporaryErrorTimeout: 2000,
     customDatePicker: false,
+    autoAddNewRow: true,
     verbose: false,
 
     onCellsUpdate: null,

@@ -115,6 +115,7 @@ export interface SpreadsheetOptions {
     copyHighlightBorderDash?: number[];
     temporaryErrorTimeout?: number;
     customDatePicker?: boolean;
+    autoAddNewRow?: boolean;
     verbose?: boolean;
 
     onCellsUpdate?: Nullable<(rows: CellUpdateEvent[]) => void>;
@@ -122,7 +123,6 @@ export interface SpreadsheetOptions {
     onEditorOpen?: Nullable<(rowIndex: number, colKey: string, rowData: DataRow, bounds: CellBounds) => void>;
     onRowDeleted?: Nullable<(rows: DataRow[]) => void>;
     onColumnDelete?: Nullable<(colIndex: number, schema: ColumnSchema) => void>;
-    //bulkSearchDropdown?: (events: BulkSearchDropdownEvent[]) => Promise<BulkSearchDropdownResponse[]>;
 }
 
 export interface CellUpdateInput {
@@ -135,18 +135,8 @@ export interface CellUpdateEvent {
     rowIndex: number;
     columnKeys: string[];
     data: DataRow;
+    oldData?: DataRow;
 }
-// TODO: Implement bulk search dropdown
-// export interface BulkSearchDropdownEvent {
-//     rowIndex: number;
-//     colKey: string;
-//     rowData: DataRow;
-//     searchTerm: string;
-// }
-// export interface BulkSearchDropdownResponse {
-//     colKey: string;
-//     values: SelectOption[];
-// }
 
 // Required version of options for internal use
 export type RequiredSpreadsheetOptions = Required<SpreadsheetOptions>;
