@@ -1,4 +1,4 @@
-import { DataRow, Spreadsheet, SpreadsheetSchema, CellUpdateEvent, ColumnSchema } from "canvas-sheet";
+import { DataRow, Spreadsheet, SpreadsheetSchema, CellUpdateEvent, ColumnSchema, SelectOption, CellUpdateInput } from "canvas-sheet";
 import "@/spreadsheet.css"; // basic styles
 
 const DOMAINS = [
@@ -35,10 +35,10 @@ const DEPARTMENTS = [
   { id: 10, name: "Management", locationId: 10 },
 ]
 async function getAsyncData(rowData: DataRow) {
-  return new Promise(resolve => {
+  return new Promise<SelectOption[]>((resolve) => {
     setTimeout(() => {
       if (rowData.locationId) {
-        resolve(Array.from({ length: rowData.locationId + 1 }, (_, i) => ({ id: i + 1, name: `Checkout ${i + 1}` })));
+        resolve(Array.from({ length: rowData.locationId + 1 }, (_, i) => ({ id: i + 1, name: `Checkout ABCDEFGHIJKLMNOPQRSTUVWXYZ ABCDEFGHIJKLMNOPQRSTUVWXYZ ABCDEFGHIJKLMNOPQRSTUVWXYZ ${i + 1}` })));
       } else {
         resolve([]);
       }
@@ -47,18 +47,20 @@ async function getAsyncData(rowData: DataRow) {
 }
 // --- Schema Definition ---
 const schema: SpreadsheetSchema = {
-  id: { type: "number", decimal: false, label: "ID", required: true },
+  id: { type: "number", label: "ID", readonly: true },
   name: {
     type: "text",
     required: true,
     maxlength: 20,
     label: "Full Name",
+    placeholder: "Enter full name",
   },
   email: {
     type: "email",
     required: true,
     // placeholder: "Enter email",
     label: "Email Address",
+    placeholder: "Enter email address",
   },
   dob: { type: "date", label: "Date of Birth" },
   locationId: {
@@ -66,16 +68,7 @@ const schema: SpreadsheetSchema = {
     label: "Location",
     // tooltip: "Select your location",
     values: LOCATIONS,
-    // custom dropdown filtering logic
-    filterValues: (rowData: DataRow) => {
-      if (rowData.departmentId) {
-        const department = DEPARTMENTS.find(d => d.id === rowData.departmentId);
-        if (!department || !department.locationId) return LOCATIONS;
-        const location = LOCATIONS.find(l => l.id === department.locationId);
-        return location ? [location] : LOCATIONS;
-      }
-      return LOCATIONS;
-    },
+    placeholder: "Select location",
   },
   departmentId: {
     type: "select",
@@ -90,14 +83,16 @@ const schema: SpreadsheetSchema = {
     filterValues: (rowData: DataRow) => {
       return [
         { id: null, name: '(Empty)' },
-        ...DEPARTMENTS.filter(d => !d.locationId || d.locationId === rowData.locationId)
-      ];
+        ...(rowData.locationId ? DEPARTMENTS.filter(d => d.locationId === rowData.locationId) : [])
+      ] as SelectOption[];
     },
+    placeholder: "Select department",
   },
   checkoutId: {
     type: "select",
     label: "Checkout",
     filterValues: getAsyncData,
+    placeholder: "Select One",
   },
   isRestricted: { type: "boolean", label: "Restricted", nullable: true },
   salary: { type: "number", label: "Salary" },
@@ -139,7 +134,6 @@ const sampleData = !window.location.search.includes('bigdata') ? [
     email: "alice@example.com",
     dob: "1990-05-15",
     locationId: 1,
-    departmentId: 1,
     isRestricted: false,
     salary: 75000,
     notes: "Team Lead",
@@ -150,7 +144,6 @@ const sampleData = !window.location.search.includes('bigdata') ? [
     email: "bob@sample.net",
     dob: "1985-11-22",
     locationId: null,
-    departmentId: null,
     isRestricted: true,
     salary: 120000,
     notes: "Senior Developer",
@@ -162,7 +155,6 @@ const sampleData = !window.location.search.includes('bigdata') ? [
     ["error:email"]: "User does not exist",
     dob: "1998-02-10",
     locationId: 2,
-    departmentId: 4,
     isRestricted: false,
     salary: 55000,
     notes: "",
@@ -173,7 +165,6 @@ const sampleData = !window.location.search.includes('bigdata') ? [
     email: "diana@example.com",
     dob: "1980-08-08",
     locationId: 5,
-    departmentId: null,
     isRestricted: false,
     salary: 95000,
     notes: "Project Manager",
@@ -184,7 +175,6 @@ const sampleData = !window.location.search.includes('bigdata') ? [
     email: "ethan@sample.net",
     dob: "1992-07-19",
     locationId: 1,
-    departmentId: 1,
     isRestricted: true,
     salary: 88000,
     notes: "Needs access review",
@@ -195,7 +185,6 @@ const sampleData = !window.location.search.includes('bigdata') ? [
     email: "fiona@testing.org",
     dob: "1995-03-30",
     locationId: 4,
-    departmentId: 7,
     isRestricted: false,
     salary: 62000,
     notes: "Junior Staff",
@@ -206,7 +195,6 @@ const sampleData = !window.location.search.includes('bigdata') ? [
     email: "george@example.com",
     dob: "1975-12-01",
     locationId: 1,
-    departmentId: 4,
     isRestricted: false,
     salary: 40000,
     notes: "Part-time consultant",
@@ -217,7 +205,6 @@ const sampleData = !window.location.search.includes('bigdata') ? [
     email: "hannah@sample.net",
     dob: "2000-01-25",
     locationId: 2,
-    departmentId: null,
     isRestricted: false,
     salary: 58000,
     notes: null,
@@ -228,7 +215,6 @@ const sampleData = !window.location.search.includes('bigdata') ? [
     email: "ian@testing.org",
     dob: "1978-09-14",
     locationId: null,
-    departmentId: null,
     isRestricted: true,
     salary: 150000,
     notes: "Consultant - High Risk",
@@ -239,7 +225,6 @@ const sampleData = !window.location.search.includes('bigdata') ? [
     email: "jane@example.com",
     dob: "1993-06-05",
     locationId: 8,
-    departmentId: 8,
     isRestricted: false,
     salary: 72000,
     notes: "Standard user",
@@ -251,7 +236,6 @@ const sampleData = !window.location.search.includes('bigdata') ? [
     email: "kyle@sample.net",
     dob: "1999-05-26",
     locationId: 9,
-    departmentId: 6,
     isRestricted: false,
     salary: 68000,
     notes: "",
@@ -262,7 +246,6 @@ const sampleData = !window.location.search.includes('bigdata') ? [
     email: "laura@testing.org",
     dob: "1988-07-22",
     locationId: 10,
-    departmentId: 10,
     isRestricted: true,
     salary: 110000,
     notes: "Requires monitoring",
@@ -273,7 +256,6 @@ const sampleData = !window.location.search.includes('bigdata') ? [
     email: "michael@example.com",
     dob: "1970-03-15",
     locationId: 1,
-    departmentId: 4,
     isRestricted: false,
     salary: 85000,
     notes: "Regional Manager",
@@ -284,7 +266,6 @@ const sampleData = !window.location.search.includes('bigdata') ? [
     email: "nadia@sample.net",
     dob: "1982-11-08",
     locationId: 9,
-    departmentId: 6,
     isRestricted: true,
     salary: 130000,
     notes: "Security clearance needed",
@@ -295,7 +276,6 @@ const sampleData = !window.location.search.includes('bigdata') ? [
     email: "oscar@testing.org",
     dob: "1984-01-12",
     locationId: 1,
-    departmentId: 4,
     isRestricted: false,
     salary: 78000,
     notes: "Accountant",
@@ -306,7 +286,6 @@ const sampleData = !window.location.search.includes('bigdata') ? [
     email: "pam@example.com",
     dob: "1989-03-25",
     locationId: 1,
-    departmentId: null,
     isRestricted: false,
     salary: 60000,
     notes: "Receptionist",
@@ -317,7 +296,6 @@ const sampleData = !window.location.search.includes('bigdata') ? [
     email: "quentin@sample.net",
     dob: "1996-09-01",
     locationId: 3,
-    departmentId: 9,
     isRestricted: false,
     salary: 65000,
     notes: "",
@@ -328,7 +306,6 @@ const sampleData = !window.location.search.includes('bigdata') ? [
     email: "rachel@testing.org",
     dob: "1987-05-05",
     locationId: 1,
-    departmentId: null,
     isRestricted: false,
     salary: 70000,
     notes: "Fashion Buyer",
@@ -339,7 +316,6 @@ const sampleData = !window.location.search.includes('bigdata') ? [
     email: "steve@example.com",
     dob: "1920-07-04",
     locationId: 1,
-    departmentId: 1,
     isRestricted: true,
     salary: 200000,
     notes: "Special Project",
@@ -350,7 +326,6 @@ const sampleData = !window.location.search.includes('bigdata') ? [
     email: "tony@sample.net",
     dob: "1970-05-29",
     locationId: 1,
-    departmentId: 1,
     isRestricted: true,
     salary: 500000,
     notes: "CEO - Restricted Access",
@@ -361,7 +336,6 @@ const sampleData = !window.location.search.includes('bigdata') ? [
     email: "ursula@testing.org",
     dob: "1987-05-05",
     locationId: 1,
-    departmentId: null,
     isRestricted: false,
     salary: 45000,
     notes: "Waitress",
@@ -372,7 +346,6 @@ const sampleData = !window.location.search.includes('bigdata') ? [
     email: "victor@example.com",
     dob: "1790-10-10",
     locationId: 6,
-    departmentId: null,
     isRestricted: true,
     salary: 99000,
     notes: "Research - Confidential",
@@ -383,7 +356,6 @@ const sampleData = !window.location.search.includes('bigdata') ? [
     email: "wendy@sample.net",
     dob: "1900-01-01",
     locationId: 2,
-    departmentId: null,
     isRestricted: false,
     salary: 52000,
     notes: "",
@@ -394,7 +366,6 @@ const sampleData = !window.location.search.includes('bigdata') ? [
     email: "xavier@testing.org",
     dob: "2002-04-18",
     locationId: 4,
-    departmentId: 7,
     isRestricted: false,
     salary: 61000,
     notes: "Artist",
@@ -405,7 +376,6 @@ const sampleData = !window.location.search.includes('bigdata') ? [
     email: "yvonne@example.com",
     dob: "1982-07-30",
     locationId: 5,
-    departmentId: null,
     isRestricted: true,
     salary: 140000,
     notes: "Agent - Top Secret",
@@ -416,12 +386,16 @@ const sampleData = !window.location.search.includes('bigdata') ? [
     email: "zachary@sample.net",
     dob: "1980-09-29",
     locationId: 1,
-    departmentId: 4,
     isRestricted: false,
     salary: 100000,
     notes: "Actor",
   },
-] : generateRandomData(20000);
+].map(m => {
+  return {
+    ...m,
+    departmentId: m.locationId ? DEPARTMENTS.find(d => m.locationId === d.locationId)?.id || null : null
+  }
+}) : generateRandomData(20000);
 
 function updateRowSizeText(length: number) {
   document.getElementById('data-size')!.textContent = length.toString();
@@ -443,25 +417,42 @@ document.addEventListener("DOMContentLoaded", () => {
           // selected cell returns row index and column key
           const selectedCell = spreadsheet?.getSelectedCell();
           // custom loading and error state with a specific column updated value checking
-          for (const row of rows) {
-            if (row.columnKeys.includes('email') && row.data.email && row.data.email.endsWith('@sample.net')) {
+          const newUpdatedRows: CellUpdateInput[] = [];
+          const locationDepartmentMap = new Map<number, number[]>(
+            LOCATIONS.map(l => [l.id, DEPARTMENTS.filter(d => d.locationId === l.id).map(m => m.id)])
+          );
+          for (const { rowIndex, columnKeys, data, oldData } of rows) {
+            if (columnKeys.includes('email') && data.email && data.email.endsWith('@sample.net')) {
               // update single cell
-              spreadsheet?.updateCell(row.rowIndex, 'loading:email', true);
+              newUpdatedRows.push({ rowIndex, colKey: 'loading:email', value: true });
               setTimeout(() => {
                 // update multiple cells at once which is more efficient than updating one by one
                 spreadsheet?.updateCells([
-                  { rowIndex: row.rowIndex, colKey: 'loading:email', value: null },
-                  { rowIndex: row.rowIndex, colKey: 'error:email', value: `Account ${row.data.email} does not exist` }
+                  { rowIndex, colKey: 'loading:email', value: null },
+                  { rowIndex, colKey: 'error:email', value: `Account ${data.email} does not exist` }
                 ]);
                 // also update our own error state display for the email column
-                if (selectedCell?.row === row.rowIndex && selectedCell.colKey === 'email') {
-                  document.getElementById('error-container')!.textContent = `Account ${row.data.email} does not exist`;
+                if (selectedCell?.row === rowIndex && selectedCell.colKey === 'email') {
+                  document.getElementById('error-container')!.textContent = `Account ${data.email} does not exist`;
                 }
               }, 2000);
-            } else if (row.columnKeys.includes('locationId') && !row.data.locationId && row.data.departmentId) {
-              // reset departmentId when locationId is cleared
-              spreadsheet?.updateCell(row.rowIndex, 'departmentId', null);
+            } else if ((columnKeys.includes('locationId') || columnKeys.includes('departmentId'))) {
+              if (!data.locationId && data.departmentId) {
+                // reset departmentId when locationId is cleared
+                newUpdatedRows.push({ rowIndex, colKey: 'departmentId', value: oldData?.departmentId || null, flashError: 'Wrong department' });
+              } else if (data.departmentId && data.locationId) {
+                // validate correct department for location
+                const departmentIds = locationDepartmentMap.get(+data.locationId);
+                if (!departmentIds || !departmentIds.includes(+data.departmentId)) {
+                  newUpdatedRows.push({ rowIndex, colKey: 'departmentId', value: oldData?.departmentId || null, flashError: 'Wrong department' });
+                }
+              } else {
+                console.log("no locationId or departmentId", data, oldData);
+              }
             }
+          }
+          if (newUpdatedRows.length) {
+            spreadsheet?.updateCells(newUpdatedRows);
           }
         },
         onCellSelected: (_rowIndex: number, colKey: string, rowData: DataRow) => {
@@ -482,12 +473,12 @@ document.addEventListener("DOMContentLoaded", () => {
     );
 
     // Example of using the API after instantiation
-    setTimeout(async () => {
-      console.time("data filter time");
-      const data = await spreadsheet?.getData();
-      console.timeEnd("data filter time");
-      console.log("data", data.length);
-    }, 2000);
+    // setTimeout(async () => {
+    //   console.time("data filter time");
+    //   const data = await spreadsheet?.getData();
+    //   console.timeEnd("data filter time");
+    //   console.log("data", data.length);
+    // }, 2000);
   } catch (error) {
     console.error("Failed to initialize spreadsheet:", error);
     const container = document.getElementById("spreadsheet-container");
@@ -497,7 +488,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
   document.getElementById("add-row")?.addEventListener("click", () => {
     const newRowIndex = spreadsheet?.addRow();
-    updateRowSizeText(newRowIndex + 1);
+    updateRowSizeText((newRowIndex || 0) + 1);
   });
   document.getElementById("add-column")?.addEventListener("click", () => {
     spreadsheet?.addColumn("status", {

@@ -124,6 +124,18 @@ export class StateManager {
         // Recalculation of sizes, dimensions, and redraw is handled by Spreadsheet class
     }
 
+    public updateColumnSchema(colKey: string, schema: ColumnSchema): void {
+        this.schema[colKey] = {
+            ...this.schema[colKey],
+            ...schema
+        };
+        if (schema.values) {
+            this.addCachedDropdownOptionForColumn(colKey, schema.values);
+        }
+        this._updateAllDisabledStates();
+        this.resetInteractionState();
+    }
+
     public clearAllSelections(): void {
         this.activeCell = null;
         this.selectionStartCell = null;
@@ -138,7 +150,7 @@ export class StateManager {
     }
 
     /** Internal method to update a single cell's value without validation (validation happens before) */
-    public updateCellInternal(rowIndex: number, colIndex: number, value: any): void {
+    public updateCellInternal(rowIndex: number, colIndex: number, value: any): any {
         if (rowIndex < 0 || rowIndex >= this.data.length || colIndex < 0 || colIndex >= this.columns.length) {
             log('warn', this.options.verbose, `updateCellInternal: Invalid coordinates (${rowIndex}, ${colIndex})`);
             return;
@@ -147,9 +159,11 @@ export class StateManager {
         if (!this.data[rowIndex]) {
             this.data[rowIndex] = {};
         }
+        const oldValue = this.data[rowIndex][colKey];
         this.data[rowIndex][colKey] = value;
         // Disabled state update should happen *after* the value change
         // this.updateDisabledStatesForRow(rowIndex); // Called separately after update
+        return oldValue;
     }
 
     /** Public method to update a cell, includes validation */

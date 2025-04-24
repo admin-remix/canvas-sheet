@@ -11,7 +11,7 @@ export class Renderer {
     private options: RequiredSpreadsheetOptions;
     private stateManager: StateManager;
     private dimensionCalculator: DimensionCalculator;
-    private temporaryErrors: Map<string, { expireAt: number }> = new Map();
+    private temporaryErrors: Map<string, { error?: string, expireAt: number }> = new Map();
 
     constructor(
         ctx: CanvasRenderingContext2D,
@@ -30,21 +30,41 @@ export class Renderer {
      * @param row Row index
      * @param col Column index
      */
-    public setTemporaryError(row: number, col: number): void {
+    public setTemporaryErrors(cells: { row: number, col: number, error?: string }[]): void {
         const { temporaryErrorTimeout } = this.options;
         // temporary error animation is disabled if timeout is not set
         if (!temporaryErrorTimeout) return;
-        const key = `${row}:${col}`;
+
+        const keys: [string, string | undefined][] = cells.map(({ row, col, error }) => [`${row}:${col}`, error]);
         const expireAt = Date.now() + temporaryErrorTimeout;
 
         // Add to temporary errors map
-        this.temporaryErrors.set(key, { expireAt });
+        for (const [key, error] of keys) {
+            this.temporaryErrors.set(key, { error, expireAt });
+        }
 
         // Set timeout to clear the error
         setTimeout(() => {
-            this.temporaryErrors.delete(key);
-            this.draw(); // Redraw to update display
+            let clearCount = 0;
+            for (const [key] of keys) {
+                clearCount += this.temporaryErrors.delete(key) ? 1 : 0;
+            }
+            if (clearCount) {
+                this.draw(); // Redraw to update display
+            }
         }, temporaryErrorTimeout);
+    }
+    /**
+     * Clears temporary errors for the given cells
+     * @param cells - An array of objects with row and col properties
+     * @returns true if any errors were cleared, false otherwise
+     */
+    public clearTemporaryErrors(cells: { row: number, col: number }[]): boolean {
+        let clearCount = 0;
+        for (const { row, col } of cells) {
+            clearCount += this.temporaryErrors.delete(`${row}:${col}`) ? 1 : 0;
+        }
+        return clearCount > 0;
     }
 
     public draw(): void {
@@ -117,7 +137,12 @@ export class Renderer {
             gridLineColor,
             headerClipText,
             headerTextAlign,
-            padding
+            padding,
+            selectedHeaderBgColor,
+            customHeaderBgColor,
+            readonlyHeaderBgColor,
+            selectedHeaderTextColor,
+            readonlyHeaderTextColor
         } = this.options;
         const columns = this.stateManager.getColumns();
         const schema = this.stateManager.getSchema();
@@ -170,11 +195,16 @@ export class Renderer {
             const isColumnSelected = selectedColumn === col;
 
             let customBgColor: string | null = null;
+            let customTextColor = headerTextColor;
             // Highlight selected column headers or if custom column
             if (isColumnSelected) {
-                customBgColor = this.options.selectedHeaderBgColor; // Reuse the same color as selected row numbers
+                customBgColor = selectedHeaderBgColor; // Reuse the same color as selected row numbers
+                customTextColor = selectedHeaderTextColor;
             } else if (schemaCol?.removable) {
-                customBgColor = this.options.customHeaderBgColor;
+                customBgColor = customHeaderBgColor;
+            } else if (schemaCol?.readonly) {
+                customBgColor = readonlyHeaderBgColor;
+                customTextColor = readonlyHeaderTextColor;
             }
             if (customBgColor) {
                 this.ctx.fillStyle = customBgColor;
@@ -182,7 +212,7 @@ export class Renderer {
             }
 
             // Draw text centered in the column
-            this.ctx.fillStyle = isColumnSelected ? this.options.selectedHeaderTextColor : headerTextColor;
+            this.ctx.fillStyle = customTextColor;
             let textX = currentX + padding;
             if (headerTextAlign === 'center') {
                 textX = currentX + colWidth / 2;
@@ -400,7 +430,7 @@ export class Renderer {
                 const isCellLoading = data?.[`loading:${colKey}`];
 
                 // Check if this cell has a temporary error
-                const hasTemporaryError = this.temporaryErrors.has(`${row}:${col}`);
+                const temporaryError = this.temporaryErrors.get(`${row}:${col}`)?.error;
 
                 // Check if the current cell is within the selection range
                 const isInSelectionRange = selectionRange &&
@@ -424,7 +454,7 @@ export class Renderer {
                 if (isActive && !isEditing) { // 6. Active cell overrides everything (if not editing)
                     currentCellBg = activeCellBgColor;
                 }
-                if (currentCellError || hasTemporaryError) { // 7. Error overrides everything
+                if (currentCellError || temporaryError) { // 7. Error overrides everything
                     currentCellBg = errorCellBgColor;
                 }
 
@@ -436,7 +466,7 @@ export class Renderer {
 
                 // Cell Text (Skip if editing)
                 let showRenderText = true;
-                if (isEditing && !['select', 'boolean'].includes(schemaCol?.type)) {
+                if (isEditing && !['select', 'boolean', 'date'].includes(schemaCol?.type)) {
                     showRenderText = false;
                 }
 
@@ -448,7 +478,7 @@ export class Renderer {
                         this.ctx.fillText("(Loading...)", textX, textY, colWidth - padding * 2);
                     } else {
                         const value = data?.[colKey];
-                        let formattedValue = formatValue(value, schemaCol?.type, this.stateManager.cachedDropdownOptionsByColumn.get(colKey));
+                        let formattedValue = temporaryError ? temporaryError : schemaCol?.formatter ? schemaCol.formatter(value) : formatValue(value, schemaCol?.type, this.stateManager.cachedDropdownOptionsByColumn.get(colKey));
                         if (!formattedValue && currentCellError) {
                             formattedValue = `${currentCellError}`.includes('required') ? '(required)' : currentCellError;
                         }
@@ -456,7 +486,7 @@ export class Renderer {
                             // Apply error text color for both permanent and temporary errors
                             this.ctx.fillStyle = isDisabled ? disabledCellTextColor :
                                 isEditing ? placeholderTextColor :
-                                    (currentCellError || hasTemporaryError) ? errorTextColor :
+                                    (currentCellError || temporaryError) ? errorTextColor :
                                         textColor;
 
                             if (textAlign === 'center') {

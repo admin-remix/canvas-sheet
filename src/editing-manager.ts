@@ -81,16 +81,6 @@ export class EditingManager {
             log('warn', verbose, `Cannot activate editor: Cell ${rowIndex},${colIndex} row data not found.`);
             return;
         }
-        // If the cell is loading, prevent editing
-        if (rowData?.[`loading:${colKey}`]) {
-            log('log', verbose, `Edit prevented: Cell ${rowIndex},${colIndex} is loading.`);
-            return;
-        }
-        // Should already be checked by event handler, but double-check
-        if (this.stateManager.isCellDisabled(rowIndex, colIndex)) {
-            log('log', verbose, `Edit prevented: Cell ${rowIndex},${colIndex} is disabled.`);
-            return;
-        }
 
         if (this.isEditorActive()) {
             this.deactivateEditor(true); // Deactivate previous editor first
@@ -102,10 +92,30 @@ export class EditingManager {
             log('warn', verbose, `Cannot activate editor: Cell ${rowIndex},${colIndex} bounds not found (likely not visible).`);
             return;
         }
+
         // check if the selected cell bound need to be scrolled into view
         const { scrollLeft, scrollTop } = this.interactionManager.bringBoundsIntoView(bounds);
 
+        // If the cell is loading, prevent editing
+        if (rowData?.[`loading:${colKey}`]) {
+            log('log', verbose, `Edit prevented: Cell ${rowIndex},${colIndex} is loading.`);
+            return;
+        }
+        // Should already be checked by event handler, but double-check
+        if (this.stateManager.isCellDisabled(rowIndex, colIndex)) {
+            log('log', verbose, `Edit prevented: Cell ${rowIndex},${colIndex} is disabled.`);
+            return;
+        }
+
         const schema = this.stateManager.getSchemaForColumn(colIndex);
+        if (schema?.readonly) {
+            log('log', verbose, `Edit prevented: Cell ${rowIndex},${colIndex} is readonly.`);
+            return;
+        }
+
+        // clear any temporary errors for this cell
+        this.renderer.clearTemporaryErrors([{ row: rowIndex, col: colIndex }]);
+
         const cellValue = rowData?.[colKey];
         const isCustomEditor = (schema?.type === 'date' && customDatePicker && onEditorOpen) ? true : false;
         this.stateManager.setActiveEditor({
@@ -148,12 +158,14 @@ export class EditingManager {
             if (schema?.type === 'number') {
                 this.editorInput.type = 'number';
                 this.editorInput.step = schema.decimal === false ? '1' : 'any';
+                this.editorInput.placeholder = schema?.placeholder || '';
             } else if (schema?.type === 'email') {
                 this.editorInput.type = 'email';
             } else if (schema?.type === 'date') {
                 this.editorInput.type = 'date';
             } else {
                 this.editorInput.type = 'text';
+                this.editorInput.placeholder = schema?.placeholder || '';
             }
 
             this.editorInput.value = formatValueForInput(cellValue, schema?.type);
@@ -200,7 +212,7 @@ export class EditingManager {
                         if (validationResult.errorType === 'required') {
                             this.stateManager.updateCell(row, `error:${colKey}`, validationResult.error);
                         } else {
-                            this.renderer.setTemporaryError(row, col);
+                            this.renderer.setTemporaryErrors([{ row, col, error: validationResult.error }]);
                         }
                         redrawRequired = true;
                     } else {
@@ -209,7 +221,7 @@ export class EditingManager {
                             this.stateManager.updateCellInternal(row, col, newValue); // Update data directly
                             valueChanged = true;
                             // Update disabled states for the row after the change
-                            this.interactionManager._batchUpdateCellsAndNotify([row], [colKey]);
+                            this.interactionManager._batchUpdateCellsAndNotify([row], [colKey], [{ [colKey]: originalValue }]);
                         }
                     }
                 }
@@ -318,6 +330,7 @@ export class EditingManager {
                     }
                 } else if (filterValues) {
                     valuesToAdd = filterValues;
+                    this.stateManager.addCachedDropdownOptionForColumn(colKey, valuesToAdd);
                 }
             }
             this.dropdownItems = [...defaultValues, ...valuesToAdd];
@@ -331,9 +344,11 @@ export class EditingManager {
             const li = document.createElement('li');
             li.className = `spreadsheet-dropdown-item${item.id === null ? ' spreadsheet-dropdown-item-blank' : ''}`;
             li.textContent = item.name;
+            li.title = item.name;
             li.dataset.index = String(index);
             // Store the actual ID value (could be boolean, number, string, null)
             li.dataset.value = String(item.id === null || item.id === undefined ? '' : item.id);
+            li.style.maxWidth = '200px';
             // li.style.padding = '5px 10px';
             // li.style.cursor = 'pointer';
             // li.addEventListener('mouseenter', () => li.style.backgroundColor = '#f0f0f0');
@@ -346,7 +361,10 @@ export class EditingManager {
         this.dropdown.style.left = `${boundsX}px`;
         this.dropdown.style.top = `${boundsY + boundsHeight}px`; // Position below cell initially
         this.dropdown.style.minWidth = `${boundsWidth}px`;
+        this.dropdown.style.maxWidth = `${Math.max(boundsWidth, 200)}px`;
         this.dropdown.style.maxHeight = '200px'; // Limit height
+
+        this.dropdownSearchInput.placeholder = schemaCol?.placeholder || 'Search...';
 
         // Use requestAnimationFrame to measure after display:block takes effect
         requestAnimationFrame(() => {
@@ -503,8 +521,9 @@ export class EditingManager {
             }
 
             // Update the data in the state manager
-            this.stateManager.updateCellInternal(row, col, valueToSet);
-            this.interactionManager._batchUpdateCellsAndNotify([row], [this.stateManager.getColumnKey(col)]);// Update disabled states after change
+            const oldValue = this.stateManager.updateCellInternal(row, col, valueToSet);
+            const colKey = this.stateManager.getColumnKey(col);
+            this.interactionManager._batchUpdateCellsAndNotify([row], [colKey], [{ [colKey]: oldValue }]);// Update disabled states after change
 
             // delay the dropdown deactivation to stop the same keyup event from reopening the dropdown
             setTimeout(() => {

@@ -3,7 +3,8 @@ import {
     DataRow,
     SpreadsheetOptions,
     ColumnSchema,
-    ValidationError
+    ValidationError,
+    CellUpdateInput
 } from './types';
 import { DEFAULT_OPTIONS } from './config';
 import { DomManager } from './dom-manager';
@@ -143,6 +144,11 @@ export class Spreadsheet {
         this.onDataUpdate();
     }
 
+    public updateColumnSchema(colKey: string, schema: ColumnSchema): void {
+        this.stateManager.updateColumnSchema(colKey, schema);
+        this.onDataUpdate();
+    }
+
     public addRow(): number {
         const newRowIndex = this.stateManager.addRow();
         this.onDataUpdate(this.container.scrollHeight, 0);
@@ -169,7 +175,7 @@ export class Spreadsheet {
         this.removeColumnByIndex(colIndex);
     }
 
-    public updateCell(rowIndex: number, colKey: string, value: any): void {
+    public updateCell({ rowIndex, colKey, value, flashError }: CellUpdateInput): void {
         let redrawNeeded = false;
         try {
             const updated = this.stateManager.updateCell(rowIndex, colKey, value, true);
@@ -183,6 +189,10 @@ export class Spreadsheet {
                 log('warn', this.options.verbose, error);
             }
         }
+        const colIndex = this.stateManager.getColumns().indexOf(colKey);
+        if (flashError && colIndex >= 0) {
+            this.renderer.setTemporaryErrors([{ row: rowIndex, col: colIndex, error: flashError }]);
+        }
         if (redrawNeeded) this.draw();
     }
     /**
@@ -190,15 +200,21 @@ export class Spreadsheet {
      * @param inputs - An array of objects with rowIndex, colKey, and updated value properties
      * @returns An array of row indices that were updated
      */
-    public updateCells(inputs: { rowIndex: number, colKey: string, value: any }[]): number[] {
+    public updateCells(inputs: CellUpdateInput[]): number[] {
         let redrawNeeded = false;
         const updatedRows = new Set<number>();
-        for (const { rowIndex, colKey, value } of inputs) {
+        const cellsToFlashError: { row: number, col: number, error?: string }[] = [];
+        const columns = this.stateManager.getColumns();
+        for (const { rowIndex, colKey, value, flashError } of inputs) {
+            const colIndex = columns.indexOf(colKey);
             try {
                 const updated = this.stateManager.updateCell(rowIndex, colKey, value, true);
                 if (!updated) continue;
                 updatedRows.add(rowIndex);
                 redrawNeeded = true;
+                if (flashError && colIndex >= 0) {
+                    cellsToFlashError.push({ row: rowIndex, col: colIndex, error: flashError });
+                }
             } catch (error: unknown) {
                 if (error instanceof ValidationError) {
                     this.stateManager.updateCell(rowIndex, `error:${colKey}`, error.message);
@@ -207,6 +223,9 @@ export class Spreadsheet {
                     log('warn', this.options.verbose, error);
                 }
             }
+        }
+        if (cellsToFlashError.length) {
+            this.renderer.setTemporaryErrors(cellsToFlashError);
         }
         if (redrawNeeded) this.draw();
         return Array.from(updatedRows);
@@ -227,12 +246,12 @@ export class Spreadsheet {
     public focus() {
         this.domManager.focusContainer();
     }
-    public setValueFromCustomEditor(rowIndex: number, colKey: string, value: any) {
+    public setValueFromCustomEditor({ rowIndex, colKey, value }: CellUpdateInput) {
         this.focus()
         if (this.editingManager.isEditorActive()) {
             this.editingManager.deactivateEditor(false, true);
         }
-        this.updateCell(rowIndex, colKey, value);
+        this.updateCell({ rowIndex, colKey, value });
     }
 
     // --- Helper to expose redrawing for managers ---

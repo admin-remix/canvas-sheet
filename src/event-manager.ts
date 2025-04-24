@@ -448,7 +448,7 @@ export class EventManager {
                             if (error.errorType === 'required' && !currentValue) {
                                 this.stateManager.updateCell(row!, `error:${colKey}`, error.message);
                             } else {
-                                this.renderer.setTemporaryError(row!, col!);
+                                this.renderer.setTemporaryErrors([{ row: row!, col: col!, error: error.message }]);
                             }
                         }
                     }

@@ -28,6 +28,8 @@ export const DEFAULT_OPTIONS: RequiredSpreadsheetOptions = {
     headerBgColor: "#4b5563", // gray-600
     customHeaderBgColor: "#9ca3af", // gray-300
     selectedHeaderBgColor: "#dbeafe", // gray-600
+    readonlyHeaderBgColor: "#f3f4f6", // gray-100
+    readonlyHeaderTextColor: "#9ca3af", // gray-400
     headerClipText: true,
     headerTextAlign: 'center',
     gridLineColor: "#d1d5db", // gray-300
@@ -44,7 +46,14 @@ export const DEFAULT_OPTIONS: RequiredSpreadsheetOptions = {
     resizeHandleSize: 5,
     temporaryErrorTimeout: 2000,
     customDatePicker: false,
+    autoAddNewRow: true,
     verbose: false,
+
+    onCellsUpdate: null,
+    onCellSelected: null,
+    onEditorOpen: null,
+    onRowDeleted: null,
+    onColumnDelete: null,
 };
 
 export const DISABLED_FIELD_PREFIX = "disabled:"; 

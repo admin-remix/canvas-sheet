@@ -4,7 +4,11 @@
     "module": "ESNext",         // Must be ESNext/ES2020/ES2022 for browser modules
     "lib": ["ES2016", "DOM"],   // Need DOM types for browser code
     "outDir": ".",              // Output JS file (app.js) directly into the example folder
-    "rootDir": ".",             // Source file (app.ts) is in this folder
+    "rootDir": "../",             // Source file (app.ts) is in this folder
+
+    "paths": {
+      "canvas-sheet": ["../src/index.ts"]
+    },
 
     /* Module Resolution */
     "moduleResolution": "bundler", // Standard resolution
@@ -28,7 +32,7 @@
     "noEmitOnError": true       // Don't output JS if there are TS errors
   },
   "include": [
-    "app.ts"                  // Only compile app.ts with this config
+    "*.ts",
   ],
   "exclude": [
     "node_modules",

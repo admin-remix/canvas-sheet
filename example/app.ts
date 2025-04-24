@@ -1,4 +1,4 @@
-import { DataRow, Spreadsheet, SpreadsheetSchema, CellUpdateEvent, CellBounds } from "canvas-sheet";
+import { DataRow, Spreadsheet, SpreadsheetSchema, CellUpdateEvent } from "canvas-sheet";
 import "@/spreadsheet.css"; // basic styles
 
 // --- Schema Definition ---
@@ -342,10 +342,10 @@ document.addEventListener("DOMContentLoaded", () => {
           // custom loading and error state with a specific column updated value checking
           for (const row of rows) {
             if (row.columnKeys.includes('email') && row.data.email && row.data.email.endsWith('@sample.net')) {
-              spreadsheet?.updateCell(row.rowIndex, 'loading:email', true);
+              spreadsheet?.updateCell({ rowIndex: row.rowIndex, colKey: 'loading:email', value: true });
               setTimeout(() => {
-                spreadsheet?.updateCell(row.rowIndex, 'loading:email', null);
-                spreadsheet?.updateCell(row.rowIndex, 'error:email', `Account ${row.data.email} does not exist`);
+                spreadsheet?.updateCell({ rowIndex: row.rowIndex, colKey: 'loading:email', value: null });
+                spreadsheet?.updateCell({ rowIndex: row.rowIndex, colKey: 'error:email', value: `Account ${row.data.email} does not exist` });
                 // selected cell returns row index and column key
                 const selectedCell = spreadsheet?.getSelectedCell();
                 if (selectedCell?.row === row.rowIndex && selectedCell.colKey === 'email') {
@@ -375,7 +375,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
   document.getElementById("add-row")?.addEventListener("click", () => {
     const newRowIndex = spreadsheet?.addRow();
-    updateRowSizeText(newRowIndex + 1);
+    updateRowSizeText((newRowIndex || 0) + 1);
   });
   document.getElementById("add-column")?.addEventListener("click", () => {
     spreadsheet?.addColumn("new-column", { type: "text", label: "New Column" });
