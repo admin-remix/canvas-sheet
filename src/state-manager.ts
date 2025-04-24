@@ -124,6 +124,18 @@ export class StateManager {
         // Recalculation of sizes, dimensions, and redraw is handled by Spreadsheet class
     }
 
+    public updateColumnSchema(colKey: string, schema: ColumnSchema): void {
+        this.schema[colKey] = {
+            ...this.schema[colKey],
+            ...schema
+        };
+        if (schema.values) {
+            this.addCachedDropdownOptionForColumn(colKey, schema.values);
+        }
+        this._updateAllDisabledStates();
+        this.resetInteractionState();
+    }
+
     public clearAllSelections(): void {
         this.activeCell = null;
         this.selectionStartCell = null;

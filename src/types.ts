@@ -1,4 +1,5 @@
 export type DataType = 'text' | 'number' | 'boolean' | 'date' | 'select' | 'email';
+export type Nullable<T> = T | null;
 
 export interface SelectOption {
     id: string | number;
@@ -7,7 +8,7 @@ export interface SelectOption {
 
 export interface ColumnSchema {
     type: DataType;
-    label?: string;
+    label: string;
     required?: boolean;
     values?: SelectOption[]; // For 'select' type
     decimal?: boolean;      // For 'number' type (false means integer)
@@ -17,7 +18,9 @@ export interface ColumnSchema {
     error?: string;
     loading?: boolean;
     nullable?: boolean;
+    readonly?: boolean;
     removable?: boolean;
+    placeholder?: string;
 }
 
 export interface SpreadsheetSchema {
@@ -91,6 +94,8 @@ export interface SpreadsheetOptions {
     customHeaderBgColor?: string;
     headerBgColor?: string;
     selectedHeaderBgColor?: string;
+    readonlyHeaderBgColor?: string;
+    readonlyHeaderTextColor?: string;
     headerClipText?: boolean; // Clip text or adjust(squish) text width to fit the header
     headerTextAlign?: 'left' | 'center' | 'right';
     gridLineColor?: string;
@@ -111,8 +116,21 @@ export interface SpreadsheetOptions {
     temporaryErrorTimeout?: number;
     customDatePicker?: boolean;
     verbose?: boolean;
+
+    onCellsUpdate?: Nullable<(rows: CellUpdateEvent[]) => void>;
+    onCellSelected?: Nullable<(rowIndex: number, colKey: string, rowData: DataRow) => void>;
+    onEditorOpen?: Nullable<(rowIndex: number, colKey: string, rowData: DataRow, bounds: CellBounds) => void>;
+    onRowDeleted?: Nullable<(rows: DataRow[]) => void>;
+    onColumnDelete?: Nullable<(colIndex: number, schema: ColumnSchema) => void>;
+    //bulkSearchDropdown?: (events: BulkSearchDropdownEvent[]) => Promise<BulkSearchDropdownResponse[]>;
 }
 
+export interface CellUpdateInput {
+    rowIndex: number;
+    colKey: string;
+    value: any;
+    flashError?: string;
+}
 export interface CellUpdateEvent {
     rowIndex: number;
     columnKeys: string[];
@@ -130,17 +148,8 @@ export interface CellUpdateEvent {
 //     values: SelectOption[];
 // }
 
-interface SpreadsheetEvents {
-    onCellsUpdate?: (rows: CellUpdateEvent[]) => void;
-    onCellSelected?: (rowIndex: number, colKey: string, rowData: DataRow) => void;
-    onEditorOpen?: (rowIndex: number, colKey: string, rowData: DataRow, bounds: CellBounds) => void;
-    onRowDeleted?: (rows: DataRow[]) => void;
-    onColumnDelete?: (colIndex: number, schema: ColumnSchema) => void;
-    //bulkSearchDropdown?: (events: BulkSearchDropdownEvent[]) => Promise<BulkSearchDropdownResponse[]>;
-}
-
 // Required version of options for internal use
-export type RequiredSpreadsheetOptions = Required<SpreadsheetOptions> & SpreadsheetEvents;
+export type RequiredSpreadsheetOptions = Required<SpreadsheetOptions>;
 
 export interface DropdownItem {
     id: any;

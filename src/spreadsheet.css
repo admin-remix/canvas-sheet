@@ -25,6 +25,7 @@
   list-style: none;
   margin: 0;
   padding: 0;
+  overflow-x: hidden;
 }
 .spreadsheet-dropdown-item {
   padding: 0.5rem 0.75rem; /* py-2 px-3 */

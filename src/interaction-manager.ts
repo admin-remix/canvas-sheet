@@ -708,7 +708,7 @@ export class InteractionManager {
             if (validationResult.errorType === 'required' && !currentValue) {
                 this.stateManager.updateCell(targetRow, `error:${targetColKey}`, validationResult.error);
             } else {
-                this.renderer.setTemporaryError(targetRow, targetCol);
+                this.renderer.setTemporaryErrors([{ row: targetRow, col: targetCol, error: validationResult.error }]);
             }
             return true;// redraw required for error
         } else {
@@ -751,7 +751,7 @@ export class InteractionManager {
                     if (validationResult.errorType === 'required' && !currentValue) {
                         this.stateManager.updateCell(row, `error:${targetColKey}`, validationResult.error);
                     } else {
-                        this.renderer.setTemporaryError(row, col);
+                        this.renderer.setTemporaryErrors([{ row, col, error: validationResult.error }]);
                     }
                     changed = true;
                     // TODO: add to affectedRows and affectedColumns
@@ -881,7 +881,7 @@ export class InteractionManager {
                     if (validationResult.errorType === 'required' && !currentValue) {
                         this.stateManager.updateCell(targetRow, `error:${targetColKey}`, validationResult.error);
                     } else {
-                        this.renderer.setTemporaryError(targetRow, targetCol);
+                        this.renderer.setTemporaryErrors([{ row: targetRow, col: targetCol, error: validationResult.error }]);
                     }
                     changed = true;
                     // TODO: add to affectedRows and affectedColumns
@@ -951,7 +951,7 @@ export class InteractionManager {
                     if (validationResult.errorType === 'required' && !currentValue) {
                         this.stateManager.updateCell(row, `error:${targetColKey}`, validationResult.error);
                     } else {
-                        this.renderer.setTemporaryError(row, col);
+                        this.renderer.setTemporaryErrors([{ row, col, error: validationResult.error }]);
                     }
                     changed = true;
                     // TODO: add to affectedRows and affectedColumns
@@ -1218,7 +1218,7 @@ export class InteractionManager {
                     if (validationResult.errorType === 'required' && !currentValue) {
                         this.stateManager.updateCell(targetRow, `error:${targetColKey}`, validationResult.error);
                     } else {
-                        this.renderer.setTemporaryError(targetRow, targetCol);
+                        this.renderer.setTemporaryErrors([{ row: targetRow, col: targetCol, error: validationResult.error }]);
                     }
                     changed = true;
                     // TODO: add to affectedRows and affectedColumns
@@ -1283,7 +1283,7 @@ export class InteractionManager {
                     if (validationResult.errorType === 'required' && !currentValue) {
                         this.stateManager.updateCell(row, `error:${targetColKey}`, validationResult.error);
                     } else {
-                        this.renderer.setTemporaryError(row, col);
+                        this.renderer.setTemporaryErrors([{ row, col, error: validationResult.error }]);
                     }
                     changed = true;
                     // TODO: add to affectedRows and affectedColumns
