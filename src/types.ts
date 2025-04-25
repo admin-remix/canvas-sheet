@@ -51,6 +51,7 @@ export interface ActiveEditorState {
     type?: DataType;
     originalValue: any;
     isCustomEditor?: boolean;
+    asyncJobId?: number;
 }
 
 export interface DragState {

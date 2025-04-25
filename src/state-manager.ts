@@ -54,6 +54,7 @@ export class StateManager {
     private dragState: DragState = { isDragging: false, startCell: null, endRow: null };
     private resizeColumnState: ResizeColumnState = { isResizing: false, columnIndex: null, startX: null };
     private resizeRowState: ResizeRowState = { isResizing: false, rowIndex: null, startY: null };
+    private asyncOperationCounter = -1;
 
     public cachedDropdownOptionsByColumn: Map<string, Map<string | number, string>> = new Map();
 
@@ -380,7 +381,10 @@ export class StateManager {
 
     /** Sets the active cell. Returns true if the active cell changed. */
     public setActiveCell(coords: CellCoords | null): boolean {
-        const changed = JSON.stringify(this.activeCell) !== JSON.stringify(coords);
+        const changed = (!this.activeCell && coords) ||
+            (this.activeCell && !coords) ||
+            (this.activeCell?.row !== coords?.row) ||
+            (this.activeCell?.col !== coords?.col);
         if (changed) {
             this.activeCell = coords;
         }
@@ -397,15 +401,27 @@ export class StateManager {
                 }
             }, 0);
         }
-        return changed;
+        return !!changed;
     }
 
     public getActiveEditor(): ActiveEditorState | null {
         return this.activeEditor;
     }
 
+    public newAsyncJobId(): number {
+        this.asyncOperationCounter = (this.asyncOperationCounter + 1) % 1000000;
+        return this.asyncOperationCounter;
+    }
+    public get currentAsyncJobId(): number {
+        return this.asyncOperationCounter;
+    }
+
     public setActiveEditor(editorState: ActiveEditorState | null): void {
-        this.activeEditor = editorState;
+        if (!editorState) {
+            this.activeEditor = null;
+        } else {
+            this.activeEditor = { ...editorState, asyncJobId: this.newAsyncJobId() };
+        }
     }
 
     public getSelectedRows(): Set<number> {

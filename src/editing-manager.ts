@@ -26,9 +26,7 @@ export class EditingManager {
     // Dropdown state
     private dropdownItems: DropdownItem[] = [];
     private highlightedDropdownIndex: number = -1;
-
     private DEFAULT_SAFE_MARGIN = 50;
-
     private debouncedLazySearch: (searchTerm: string) => void;
 
     constructor(
@@ -196,6 +194,8 @@ export class EditingManager {
     public deactivateEditor(saveChanges = true, activateCell = false): void {
         const activeEditor = this.stateManager.getActiveEditor();
         if (!activeEditor) return;
+
+        this.stateManager.newAsyncJobId();// reset the current async job
 
         const { row, col, type, originalValue } = activeEditor;
         let valueChanged = false;
@@ -382,10 +382,18 @@ export class EditingManager {
             {
                 const filterValues = schemaCol.filterValues?.(this.stateManager.getRowData(rowIndex) || {}, rowIndex);
                 if (filterValues && filterValues instanceof Promise) {
+                    const jobId = this.stateManager.getActiveEditor()?.asyncJobId;
                     this.stateManager.updateCell(rowIndex, `loading:${colKey}`, true);
                     this.renderer.draw();
                     const filterValuesResult = await filterValues;
+
                     this.stateManager.removeCellValue(rowIndex, `loading:${colKey}`);
+                    // async operation is done, verify if we need the result
+                    if (jobId !== this.stateManager.currentAsyncJobId) {
+                        log('log', verbose, `Async operation aborted: ${colKey}`);
+                        return;
+                    }
+
                     if (filterValuesResult?.length) {
                         valuesToAdd = filterValuesResult || [];
                         this.stateManager.addCachedDropdownOptionForColumn(colKey, valuesToAdd);
@@ -457,6 +465,8 @@ export class EditingManager {
             this.dropdown.style.display = 'none';
             this.highlightedDropdownIndex = -1;
         }
+        // hide the loader
+        this.domManager.toggleDropdownLoader(false);
     }
 
     private _handleDropdownSearch(): void {
@@ -514,7 +524,12 @@ export class EditingManager {
         const defaultValues = schemaCol?.nullable ? [{ id: null, name: this.options.blankDropdownItemLabel }] : [];
 
         try {
+            const jobId = this.stateManager.getActiveEditor()?.asyncJobId;
             const items = await lazySearch({ searchTerm, rowIndex: row, colKey, rowData });
+            if (jobId !== this.stateManager.currentAsyncJobId) {
+                log('log', this.options.verbose, `Async operation aborted: ${colKey}`);
+                return;
+            }
             const latestActiveEditor = this.stateManager.getActiveEditor();
             // Make sure we're still editing the same cell after the async operation
             if (!latestActiveEditor ||
