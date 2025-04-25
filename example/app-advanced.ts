@@ -1,4 +1,4 @@
-import { DataRow, Spreadsheet, SpreadsheetSchema, CellUpdateEvent, ColumnSchema, SelectOption, CellUpdateInput, CellEvent } from "canvas-sheet";
+import { DataRow, Spreadsheet, SpreadsheetSchema, CellUpdateEvent, ColumnSchema, SelectOption, CellUpdateInput, CellEvent, CellEventWithSearch } from "canvas-sheet";
 import "@/spreadsheet.css"; // basic styles
 
 const DOMAINS = [
@@ -33,12 +33,22 @@ const DEPARTMENTS = [
   { id: 8, name: "Research", locationId: 8 },
   { id: 9, name: "IT", locationId: 3 },
   { id: 10, name: "Management", locationId: 10 },
+  { id: 11, name: "Operations" },
+  { id: 12, name: "Customer Success" },
+  { id: 13, name: "Data Science" },
+  { id: 14, name: "Product Engineering" },
+  { id: 15, name: "Product Management" },
+  { id: 16, name: "Product Security" },
+  { id: 17, name: "Product Compliance" },
+  { id: 18, name: "Product Risk Management" },
+  { id: 19, name: "Product Audit" },
+  { id: 20, name: "Product Investigations" },
 ]
 async function getAsyncData(rowData: DataRow) {
   return new Promise<SelectOption[]>((resolve) => {
     setTimeout(() => {
       if (rowData.locationId) {
-        resolve(Array.from({ length: rowData.locationId + 1 }, (_, i) => ({ id: i + 1, name: `Checkout ABCDEFGHIJKLMNOPQRSTUVWXYZ ABCDEFGHIJKLMNOPQRSTUVWXYZ ABCDEFGHIJKLMNOPQRSTUVWXYZ ${i + 1}` })));
+        resolve(Array.from({ length: rowData.locationId + 1 }, (_, i) => ({ id: i + 1, name: `Checkout ${i + 1}` })));
       } else {
         resolve([]);
       }
@@ -446,8 +456,6 @@ document.addEventListener("DOMContentLoaded", () => {
                 if (!departmentIds || !departmentIds.includes(+data.departmentId)) {
                   newUpdatedRows.push({ rowIndex, colKey: 'departmentId', value: oldData?.departmentId || null, flashError: 'Wrong department' });
                 }
-              } else {
-                console.log("no locationId or departmentId", data, oldData);
               }
             }
           }
@@ -467,6 +475,16 @@ document.addEventListener("DOMContentLoaded", () => {
           if (confirm(`Are you sure you want to delete column ${schema.label}?`)) {
             spreadsheet?.removeColumnByIndex(colIndex);
           }
+        },
+        onLazySearch: async ({ searchTerm }: CellEventWithSearch) => {
+          if (!searchTerm) {
+            return null;
+          }
+          return new Promise(resolve => {
+            setTimeout(() => {
+              resolve(DEPARTMENTS.filter(d => d.name.toLowerCase().includes(searchTerm.toLowerCase())));
+            }, 2000 + (Math.random() * 1000));
+          });
         },
         verbose: true,
       }
@@ -494,12 +512,8 @@ document.addEventListener("DOMContentLoaded", () => {
     spreadsheet?.addColumn("status", {
       type: "select",
       label: "Status",
-      values: [
-        { id: 'Open', name: "Open" },
-        { id: 'Closed', name: "Closed" },
-        { id: 'InProgress', name: "In Progress" }
-      ],
       nullable: true,
+      lazySearch: true,
       removable: true
     });
   });

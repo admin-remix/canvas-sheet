@@ -7,7 +7,7 @@ import { StateManager } from './state-manager';
 import { DomManager } from './dom-manager';
 import { Renderer } from './renderer';
 import { InteractionManager } from './interaction-manager';
-import { formatValueForInput, parseValueFromInput, validateInput, log } from './utils';
+import { formatValueForInput, parseValueFromInput, validateInput, log, debounce } from './utils';
 
 export class EditingManager {
     private container: HTMLElement;
@@ -28,6 +28,8 @@ export class EditingManager {
     private highlightedDropdownIndex: number = -1;
 
     private DEFAULT_SAFE_MARGIN = 50;
+
+    private debouncedLazySearch: (searchTerm: string) => void;
 
     constructor(
         container: HTMLElement,
@@ -50,6 +52,9 @@ export class EditingManager {
         this.dropdown = dropdownElements.dropdown;
         this.dropdownSearchInput = dropdownElements.searchInput;
         this.dropdownList = dropdownElements.list;
+
+        // Initialize debounced search with 300ms delay
+        this.debouncedLazySearch = debounce(this._handleLazySearch.bind(this), this.options.lazySearchDebounceTime);
     }
 
     public bindInternalEvents(): void {
@@ -301,6 +306,54 @@ export class EditingManager {
         }
     }
 
+    private _populateDropdown(clear = false): void {
+        if (clear) {
+            this.dropdownList.innerHTML = '';
+        }
+        this.dropdownItems.forEach((item, index) => {
+            const li = document.createElement('li');
+            li.className = `spreadsheet-dropdown-item${item.id === null ? ' spreadsheet-dropdown-item-blank' : ''}`;
+            li.textContent = item.name;
+            li.title = item.name;
+            li.dataset.index = String(index);
+            // Store the actual ID value (could be boolean, number, string, null)
+            li.dataset.value = String(item.id === null || item.id === undefined ? '' : item.id);
+            li.style.maxWidth = '200px';
+            this.dropdownList.appendChild(li);
+        });
+    }
+
+    private _adjustDropdown() {
+        // Use requestAnimationFrame to measure after display:block takes effect
+        requestAnimationFrame(() => {
+            const scrollHeight = this.dropdown.scrollHeight;
+            const clientHeight = this.dropdown.clientHeight;
+
+            if (clientHeight >= scrollHeight) {// no scrollbar
+                const totalContentHeight = [...this.dropdown.children].reduce((a, m) => a + (m as HTMLElement).getBoundingClientRect().height, 0);
+                this.dropdown.style.height = `${Math.min(totalContentHeight + 5, window.innerHeight - this.DEFAULT_SAFE_MARGIN)}px`; // extra height to not show scrollbar
+            }
+
+            const dropdownBounds = this.dropdown.getBoundingClientRect();
+
+            const rightX = +(this.dropdown.getAttribute('data-right-x') || 0);
+            const absoluteY = +(this.dropdown.getAttribute('data-absolute-y') || 0);
+            const boundsHeight = +(this.dropdown.getAttribute('data-bounds-height') || 0);
+
+            // align the dropdown to the right of its own bounds if it extends beyond the window
+            if (dropdownBounds.x + dropdownBounds.width > (window.innerWidth - this.DEFAULT_SAFE_MARGIN)) {
+                this.dropdown.style.left = `${rightX - dropdownBounds.width}px`;
+                this.dropdown.style.resize = 'vertical';// prevent horizontal resizing
+            }
+
+            const maxHeightToCheck = Math.max(window.innerHeight, document.body.scrollHeight) - this.DEFAULT_SAFE_MARGIN;
+            // move the dropdown up if it extends beyond the bottom of the window
+            if (dropdownBounds.y + dropdownBounds.height > maxHeightToCheck) {
+                this.dropdown.style.top = `${absoluteY - boundsHeight - dropdownBounds.height}px`;
+            }
+        });
+    }
+
     // --- Dropdown Methods ---
     private async _showDropdown(
         rowIndex: number,
@@ -311,9 +364,12 @@ export class EditingManager {
         boundsWidth: number,
         boundsHeight: number
     ): Promise<void> {
+        const { blankDropdownItemLabel, onLazySearch, verbose } = this.options;
         this.dropdownItems = [];
-        this.dropdownList.innerHTML = ''; // Clear previous items
-        const defaultValues = schemaCol?.nullable ? [{ id: null, name: '(Blank)' }] : [];
+        this.domManager.toggleDropdownLoader(false); // Hide loading indicator initially
+
+        const defaultValues = schemaCol?.nullable ? [{ id: null, name: blankDropdownItemLabel }] : [];
+        let lazySearch = false;
         // Populate dropdown items based on type
         if (schemaCol?.type === 'boolean') {
             this.dropdownItems = [
@@ -340,25 +396,27 @@ export class EditingManager {
                 }
             }
             this.dropdownItems = [...defaultValues, ...valuesToAdd];
-        } else if (schemaCol?.type === 'select' && schemaCol.lazySearch) {
+        } else if (schemaCol?.type === 'select' && schemaCol.lazySearch && onLazySearch) {
+            // For lazy search, start with just default values (if nullable)
             this.dropdownItems = [...defaultValues];
+            lazySearch = true;
+            // If there's an initial search term we want to trigger
+            this.domManager.toggleDropdownLoader(true); // Show loading indicator
+            // Immediately trigger lazy search with empty string to get initial results
+            try {
+                await this._handleLazySearch('');
+            } catch (error) {
+                log('error', verbose, `Error initializing lazy search: ${error}`);
+                this.domManager.toggleDropdownLoader(false);
+            }
         } else {
-            log('warn', this.options.verbose, `Dropdown requested for non-dropdown type: ${schemaCol?.type}`);
+            log('warn', verbose, `Dropdown requested for non-dropdown type: ${schemaCol?.type}`);
             return;
         }
 
-        // Create list elements
-        this.dropdownItems.forEach((item, index) => {
-            const li = document.createElement('li');
-            li.className = `spreadsheet-dropdown-item${item.id === null ? ' spreadsheet-dropdown-item-blank' : ''}`;
-            li.textContent = item.name;
-            li.title = item.name;
-            li.dataset.index = String(index);
-            // Store the actual ID value (could be boolean, number, string, null)
-            li.dataset.value = String(item.id === null || item.id === undefined ? '' : item.id);
-            li.style.maxWidth = '200px';
-            this.dropdownList.appendChild(li);
-        });
+        if (this.dropdownItems.length) {
+            this._populateDropdown(true);
+        }
 
         // convert bounds into absolute position
         const offsetLeft = this.container.offsetLeft;
@@ -375,36 +433,17 @@ export class EditingManager {
         this.dropdown.style.minHeight = '100px'; // Limit height
         this.dropdown.style.resize = 'both';
         this.dropdown.style.overflow = 'auto';
+        this.dropdown.setAttribute('data-right-x', `${rightX}`);
+        this.dropdown.setAttribute('data-absolute-y', `${absoluteY}`);
+        this.dropdown.setAttribute('data-bounds-height', `${boundsHeight}`);
 
         this.dropdownSearchInput.placeholder = schemaCol?.placeholder || 'Search...';
 
-        // Use requestAnimationFrame to measure after display:block takes effect
-        requestAnimationFrame(() => {
-            const scrollHeight = this.dropdown.scrollHeight;
-            const clientHeight = this.dropdown.clientHeight;
-
-            if (clientHeight >= scrollHeight) {// no scrollbar
-                const totalContentHeight = [...this.dropdown.children].reduce((a, m) => a + (m as HTMLElement).getBoundingClientRect().height, 0);
-                this.dropdown.style.height = `${Math.min(totalContentHeight + 5, window.innerHeight - this.DEFAULT_SAFE_MARGIN)}px`; // extra height to not show scrollbar
-            }
-
-            const dropdownBounds = this.dropdown.getBoundingClientRect();
-
-            // align the dropdown to the right of its own bounds if it extends beyond the window
-            if (dropdownBounds.x + dropdownBounds.width > (window.innerWidth - this.DEFAULT_SAFE_MARGIN)) {
-                this.dropdown.style.left = `${rightX - dropdownBounds.width}px`;
-                this.dropdown.style.resize = 'vertical';// prevent horizontal resizing
-            }
-
-            // move the dropdown up if it extends beyond the bottom of the window
-            if (dropdownBounds.y + dropdownBounds.height > (window.innerHeight - this.DEFAULT_SAFE_MARGIN)) {
-                this.dropdown.style.top = `${absoluteY - boundsHeight - dropdownBounds.height}px`;
-            }
-        });
+        this._adjustDropdown();
 
         // Reset search and focus
         this.dropdownSearchInput.value = '';
-        this._filterDropdown('');
+        if (!lazySearch) this._filterDropdown('');
         this.dropdownSearchInput.focus();
         this.highlightedDropdownIndex = -1;
         this._updateDropdownHighlight(
@@ -422,6 +461,19 @@ export class EditingManager {
 
     private _handleDropdownSearch(): void {
         const searchTerm = this.dropdownSearchInput.value.toLowerCase();
+
+        const activeEditor = this.stateManager.getActiveEditor();
+        if (!activeEditor) return;
+        const schemaCol = this.stateManager.getSchemaForColumn(activeEditor.col);
+
+        if (schemaCol?.lazySearch && this.options.onLazySearch) {
+            // Show loading indicator
+            this.domManager.toggleDropdownLoader(true);
+            // Trigger debounced search
+            this.debouncedLazySearch(searchTerm);
+            return;
+        }
+
         this._filterDropdown(searchTerm);
         const items = Array.from(
             this.dropdownList.querySelectorAll("li:not(.hidden)")
@@ -443,19 +495,54 @@ export class EditingManager {
     private async _handleLazySearch(searchTerm: string): Promise<void> {
         const lazySearch = this.options.onLazySearch;
         if (!lazySearch) return;
+
         const activeEditor = this.stateManager.getActiveEditor();
-        if (!activeEditor) return;
+        if (!activeEditor) {
+            this.domManager.toggleDropdownLoader(false);
+            return;
+        }
+
         const { row, col } = activeEditor;
         const rowData = this.stateManager.getRowData(row);
-        if (!rowData) return;
+        if (!rowData) {
+            this.domManager.toggleDropdownLoader(false);
+            return;
+        }
+
         const colKey = this.stateManager.getColumnKey(col);
         const schemaCol = this.stateManager.getSchemaForColumn(col);
-        const defaultValues = schemaCol?.nullable ? [{ id: null, name: '(Blank)' }] : [];
+        const defaultValues = schemaCol?.nullable ? [{ id: null, name: this.options.blankDropdownItemLabel }] : [];
+
         try {
             const items = await lazySearch({ searchTerm, rowIndex: row, colKey, rowData });
+            const latestActiveEditor = this.stateManager.getActiveEditor();
+            // Make sure we're still editing the same cell after the async operation
+            if (!latestActiveEditor ||
+                latestActiveEditor.row !== row ||
+                latestActiveEditor.col !== col) {
+                this.domManager.toggleDropdownLoader(false);
+                return;
+            }
+
             this.dropdownItems = [...defaultValues, ...(items || [])];
+
+            // Rebuild dropdown list
+            this._populateDropdown(true);
+
+            this.dropdown.style.height = `${Math.min(this.dropdown.scrollHeight, 200)}px`;
+            this._adjustDropdown();
+
+            // Update highlight
+            const visibleItems = Array.from(
+                this.dropdownList.querySelectorAll("li:not(.hidden)")
+            ) as HTMLLIElement[];
+            this.highlightedDropdownIndex = visibleItems.length > 0 ? 0 : -1;
+            this._updateDropdownHighlight(visibleItems);
         } catch (error) {
             log('error', this.options.verbose, `Error calling onLazySearch: ${error}`);
+        } finally {
+            // Hide loading indicator
+            this.domManager.toggleDropdownLoader(false);
         }
     }
 
@@ -535,6 +622,8 @@ export class EditingManager {
 
             const selectedData = this.dropdownItems[itemIndex];
             const { row, col } = activeEditor;
+            const colKey = this.stateManager.getColumnKey(col);
+            this.stateManager.addCachedDropdownOptionForColumn(colKey, [selectedData]);
             let valueToSet: any = selectedData.id;
 
             // Handle boolean case explicitly as 'true'/'false' strings might cause issues
@@ -546,7 +635,7 @@ export class EditingManager {
 
             // Update the data in the state manager
             const oldValue = this.stateManager.updateCellInternal(row, col, valueToSet);
-            const colKey = this.stateManager.getColumnKey(col);
+
             this.interactionManager._batchUpdateCellsAndNotify([row], [colKey], [{ [colKey]: oldValue }]);// Update disabled states after change
 
             // delay the dropdown deactivation to stop the same keyup event from reopening the dropdown

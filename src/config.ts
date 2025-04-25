@@ -47,6 +47,8 @@ export const DEFAULT_OPTIONS: RequiredSpreadsheetOptions = {
     temporaryErrorTimeout: 2000,
     customDatePicker: false,
     autoAddNewRow: true,
+    lazySearchDebounceTime: 300,
+    blankDropdownItemLabel: '(Blank)',
     verbose: false,
 
     onCellsUpdate: null,

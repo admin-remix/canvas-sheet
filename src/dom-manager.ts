@@ -6,6 +6,7 @@ export class DomManager {
     private dropdownWrapper: HTMLDivElement;
     private dropdown: HTMLDivElement;
     private dropdownSearchInput: HTMLInputElement;
+    private dropdownLoader: HTMLDivElement;
     private dropdownList: HTMLUListElement;
     private systemScrollbarWidth: number = 0;
     private hScrollbar: HTMLDivElement;
@@ -81,6 +82,31 @@ export class DomManager {
 
         searchContainer.appendChild(this.dropdownSearchInput);
 
+        // Create loading spinner
+        this.dropdownLoader = document.createElement('div');
+        this.dropdownLoader.className = "spreadsheet-dropdown-loader";
+        this.dropdownLoader.style.display = 'none';
+        this.dropdownLoader.style.textAlign = 'center';
+        this.dropdownLoader.style.padding = '8px 0';
+        this.dropdownLoader.style.borderBottom = '1px solid #eee';
+
+        // SVG spinner
+        this.dropdownLoader.innerHTML = `
+            <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <style>
+                    @keyframes spin {
+                        0% { transform: rotate(0deg); }
+                        100% { transform: rotate(360deg); }
+                    }
+                    .spinner {
+                        animation: spin 1.5s linear infinite;
+                        transform-origin: center;
+                    }
+                </style>
+                <circle class="spinner" cx="12" cy="12" r="10" fill="none" stroke="#2563eb" stroke-width="2.5" stroke-dasharray="40 60" />
+            </svg>
+        `;
+
         this.dropdownList = document.createElement('ul');
         this.dropdownList.className = "spreadsheet-dropdown-list";
         this.dropdownList.style.listStyle = 'none';
@@ -95,8 +121,17 @@ export class DomManager {
         // append to the appropriate parents
         document.body.appendChild(this.dropdownWrapper);
         this.dropdown.appendChild(searchContainer);
+        this.dropdown.appendChild(this.dropdownLoader);
         this.dropdown.appendChild(this.dropdownList);
         this.dropdownWrapper.appendChild(this.dropdown);
+    }
+    public toggleDropdownLoader(show: boolean): void {
+        if (show) {
+            this.dropdownLoader.style.display = 'flex';
+            this.dropdownLoader.style.justifyContent = 'center';
+        } else {
+            this.dropdownLoader.style.display = 'none';
+        }
     }
 
     public checkEventBoundInDropdown(event: MouseEvent): boolean {
@@ -192,11 +227,13 @@ export class DomManager {
     public getDropdownElements(): {
         dropdown: HTMLDivElement;
         searchInput: HTMLInputElement;
+        loader: HTMLDivElement;
         list: HTMLUListElement;
     } {
         return {
             dropdown: this.dropdown,
             searchInput: this.dropdownSearchInput,
+            loader: this.dropdownLoader,
             list: this.dropdownList,
         };
     }

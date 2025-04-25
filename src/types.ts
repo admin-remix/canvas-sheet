@@ -130,6 +130,8 @@ export interface SpreadsheetOptions {
     temporaryErrorTimeout?: number;
     customDatePicker?: boolean;
     autoAddNewRow?: boolean;
+    lazySearchDebounceTime?: number;
+    blankDropdownItemLabel?: string;
     verbose?: boolean;
 
     onCellsUpdate?: Nullable<(rows: CellUpdateEvent[]) => void>;
