@@ -47,6 +47,8 @@ export const DEFAULT_OPTIONS: RequiredSpreadsheetOptions = {
     temporaryErrorTimeout: 2000,
     customDatePicker: false,
     autoAddNewRow: true,
+    lazySearchDebounceTime: 300,
+    blankDropdownItemLabel: '(Blank)',
     verbose: false,
 
     onCellsUpdate: null,
@@ -54,6 +56,7 @@ export const DEFAULT_OPTIONS: RequiredSpreadsheetOptions = {
     onEditorOpen: null,
     onRowDeleted: null,
     onColumnDelete: null,
+    onLazySearch: null,
 };
 
 export const DISABLED_FIELD_PREFIX = "disabled:"; 

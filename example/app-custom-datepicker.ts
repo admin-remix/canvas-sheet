@@ -1,4 +1,4 @@
-import { DataRow, Spreadsheet, SpreadsheetSchema, CellUpdateEvent, CellBounds } from "canvas-sheet";
+import { DataRow, Spreadsheet, SpreadsheetSchema, CellUpdateEvent, CellBounds, CellEvent, CellEventWithBounds } from "canvas-sheet";
 import "@/spreadsheet.css"; // basic styles
 
 // --- Schema Definition ---
@@ -332,7 +332,7 @@ const sampleData = !window.location.search.includes('bigdata') ? [
 function updateRowSizeText(length: number) {
   document.getElementById('data-size')!.textContent = length.toString();
 }
-let selectedCellForEditor: { rowIndex: number, colKey: string, rowData: DataRow, bounds: CellBounds } | null = null;
+let selectedCellForEditor: CellEventWithBounds | null = null;
 function toggleModal(show: boolean) {
   const modal = document.getElementById('modal-container')!;
   if (show) {
@@ -341,10 +341,10 @@ function toggleModal(show: boolean) {
     modal.classList.add('hidden');
   }
 }
-function openDatePicker(rowIndex: number, colKey: string, rowData: DataRow, bounds: CellBounds) {
-  selectedCellForEditor = { rowIndex, colKey, rowData, bounds };
+function openDatePicker(event: CellEventWithBounds) {
+  selectedCellForEditor = { ...event };
   const datePicker = document.getElementById('date-picker') as HTMLInputElement;
-  datePicker.value = rowData[colKey] as string;
+  datePicker.value = event.rowData[event.colKey] as string;
   toggleModal(true);
   setTimeout(() => {
     datePicker.focus();
@@ -381,7 +381,7 @@ document.addEventListener("DOMContentLoaded", () => {
             }
           }
         },
-        onCellSelected: (_rowIndex: number, colKey: string, rowData: DataRow) => {
+        onCellSelected: ({ rowData, colKey }: CellEvent) => {
           document.getElementById('error-container')!.textContent = rowData[`error:${colKey}`] || '';
         },
         onRowDeleted: (rows: DataRow[]) => {
@@ -389,8 +389,8 @@ document.addEventListener("DOMContentLoaded", () => {
           console.log("deleted rows", rows);
         },
         customDatePicker: true,
-        onEditorOpen: (rowIndex: number, colKey: string, rowData: DataRow, bounds: CellBounds) => {
-          openDatePicker(rowIndex, colKey, rowData, bounds);
+        onEditorOpen: (event: CellEventWithBounds) => {
+          openDatePicker(event);
         },
         verbose: true,
       }

@@ -3,8 +3,10 @@ export class DomManager {
     private canvas: HTMLCanvasElement;
     private ctx: CanvasRenderingContext2D;
     private editorInput: HTMLInputElement;
+    private dropdownWrapper: HTMLDivElement;
     private dropdown: HTMLDivElement;
     private dropdownSearchInput: HTMLInputElement;
+    private dropdownLoader: HTMLDivElement;
     private dropdownList: HTMLUListElement;
     private systemScrollbarWidth: number = 0;
     private hScrollbar: HTMLDivElement;
@@ -63,6 +65,8 @@ export class DomManager {
         this.dropdown.style.border = '1px solid #ccc';
         this.dropdown.style.backgroundColor = 'white';
         this.dropdown.style.boxShadow = '0 2px 5px rgba(0,0,0,0.15)';
+        this.dropdown.style.minHeight = '100px';
+        this.dropdown.style.height = '200px';// default height
 
         const searchContainer = document.createElement('div');
         searchContainer.className = "spreadsheet-dropdown-search";
@@ -78,17 +82,60 @@ export class DomManager {
 
         searchContainer.appendChild(this.dropdownSearchInput);
 
+        // Create loading spinner
+        this.dropdownLoader = document.createElement('div');
+        this.dropdownLoader.className = "spreadsheet-dropdown-loader";
+        this.dropdownLoader.style.display = 'none';
+        this.dropdownLoader.style.textAlign = 'center';
+        this.dropdownLoader.style.padding = '8px 0';
+        this.dropdownLoader.style.borderBottom = '1px solid #eee';
+
+        // SVG spinner
+        this.dropdownLoader.innerHTML = `
+            <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <style>
+                    @keyframes spin {
+                        0% { transform: rotate(0deg); }
+                        100% { transform: rotate(360deg); }
+                    }
+                    .spinner {
+                        animation: spin 1.5s linear infinite;
+                        transform-origin: center;
+                    }
+                </style>
+                <circle class="spinner" cx="12" cy="12" r="10" fill="none" stroke="#2563eb" stroke-width="2.5" stroke-dasharray="40 60" />
+            </svg>
+        `;
+
         this.dropdownList = document.createElement('ul');
         this.dropdownList.className = "spreadsheet-dropdown-list";
         this.dropdownList.style.listStyle = 'none';
         this.dropdownList.style.margin = '0';
         this.dropdownList.style.padding = '0';
-        this.dropdownList.style.maxHeight = '200px';
         this.dropdownList.style.overflowY = 'auto';
 
+        // This element will be placed in the body for global positioning
+        this.dropdownWrapper = document.createElement('div');
+        this.dropdownWrapper.className = "canvas-sheet-dropdown-wrapper";
+
+        // append to the appropriate parents
+        document.body.appendChild(this.dropdownWrapper);
         this.dropdown.appendChild(searchContainer);
+        this.dropdown.appendChild(this.dropdownLoader);
         this.dropdown.appendChild(this.dropdownList);
-        this.container.appendChild(this.dropdown);
+        this.dropdownWrapper.appendChild(this.dropdown);
+    }
+    public toggleDropdownLoader(show: boolean): void {
+        if (show) {
+            this.dropdownLoader.style.display = 'flex';
+            this.dropdownLoader.style.justifyContent = 'center';
+        } else {
+            this.dropdownLoader.style.display = 'none';
+        }
+    }
+
+    public checkEventBoundInDropdown(event: MouseEvent): boolean {
+        return this.dropdown.contains(event.target as Node);
     }
 
     public getSystemScrollbarWidth(): number {
@@ -180,11 +227,13 @@ export class DomManager {
     public getDropdownElements(): {
         dropdown: HTMLDivElement;
         searchInput: HTMLInputElement;
+        loader: HTMLDivElement;
         list: HTMLUListElement;
     } {
         return {
             dropdown: this.dropdown,
             searchInput: this.dropdownSearchInput,
+            loader: this.dropdownLoader,
             list: this.dropdownList,
         };
     }

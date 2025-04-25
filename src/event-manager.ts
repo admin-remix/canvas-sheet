@@ -372,6 +372,10 @@ export class EventManager {
             log('log', this.options.verbose, "Outside click on container");
             let needsRedraw = false;
             if (this.editingManager.isEditorActive(true) || this.editingManager.isDropdownVisible()) {
+                if (this.domManager.checkEventBoundInDropdown(event)) {
+                    // click is inside dropdown, do nothing
+                    return;
+                }
                 this.editingManager.deactivateEditor(true);
             } else {
                 // Clear all selection state if clicking outside

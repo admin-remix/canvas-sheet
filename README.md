@@ -30,7 +30,7 @@ npm install canvas-sheet
 ```
 
 ```javascript
-import { Spreadsheet } from 'canvas-sheet';
+import { Spreadsheet } from "canvas-sheet";
 // basic input and dropdown styles
 import "canvas-sheet/dist/spreadsheet.css";
 
@@ -48,25 +48,26 @@ const schema = {
     required: true,
     label: "Email Address",
   },
-  isActive: { type: "boolean", label: "Active" }
+  isActive: { type: "boolean", label: "Active" },
 };
 
 // Your data array
 const data = [
   { id: 1, name: "John Doe", email: "john@example.com", isActive: true },
   { id: 2, name: "Jane Smith", email: "jane@example.com", isActive: false },
-  { id: 3, name: "Bob Johnson", email: "bob@example.com", isActive: true }
+  { id: 3, name: "Bob Johnson", email: "bob@example.com", isActive: true },
 ];
 
 // Initialize the spreadsheet
 const spreadsheet = new Spreadsheet(
   "spreadsheet-container", // Container ID
-  schema,                  // Column schema
-  data,                    // Initial data
-  {                        // Optional configuration
+  schema, // Column schema
+  data, // Initial data
+  {
+    // Optional configuration
     headerHeight: 40,
     defaultRowHeight: 36,
-    font: "14px Arial"
+    font: "14px Arial",
   }
 );
 ```
@@ -86,14 +87,14 @@ const schema = {
     values: [
       { id: 1, name: "Active" },
       { id: 2, name: "Pending" },
-      { id: 3, name: "Inactive" }
+      { id: 3, name: "Inactive" },
     ],
     // custom cell disabling logic
-    disabled: (rowData, rowIndex)=>{
-      console.log('Row index', rowIndex);
-      return rowData.isRestricted && rowData.locationId === 1
+    disabled: (rowData, rowIndex) => {
+      console.log("Row index", rowIndex);
+      return rowData.isRestricted && rowData.locationId === 1;
     },
-  }
+  },
 };
 ```
 
@@ -107,7 +108,7 @@ const currentData = spreadsheet.getData();
 spreadsheet.setData(newData);
 
 // Update a single cell
-spreadsheet.updateCell(rowIndex, 'fieldName', newValue);
+spreadsheet.updateCell(rowIndex, "fieldName", newValue);
 ```
 
 ### Cell Update and Selection Callbacks
@@ -115,80 +116,83 @@ spreadsheet.updateCell(rowIndex, 'fieldName', newValue);
 You can implement custom logic when cells are updated, including adding loading states and validation:
 
 ```javascript
-const spreadsheet = new Spreadsheet(
-  "spreadsheet-container",
-  schema,
-  data,
-  {
-    // ... other options
-    onCellsUpdate: (rows) => {
-      // Example: Show loading and then error state for email fields from a certain domain
-      for (const row of rows) {
-        if (row.columnKeys.includes('email') && row.data.email && row.data.email.endsWith('@sample.net')) {
-          // Set loading state on single cell
-          spreadsheet.updateCell(row.rowIndex, 'loading:email', true);
+const spreadsheet = new Spreadsheet("spreadsheet-container", schema, data, {
+  // ... other options
+  onCellsUpdate: (rows: CellUpdateEvent[]) => {
+    // Example: Show loading and then error state for email fields from a certain domain
+    for (const row of rows) {
+      if (
+        row.columnKeys.includes("email") &&
+        row.data.email &&
+        row.data.email.endsWith("@sample.net")
+      ) {
+        // Set loading state on single cell
+        spreadsheet.updateCell(row.rowIndex, "loading:email", true);
 
-          // Simulate async validation
-          setTimeout(() => {
-            // update multiple cells at once which is more efficient than updating one by one
-            spreadsheet?.updateCells([
-              { rowIndex: row.rowIndex, colKey: 'loading:email', value: null },
-              { rowIndex: row.rowIndex, colKey: 'error:email', value: `Account ${row.data.email} does not exist` }
-            ]);
-          }, 2000);
-        }
+        // Simulate async validation
+        setTimeout(() => {
+          // update multiple cells at once which is more efficient than updating one by one
+          spreadsheet?.updateCells([
+            { rowIndex: row.rowIndex, colKey: "loading:email", value: null },
+            {
+              rowIndex: row.rowIndex,
+              colKey: "error:email",
+              value: `Account ${row.data.email} does not exist`,
+            },
+          ]);
+        }, 2000);
       }
-    },
-    onCellSelected: (rowIndex, colKey, rowData) => {
-      console.log('Selected', rowIndex, colKey, rowData[colKey]);
-    },
-    // ... other options
-  }
-);
+    }
+  },
+  onCellSelected: ({ rowIndex, colKey, rowData }: CellEvent) => {
+    console.log("Selected", rowIndex, colKey, rowData[colKey]);
+  },
+  // ... other options
+});
 ```
-
 
 ### Custom Date Picker Support
 
 The native date picker is used by default. Enable the `customDatePicker` option which will trigger the `onEditorOpen` callback each time a date field is opened. When user selects a date from your custom date picker, call the `setValueFromCustomEditor` method to set the value of the cell which restores focus to the spreadsheet automatically.
 
 ```javascript
-let spreadsheet;
-let selectedCellForEditor;
-function openDatePicker(rowIndex: number, colKey: string, rowData: DataRow, bounds: CellBounds) {
-  selectedCellForEditor = { rowIndex, colKey, rowData, bounds };
-  const selectedDate = rowData[colKey];
-  const positionX = bounds.x;
-  const positionY = bounds.y;
-  const width = bounds.width;
-  const height = bounds.height;
-  console.log('open custom date picker', selectedDate, "at", {
+import { CellEventWithBounds, Spreadsheet } from "canvas-sheet";
+
+let spreadsheet: Spreadsheet | null = null;
+let selectedCellForEditor: CellEventWithBounds | null = null;
+function openDatePicker(event: CellEventWithBounds) {
+  selectedCellForEditor = { ...event };
+  const selectedDate = event.rowData[event.colKey];
+  const positionX = event.bounds.x;
+  const positionY = event.bounds.y;
+  const width = event.bounds.width;
+  const height = event.bounds.height;
+  console.log("open custom date picker", selectedDate, "at", {
     positionX,
     positionY,
     width,
-    height
+    height,
   });
   // or show a modal with a date picker
 }
 // call the "setValueFromCustomEditor" method to set the value of the cell after the date is selected
 function closeDatePicker(value: string) {
-  spreadsheet?.setValueFromCustomEditor(selectedCellForEditor.rowIndex, selectedCellForEditor.colKey, value);
+  spreadsheet?.setValueFromCustomEditor(
+    selectedCellForEditor.rowIndex,
+    selectedCellForEditor.colKey,
+    value
+  );
   selectedCellForEditor = null;
 }
 
-spreadsheet = new Spreadsheet(
-  "spreadsheet-container",
-  schema,
-  data,
-  {
-    // ... other options
-    customDatePicker: true,
-    onEditorOpen: (rowIndex: number, colKey: string, rowData: DataRow, bounds: CellBounds) => {
-      openDatePicker(rowIndex, colKey, rowData, bounds);
-    },
-    // ... other options
-  }
-);
+spreadsheet = new Spreadsheet("spreadsheet-container", schema, data, {
+  // ... other options
+  customDatePicker: true,
+  onEditorOpen: (event: CellEventWithBounds) => {
+    openDatePicker(event);
+  },
+  // ... other options
+});
 ```
 
 ## Configuration Options
@@ -206,7 +210,7 @@ const options = {
   maxRowHeight: 100,
   headerHeight: 36,
   rowNumberWidth: 50,
-  
+
   // Styling
   font: '14px Arial',
   headerFont: 'bold 14px Arial',
@@ -218,7 +222,7 @@ const options = {
   headerTextColor: '#333',
   headerBgColor: '#f5f5f5',
   gridLineColor: '#e0e0e0',
-  
+
   // Additional options
   textAlign: 'left',
   padding: 8,
@@ -227,16 +231,16 @@ const options = {
   // Custom date picker support
   customDatePicker: false,
   // when a date field is opened
-  onEditorOpen: (rowIndex, colKey, rowData, bounds) => void,
+  onEditorOpen: (event: CellEventWithBounds) => void,
   // when user presses delete on a column header, does not delete the column
   // you have to call "removeColumnByIndex()" to delete the column
-  onColumnDelete: (colIndex, schema) => void, 
+  onColumnDelete: (colIndex: number, schema: ColumnSchema) => void,
   // after rows are deleted
-  onRowDeleted: (rows) => void,
+  onRowDeleted: (rows: DataRow[]) => void,
   // when a cell is selected
-  onCellSelected: (rowIndex, colKey, rowData) => void,
+  onCellSelected: (event: CellEvent) => void,
   // when cells are updated
-  onCellsUpdate: (rows) => void,
+  onCellsUpdate: (rows: CellUpdateEvent[]) => void,
 };
 ```
 
@@ -251,28 +255,28 @@ const schema = {
     type: "text",
     required: true,
     maxlength: 50,
-    label: "Name"
+    label: "Name",
   },
-  
+
   // Number field with options
   amount: {
     type: "number",
-    decimal: true,  // Allow decimal values
-    label: "Amount"
+    decimal: true, // Allow decimal values
+    label: "Amount",
   },
-  
+
   // Boolean field (checkbox)
   isActive: {
     type: "boolean",
-    label: "Active"
+    label: "Active",
   },
-  
+
   // Date field
   createdAt: {
     type: "date",
-    label: "Created Date"
+    label: "Created Date",
   },
-  
+
   // Select/dropdown field
   status: {
     type: "select",
@@ -280,12 +284,12 @@ const schema = {
     values: [
       { id: 1, name: "Active" },
       { id: 2, name: "Pending" },
-      { id: 3, name: "Inactive" }
+      { id: 3, name: "Inactive" },
     ],
-    disabled: (data)=>{
+    disabled: (data) => {
       return data.status === 3 && !data.isActive;
-    }
-  }
+    },
+  },
 };
 ```
 

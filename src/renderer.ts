@@ -422,6 +422,7 @@ export class Renderer {
                 const colWidth = columnWidths[col];
                 const colKey = columns[col];
                 const schemaCol = schema[colKey];
+                const canRenderCellDuringEdit = ['select', 'boolean', 'date'].includes(schemaCol?.type);
                 const currentCellError = data?.[`error:${colKey}`];
                 const isDisabled = this.stateManager.isCellDisabled(row, col);
                 const isActive = activeCell?.row === row && activeCell?.col === col;
@@ -459,14 +460,14 @@ export class Renderer {
                 }
 
                 // Fill background if not editing
-                if (!isEditing && currentCellBg) {
+                if ((!isEditing || canRenderCellDuringEdit) && currentCellBg) {
                     this.ctx.fillStyle = currentCellBg;
                     this.ctx.fillRect(currentX, currentY, colWidth, rowHeight);
                 }
 
                 // Cell Text (Skip if editing)
                 let showRenderText = true;
-                if (isEditing && !['select', 'boolean', 'date'].includes(schemaCol?.type)) {
+                if (isEditing && !canRenderCellDuringEdit) {
                     showRenderText = false;
                 }
 
