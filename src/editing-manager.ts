@@ -27,6 +27,8 @@ export class EditingManager {
     private dropdownItems: DropdownItem[] = [];
     private highlightedDropdownIndex: number = -1;
 
+    private DEFAULT_SAFE_MARGIN = 50;
+
     constructor(
         container: HTMLElement,
         options: RequiredSpreadsheetOptions,
@@ -133,11 +135,16 @@ export class EditingManager {
 
         if (isCustomEditor) {
             try {
-                onEditorOpen?.(rowIndex, colKey, rowData, {
-                    x: editorX,
-                    y: editorY,
-                    width: editorWidth,
-                    height: editorHeight
+                onEditorOpen?.({
+                    rowIndex,
+                    colKey,
+                    rowData,
+                    bounds: {
+                        x: editorX,
+                        y: editorY,
+                        width: editorWidth,
+                        height: editorHeight
+                    }
                 });
             } catch (error) {
                 log('error', verbose, `Error calling onEditorOpen: ${error}`);
@@ -295,7 +302,6 @@ export class EditingManager {
     }
 
     // --- Dropdown Methods ---
-
     private async _showDropdown(
         rowIndex: number,
         colKey: string,
@@ -334,6 +340,8 @@ export class EditingManager {
                 }
             }
             this.dropdownItems = [...defaultValues, ...valuesToAdd];
+        } else if (schemaCol?.type === 'select' && schemaCol.lazySearch) {
+            this.dropdownItems = [...defaultValues];
         } else {
             log('warn', this.options.verbose, `Dropdown requested for non-dropdown type: ${schemaCol?.type}`);
             return;
@@ -349,52 +357,49 @@ export class EditingManager {
             // Store the actual ID value (could be boolean, number, string, null)
             li.dataset.value = String(item.id === null || item.id === undefined ? '' : item.id);
             li.style.maxWidth = '200px';
-            // li.style.padding = '5px 10px';
-            // li.style.cursor = 'pointer';
-            // li.addEventListener('mouseenter', () => li.style.backgroundColor = '#f0f0f0');
-            // li.addEventListener('mouseleave', () => li.style.backgroundColor = 'white');
             this.dropdownList.appendChild(li);
         });
 
+        // convert bounds into absolute position
+        const offsetLeft = this.container.offsetLeft;
+        const offsetTop = this.container.offsetTop;
+
+        const absoluteX = boundsX + offsetLeft;
+        const absoluteY = boundsY + offsetTop + boundsHeight;
+        const rightX = absoluteX + boundsWidth;
         // Position and display the dropdown
         this.dropdown.style.display = 'block';
-        this.dropdown.style.left = `${boundsX}px`;
-        this.dropdown.style.top = `${boundsY + boundsHeight}px`; // Position below cell initially
+        this.dropdown.style.left = `${absoluteX}px`;
+        this.dropdown.style.top = `${absoluteY}px`; // Position below cell initially
         this.dropdown.style.minWidth = `${boundsWidth}px`;
-        this.dropdown.style.maxWidth = `${Math.max(boundsWidth, 200)}px`;
-        this.dropdown.style.maxHeight = '200px'; // Limit height
+        this.dropdown.style.minHeight = '100px'; // Limit height
+        this.dropdown.style.resize = 'both';
+        this.dropdown.style.overflow = 'auto';
 
         this.dropdownSearchInput.placeholder = schemaCol?.placeholder || 'Search...';
 
         // Use requestAnimationFrame to measure after display:block takes effect
         requestAnimationFrame(() => {
-            const dropdownRect = this.dropdown.getBoundingClientRect();
-            const viewportHeight = window.innerHeight;
-            const viewportWidth = window.innerWidth;
+            const scrollHeight = this.dropdown.scrollHeight;
+            const clientHeight = this.dropdown.clientHeight;
 
-            // Get dropdown dimensions
-            const dropdownHeight = dropdownRect.height;
-            const dropdownWidth = dropdownRect.width;
-
-            // Check if dropdown extends beyond bottom of viewport
-            if (dropdownRect.bottom > viewportHeight && boundsY >= dropdownHeight) {
-                this.dropdown.style.top = `${boundsY - dropdownHeight}px`; // Position above cell
+            if (clientHeight >= scrollHeight) {// no scrollbar
+                const totalContentHeight = [...this.dropdown.children].reduce((a, m) => a + (m as HTMLElement).getBoundingClientRect().height, 0);
+                this.dropdown.style.height = `${Math.min(totalContentHeight + 5, window.innerHeight - this.DEFAULT_SAFE_MARGIN)}px`; // extra height to not show scrollbar
             }
 
-            // Check if dropdown extends beyond right of viewport
-            if (dropdownRect.right > viewportWidth) {
-                const newLeft = viewportWidth - dropdownWidth - 5; // Add some padding
-                this.dropdown.style.left = `${Math.max(0, newLeft)}px`;
+            const dropdownBounds = this.dropdown.getBoundingClientRect();
+
+            // align the dropdown to the right of its own bounds if it extends beyond the window
+            if (dropdownBounds.x + dropdownBounds.width > (window.innerWidth - this.DEFAULT_SAFE_MARGIN)) {
+                this.dropdown.style.left = `${rightX - dropdownBounds.width}px`;
+                this.dropdown.style.resize = 'vertical';// prevent horizontal resizing
             }
 
-            // Ensure dropdown doesn't go off the left edge
-            if (dropdownRect.left < 0) {
-                this.dropdown.style.left = '0px';
+            // move the dropdown up if it extends beyond the bottom of the window
+            if (dropdownBounds.y + dropdownBounds.height > (window.innerHeight - this.DEFAULT_SAFE_MARGIN)) {
+                this.dropdown.style.top = `${absoluteY - boundsHeight - dropdownBounds.height}px`;
             }
-
-            // Calculate input height for max-height adjustment
-            const inputHeight = ((this.dropdown.firstChild as HTMLElement)?.clientHeight || 0) + 15; // extra height cap for the input
-            this.dropdown.style.maxHeight = `${200 + inputHeight}px`; // Limit height updated
         });
 
         // Reset search and focus
@@ -433,6 +438,25 @@ export class EditingManager {
             item.classList.toggle('hidden', !isVisible);
             item.style.display = isVisible ? 'block' : 'none'; // Control visibility
         });
+    }
+
+    private async _handleLazySearch(searchTerm: string): Promise<void> {
+        const lazySearch = this.options.onLazySearch;
+        if (!lazySearch) return;
+        const activeEditor = this.stateManager.getActiveEditor();
+        if (!activeEditor) return;
+        const { row, col } = activeEditor;
+        const rowData = this.stateManager.getRowData(row);
+        if (!rowData) return;
+        const colKey = this.stateManager.getColumnKey(col);
+        const schemaCol = this.stateManager.getSchemaForColumn(col);
+        const defaultValues = schemaCol?.nullable ? [{ id: null, name: '(Blank)' }] : [];
+        try {
+            const items = await lazySearch({ searchTerm, rowIndex: row, colKey, rowData });
+            this.dropdownItems = [...defaultValues, ...(items || [])];
+        } catch (error) {
+            log('error', this.options.verbose, `Error calling onLazySearch: ${error}`);
+        }
     }
 
     private _handleDropdownKeyDown(event: KeyboardEvent): void {

@@ -22,6 +22,7 @@ export interface ColumnSchema {
     removable?: boolean;
     placeholder?: string;
     formatter?: (value: any) => string | null;
+    lazySearch?: boolean;
 }
 
 export interface SpreadsheetSchema {
@@ -68,6 +69,18 @@ export interface ResizeRowState {
     isResizing: boolean;
     rowIndex: number | null;
     startY: number | null;
+}
+
+export interface CellEvent {
+    rowIndex: number;
+    colKey: string;
+    rowData: DataRow;
+}
+export interface CellEventWithBounds extends CellEvent {
+    bounds: CellBounds;
+}
+export interface CellEventWithSearch extends CellEvent {
+    searchTerm: string;
 }
 
 export interface SpreadsheetOptions {
@@ -120,10 +133,11 @@ export interface SpreadsheetOptions {
     verbose?: boolean;
 
     onCellsUpdate?: Nullable<(rows: CellUpdateEvent[]) => void>;
-    onCellSelected?: Nullable<(rowIndex: number, colKey: string, rowData: DataRow) => void>;
-    onEditorOpen?: Nullable<(rowIndex: number, colKey: string, rowData: DataRow, bounds: CellBounds) => void>;
+    onCellSelected?: Nullable<(event: CellEvent) => void>;
+    onEditorOpen?: Nullable<(event: CellEventWithBounds) => void>;
     onRowDeleted?: Nullable<(rows: DataRow[]) => void>;
     onColumnDelete?: Nullable<(colIndex: number, schema: ColumnSchema) => void>;
+    onLazySearch?: Nullable<(event: CellEventWithSearch) => Promise<Nullable<SelectOption[]>>>;
 }
 
 export interface CellUpdateInput {

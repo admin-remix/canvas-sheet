@@ -1,4 +1,4 @@
-import { DataRow, Spreadsheet, SpreadsheetSchema, CellUpdateEvent } from "canvas-sheet";
+import { DataRow, Spreadsheet, SpreadsheetSchema, CellUpdateEvent, CellEvent } from "canvas-sheet";
 import "@/spreadsheet.css"; // basic styles
 
 // --- Schema Definition ---
@@ -355,7 +355,7 @@ document.addEventListener("DOMContentLoaded", () => {
             }
           }
         },
-        onCellSelected: (_rowIndex: number, colKey: string, rowData: DataRow) => {
+        onCellSelected: ({ rowData, colKey }: CellEvent) => {
           document.getElementById('error-container')!.textContent = rowData[`error:${colKey}`] || '';
         },
         verbose: true,

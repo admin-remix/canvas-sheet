@@ -242,6 +242,9 @@ export class Spreadsheet {
         if (!row) return null;
         return JSON.parse(JSON.stringify(row));// Deep copy
     }
+    public getColumns(): string[] {
+        return this.stateManager.getColumns().slice();// Deep copy
+    }
 
     public focus() {
         this.domManager.focusContainer();

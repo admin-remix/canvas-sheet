@@ -54,6 +54,7 @@ export const DEFAULT_OPTIONS: RequiredSpreadsheetOptions = {
     onEditorOpen: null,
     onRowDeleted: null,
     onColumnDelete: null,
+    onLazySearch: null,
 };
 
 export const DISABLED_FIELD_PREFIX = "disabled:"; 

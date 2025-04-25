@@ -387,7 +387,11 @@ export class StateManager {
         if (this.options.onCellSelected && coords?.col && coords?.row) {
             setTimeout(() => {
                 try {
-                    this.options.onCellSelected!(coords?.row!, this.getColumnKey(coords?.col!), this.data[coords?.row!]);
+                    this.options.onCellSelected!({
+                        rowIndex: coords?.row!,
+                        colKey: this.getColumnKey(coords?.col!),
+                        rowData: this.data[coords?.row!] // TODO: sending by reference, not a deep copy
+                    });
                 } catch (_error) {
                     // Ignore errors in onCellSelected callback
                 }

@@ -1,4 +1,4 @@
-import { DataRow, Spreadsheet, SpreadsheetSchema, CellUpdateEvent, ColumnSchema, SelectOption, CellUpdateInput } from "canvas-sheet";
+import { DataRow, Spreadsheet, SpreadsheetSchema, CellUpdateEvent, ColumnSchema, SelectOption, CellUpdateInput, CellEvent } from "canvas-sheet";
 import "@/spreadsheet.css"; // basic styles
 
 const DOMAINS = [
@@ -455,7 +455,7 @@ document.addEventListener("DOMContentLoaded", () => {
             spreadsheet?.updateCells(newUpdatedRows);
           }
         },
-        onCellSelected: (_rowIndex: number, colKey: string, rowData: DataRow) => {
+        onCellSelected: ({ rowData, colKey }: CellEvent) => {
           document.getElementById('error-container')!.textContent = rowData[`error:${colKey}`] || '';
         },
         onRowDeleted: (rows: DataRow[]) => {
@@ -497,7 +497,7 @@ document.addEventListener("DOMContentLoaded", () => {
       values: [
         { id: 'Open', name: "Open" },
         { id: 'Closed', name: "Closed" },
-        { id: 'InProgress', name: "In Progress" },
+        { id: 'InProgress', name: "In Progress" }
       ],
       nullable: true,
       removable: true

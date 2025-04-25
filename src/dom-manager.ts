@@ -3,6 +3,7 @@ export class DomManager {
     private canvas: HTMLCanvasElement;
     private ctx: CanvasRenderingContext2D;
     private editorInput: HTMLInputElement;
+    private dropdownWrapper: HTMLDivElement;
     private dropdown: HTMLDivElement;
     private dropdownSearchInput: HTMLInputElement;
     private dropdownList: HTMLUListElement;
@@ -63,6 +64,8 @@ export class DomManager {
         this.dropdown.style.border = '1px solid #ccc';
         this.dropdown.style.backgroundColor = 'white';
         this.dropdown.style.boxShadow = '0 2px 5px rgba(0,0,0,0.15)';
+        this.dropdown.style.minHeight = '100px';
+        this.dropdown.style.height = '200px';// default height
 
         const searchContainer = document.createElement('div');
         searchContainer.className = "spreadsheet-dropdown-search";
@@ -83,12 +86,21 @@ export class DomManager {
         this.dropdownList.style.listStyle = 'none';
         this.dropdownList.style.margin = '0';
         this.dropdownList.style.padding = '0';
-        this.dropdownList.style.maxHeight = '200px';
         this.dropdownList.style.overflowY = 'auto';
 
+        // This element will be placed in the body for global positioning
+        this.dropdownWrapper = document.createElement('div');
+        this.dropdownWrapper.className = "canvas-sheet-dropdown-wrapper";
+
+        // append to the appropriate parents
+        document.body.appendChild(this.dropdownWrapper);
         this.dropdown.appendChild(searchContainer);
         this.dropdown.appendChild(this.dropdownList);
-        this.container.appendChild(this.dropdown);
+        this.dropdownWrapper.appendChild(this.dropdown);
+    }
+
+    public checkEventBoundInDropdown(event: MouseEvent): boolean {
+        return this.dropdown.contains(event.target as Node);
     }
 
     public getSystemScrollbarWidth(): number {
