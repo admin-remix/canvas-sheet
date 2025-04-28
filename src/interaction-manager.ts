@@ -12,6 +12,7 @@ import { DimensionCalculator } from './dimension-calculator';
 import { log, validateInput } from './utils';
 import { DomManager } from './dom-manager';
 import { EditingManager } from './editing-manager'; // Needed for moving active cell
+import { HistoryManager } from './history-manager';
 
 export class InteractionManager {
     private options: RequiredSpreadsheetOptions;
@@ -19,6 +20,7 @@ export class InteractionManager {
     private renderer: Renderer;
     private dimensionCalculator: DimensionCalculator;
     private domManager: DomManager;
+    private historyManager: HistoryManager;
     private editingManager!: EditingManager; // Use definite assignment assertion
     private lastPasteHandledAt: Date | null = null;// used to prevent multiple pastes in a row
     private ignoreNextScrollTimeout: number | null = null;
@@ -29,13 +31,15 @@ export class InteractionManager {
         stateManager: StateManager,
         renderer: Renderer,
         dimensionCalculator: DimensionCalculator,
-        domManager: DomManager
+        domManager: DomManager,
+        historyManager: HistoryManager
     ) {
         this.options = options;
         this.stateManager = stateManager;
         this.renderer = renderer;
         this.dimensionCalculator = dimensionCalculator;
         this.domManager = domManager;
+        this.historyManager = historyManager;
         // editingManager will be set via setter injection after all managers are created
     }
 
@@ -566,6 +570,11 @@ export class InteractionManager {
                 oldData: oldRows?.[index]
             });
         });
+
+        // Record history only if not a parent app update
+        if (!this.historyManager.isParentAppUpdate()) {
+            this.historyManager.recordChanges(updatedRows);
+        }
 
         // Notify about updates (once per batch)
         if (updatedRows.length > 0) {

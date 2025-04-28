@@ -10,6 +10,7 @@ import { DimensionCalculator } from './dimension-calculator';
 import { Renderer } from './renderer';
 import { log } from './utils';
 import { DomManager } from './dom-manager';
+import { HistoryManager } from './history-manager';
 
 export class EventManager {
     private container: HTMLElement;
@@ -21,6 +22,7 @@ export class EventManager {
     private renderer: Renderer;
     private options: RequiredSpreadsheetOptions;
     private domManager: DomManager;
+    private historyManager: HistoryManager;
 
     private hScrollbar: HTMLDivElement;
     private vScrollbar: HTMLDivElement;
@@ -28,6 +30,7 @@ export class EventManager {
     private resizeTimeout: number | null = null;
     private _ignoreNextClick = false; // Flag to ignore click after drag mouseup
     private isCtrl = false;
+    private isShift = false;
 
     // Touch events state
     private lastTouchX: number | null = null;
@@ -46,7 +49,8 @@ export class EventManager {
         dimensionCalculator: DimensionCalculator,
         renderer: Renderer,
         options: RequiredSpreadsheetOptions,
-        domManager: DomManager
+        domManager: DomManager,
+        historyManager: HistoryManager
     ) {
         this.container = container;
         this.editingManager = editingManager;
@@ -56,6 +60,7 @@ export class EventManager {
         this.renderer = renderer;
         this.options = options;
         this.domManager = domManager;
+        this.historyManager = historyManager;
         this.canvas = this.domManager.getCanvas();
         this.hScrollbar = this.domManager.getHScrollbar();
         this.vScrollbar = this.domManager.getVScrollbar();
@@ -68,6 +73,8 @@ export class EventManager {
     public bindEvents(): void {
         // Container Events
         this.container.addEventListener('wheel', this._handleWheel.bind(this));
+
+        // Scrollbar Events
         this.hScrollbar.addEventListener('scroll', this._handleHScroll.bind(this));
         this.vScrollbar.addEventListener('scroll', this._handleVScroll.bind(this));
 
@@ -75,26 +82,32 @@ export class EventManager {
         this.canvas.addEventListener('dblclick', this._handleDoubleClick.bind(this));
         this.canvas.addEventListener('click', this._handleClick.bind(this));
         this.canvas.addEventListener('mousedown', this._handleCanvasMouseDown.bind(this));
-        // Mouse move handled on document to capture movement outside canvas during drag/resize
 
-        // Document/Window Events
+        // Mouse move handled on document to capture movement outside canvas during drag/resize
         document.addEventListener('mousemove', this._handleDocumentMouseMove.bind(this));
         document.addEventListener('mouseup', this._handleDocumentMouseUp.bind(this));
-        // add resize observer listener instead of window resize event
-        new ResizeObserver(() => {
-            this._handleResize();
-        }).observe(this.container);
-        document.addEventListener('mousedown', this._handleGlobalMouseDown.bind(this), true); // Use capture phase
+
+        // Document/Window Events
         document.addEventListener('keydown', this._handleDocumentKeyDown.bind(this));
         document.addEventListener('keyup', this._handleDocumentKeyUp.bind(this));
-        // Add listener for the native paste event on the container
-        this.container.addEventListener('paste', this._handlePaste.bind(this));
+
+        // add resize observer listener instead of window resize event
+        const resizeObserver = new ResizeObserver(this._handleResize.bind(this));
+        resizeObserver.observe(this.container);
 
         // Touch Events
-        this.canvas.addEventListener('touchstart', this._handleTouchStart.bind(this));
-        this.canvas.addEventListener('touchmove', this._handleTouchMove.bind(this));
-        this.canvas.addEventListener('touchend', this._handleTouchEnd.bind(this));
-        this.canvas.addEventListener('touchcancel', this._handleTouchEnd.bind(this));
+        if ('ontouchstart' in window) {
+            this.canvas.addEventListener('touchstart', this._handleCanvasTouchStart.bind(this));
+            document.addEventListener('touchmove', this._handleDocumentTouchMove.bind(this));
+            document.addEventListener('touchend', this._handleDocumentTouchEnd.bind(this));
+            document.addEventListener('touchcancel', this._handleDocumentTouchEnd.bind(this));
+        }
+
+        // Global mouse down to deactivate editor when clicking outside
+        document.addEventListener('mousedown', this._handleGlobalMouseDown.bind(this), true);
+
+        // Paste event
+        this.container.addEventListener('paste', this._handlePaste.bind(this));
 
         // Editing Manager binds its own internal events (blur, keydown on input/dropdown)
         this.editingManager.bindInternalEvents();
@@ -138,11 +151,12 @@ export class EventManager {
         this.stateManager.updateScroll(scrollTop, this.stateManager.getScrollLeft());
         this._handleScroll();
     }
-    private _handleResize(): void {
+    private _handleResize(entries?: ResizeObserverEntry[]): void {
         if (this.resizeTimeout) {
             clearTimeout(this.resizeTimeout);
         }
-        this.resizeTimeout = window.setTimeout(() => {
+
+        this.resizeTimeout = setTimeout(() => {
             // Deactivate editor/dropdown before recalculating
             this.editingManager.deactivateEditor(false);
             this.editingManager.hideDropdown();
@@ -158,7 +172,7 @@ export class EventManager {
             );
             this.renderer.draw();
             this.resizeTimeout = null;
-        }, 100); // Debounce resize event
+        }, 100) as unknown as number;
     }
 
     private _handleDoubleClick(event: MouseEvent): void {
@@ -396,139 +410,156 @@ export class EventManager {
         }
     }
 
-    private _handleDocumentKeyDown(event: KeyboardEvent): void {
-        if (event.ctrlKey || event.metaKey) {
-            this.isCtrl = true;
+    private _handleDocumentKeyDown(e: KeyboardEvent): void {
+        // Track modifier keys
+        this.isCtrl = e.ctrlKey || e.metaKey;
+        this.isShift = e.shiftKey;
+
+        // Handle undo/redo
+        if (this.isCtrl && !this.isShift && e.key === 'z') {
+            e.preventDefault();
+            if (this.historyManager.undo()) {
+                this.renderer.draw();
+            }
+            return;
         }
-    }
-    private _handleDocumentKeyUp(event: KeyboardEvent): void {
-        const isCtrl = this.isCtrl;
-        if (event.ctrlKey || event.metaKey) {
-            this.isCtrl = false;
+
+        if (this.isCtrl && (e.key === 'y' || (this.isShift && e.key === 'z'))) {
+            e.preventDefault();
+            if (this.historyManager.redo()) {
+                this.renderer.draw();
+            }
+            return;
         }
+
         let redrawNeeded = false;
         let resizeNeeded = false;
 
-        // --- Actions only when editor is INACTIVE ---
-        if (this.editingManager.isEditorActive() || this.editingManager.isDropdownVisible()) {
-            return; // Let editor handle its events
+        // Don't handle keyboard events if editor is active
+        if (this.editingManager.isEditorActive()) {
+            return;
         }
 
-        // --- Global Shortcuts ---
-        if (isCtrl && event.key === 'c') {
-            redrawNeeded = this.interactionManager.copy();
-            event.preventDefault();
-            if (redrawNeeded) this.renderer.draw();
-            return;
-        }
-        if (isCtrl && event.key === 'v') {
-            redrawNeeded = this.interactionManager.paste();
-            event.preventDefault();
-            if (redrawNeeded) this.renderer.draw();
-            return;
-        }
         const activeCell = this.stateManager.getActiveCell();
         const isActiveCellValid = activeCell && activeCell.row !== null && activeCell.col !== null;
         const isCellDisabled = isActiveCellValid && this.stateManager.isCellDisabled(activeCell.row!, activeCell.col!);
 
-        if (event.key === 'Delete' || event.key === 'Backspace') {
+        // --- Global Shortcuts ---
+        if (this.isCtrl && e.key === 'c') {
+            redrawNeeded = this.interactionManager.copy();
+            e.preventDefault();
+            if (redrawNeeded) this.renderer.draw();
+            return;
+        }
+        if (this.isCtrl && e.key === 'v') {
+            redrawNeeded = this.interactionManager.paste();
+            e.preventDefault();
+            if (redrawNeeded) this.renderer.draw();
+            return;
+        }
+
+        // --- Basic Keyboard Navigation and Editing ---
+        if (e.key === 'Delete' || e.key === 'Backspace') {
             const selectedColumn = this.stateManager.getSelectedColumn();
             if (this.stateManager.getSelectedRows().size > 0) {
                 redrawNeeded = this.interactionManager.deleteSelectedRows();
-                event.preventDefault();
+                e.preventDefault();
                 // deleteSelectedRows handles recalculations internally
             } else if (isActiveCellValid) {
-                const { row, col } = activeCell;
-                const colKey = this.stateManager.getColumnKey(col!);
+                // Delete content of selected cell if not disabled
                 if (!isCellDisabled) {
-                    const currentValue = this.stateManager.getCellData(row!, col!);
-                    try {
-                        const cleared = this.stateManager.updateCell(row!, colKey, null, true);
-                        redrawNeeded = cleared;
-                    } catch (error: unknown) {
-                        log('warn', this.options.verbose, error);
-                        if (error instanceof ValidationError) {
+                    if (activeCell && activeCell.row !== null && activeCell.col !== null) {
+                        const colKey = this.stateManager.getColumnKey(activeCell.col);
+                        try {
+                            this.stateManager.updateCell(activeCell.row, colKey, null);
+                            this.stateManager.updateDisabledStatesForRow(activeCell.row);
                             redrawNeeded = true;
-                            if (error.errorType === 'required' && !currentValue) {
-                                this.stateManager.updateCell(row!, `error:${colKey}`, error.message);
-                            } else {
-                                this.renderer.setTemporaryErrors([{ row: row!, col: col!, error: error.message }]);
+                        } catch (error) {
+                            if (error instanceof ValidationError) {
+                                this.renderer.setTemporaryErrors([{
+                                    row: activeCell.row,
+                                    col: activeCell.col,
+                                    error: error.message
+                                }]);
+                                redrawNeeded = true;
                             }
                         }
                     }
                 }
-                event.preventDefault();
-            } else if (event.key === 'Delete' && selectedColumn !== null && this.stateManager.getSchemaForColumn(selectedColumn)?.removable) {
+                e.preventDefault();
+            } else if (e.key === 'Delete' && selectedColumn !== null && this.stateManager.getSchemaForColumn(selectedColumn)?.removable) {
                 if (this.options.onColumnDelete) {
                     try {
-                        this.options.onColumnDelete(selectedColumn, this.stateManager.getSchemaForColumn(selectedColumn)!);
-                    } catch (error: unknown) {
-                        log('warn', this.options.verbose, error);
+                        const schema = this.stateManager.getSchemaForColumn(selectedColumn)!;
+                        this.options.onColumnDelete(selectedColumn, schema);
+                        this.stateManager.setSelectedColumn(null);
+                        redrawNeeded = true;
+                        resizeNeeded = true;
+                    } catch (error) {
+                        console.error("Error deleting column:", error);
                     }
-                    return;
-                } else {
-                    this.stateManager.removeColumn(selectedColumn);
-                    redrawNeeded = true;
-                    resizeNeeded = true;
                 }
-                event.preventDefault();
+                e.preventDefault();
             }
-        } else if (event.key.startsWith('Arrow')) {
+        } else if (e.key.startsWith('Arrow')) {
             if (activeCell && isActiveCellValid) {
                 let rowDelta = 0;
                 let colDelta = 0;
-                if (event.key === 'ArrowUp') rowDelta = -1;
-                else if (event.key === 'ArrowDown') rowDelta = 1;
-                else if (event.key === 'ArrowLeft') colDelta = -1;
-                else if (event.key === 'ArrowRight') colDelta = 1;
+                if (e.key === 'ArrowUp') rowDelta = -1;
+                else if (e.key === 'ArrowDown') rowDelta = 1;
+                else if (e.key === 'ArrowLeft') colDelta = -1;
+                else if (e.key === 'ArrowRight') colDelta = 1;
 
                 if (rowDelta !== 0 || colDelta !== 0) {
-                    // moveActiveCell handles finding next cell, setting state, and activating editor (which redraws)
                     redrawNeeded = this.interactionManager.moveActiveCell(rowDelta, colDelta, false);
                     if (redrawNeeded) {
                         this.interactionManager.clearSelections();
                         this.stateManager.clearSelectionRange();
                     }
-                    event.preventDefault();
+                    e.preventDefault();
                 }
             }
-        } else if (event.key === 'Enter' && activeCell) {
+        } else if (e.key === 'Enter' && activeCell) {
             if (!isCellDisabled && activeCell.row !== null && activeCell.col !== null) {
                 this.editingManager.activateEditor(activeCell.row, activeCell.col);
                 // activateEditor handles redraw/focus
-                event.preventDefault();
+                e.preventDefault();
             }
-        } else if (event.key === 'Tab' && activeCell) {
+        } else if (e.key === 'Tab' && activeCell) {
             if (document.activeElement !== this.container && !this.container.contains(document.activeElement as Node)) {
                 // revert tab focus back to the container
-                if (document.activeElement === document.body) {
-                    this.domManager.focusContainer();
-                }
-                // must return here because the active element is not the container
-                return;
+                this.container.focus();
             }
             // moveActiveCell handles finding next cell, setting state, and activating editor (which redraws)
-            redrawNeeded = this.interactionManager.moveActiveCell(0, event.shiftKey ? -1 : 1);
+            redrawNeeded = this.interactionManager.moveActiveCell(0, e.shiftKey ? -1 : 1);
             // clear selections and selection range after moving
             if (redrawNeeded) {
                 this.interactionManager.clearSelections();
                 this.stateManager.clearSelectionRange();
             }
-            event.preventDefault();
-        } else if (!isCtrl && !event.ctrlKey && event.key.length === 1) {
+            e.preventDefault();
+        } else if (!this.isCtrl && !e.ctrlKey && e.key.length === 1) {
             // user is typing a new value into a cell
             if (activeCell && activeCell.row !== null && activeCell.col !== null && !isCellDisabled) {
-                this.editingManager.activateEditor(activeCell.row, activeCell.col, event.key);
+                this.editingManager.activateEditor(activeCell.row, activeCell.col, e.key);
             }
         }
 
-        // Redraw if Delete/Backspace on rows caused a state change
         if (resizeNeeded) {
-            this.interactionManager.triggerCustomEvent('resize');
-            // no need to redraw here, resize will trigger a redraw
-        } else if (redrawNeeded) {
+            this.dimensionCalculator.initializeSizes(this.stateManager.dataLength);
+            this.dimensionCalculator.calculateDimensions(this.container.clientWidth, this.container.clientHeight);
+            this.domManager.updateCanvasSize(this.stateManager.getTotalContentWidth(), this.stateManager.getTotalContentHeight());
+        }
+
+        if (redrawNeeded && !resizeNeeded) {
             this.renderer.draw();
         }
+    }
+
+    private _handleDocumentKeyUp(e: KeyboardEvent): void {
+        // Update modifier keys
+        this.isCtrl = e.ctrlKey || e.metaKey;
+        this.isShift = e.shiftKey;
     }
 
     // --- Native Paste Event Handling ---
@@ -706,7 +737,7 @@ export class EventManager {
     }
 
     // --- Touch Event Handlers ---
-    private _handleTouchStart(event: TouchEvent): void {
+    private _handleCanvasTouchStart(event: TouchEvent): void {
         // Prevent default to avoid page scrolling
         event.preventDefault();
 
@@ -729,7 +760,7 @@ export class EventManager {
         }
     }
 
-    private _handleTouchMove(event: TouchEvent): void {
+    private _handleDocumentTouchMove(event: TouchEvent): void {
         if (!this.isTouching || !this.lastTouchX || !this.lastTouchY) return;
 
         event.preventDefault();
@@ -762,7 +793,7 @@ export class EventManager {
         }
     }
 
-    private _handleTouchEnd(event: TouchEvent): void {
+    private _handleDocumentTouchEnd(event: TouchEvent): void {
         event.preventDefault();
         this.isTouching = false;
 

@@ -14,6 +14,7 @@ import { EventManager } from './event-manager';
 import { EditingManager } from './editing-manager';
 import { InteractionManager } from './interaction-manager';
 import { StateManager } from './state-manager';
+import { HistoryManager } from './history-manager';
 import { chunkArray, log } from './utils';
 export type * from './types';
 
@@ -27,6 +28,7 @@ export class Spreadsheet {
     private eventManager: EventManager;
     private editingManager: EditingManager;
     private interactionManager: InteractionManager;
+    private historyManager: HistoryManager;
 
     constructor(containerId: string, schema: SpreadsheetSchema, data: DataRow[] = [], options: SpreadsheetOptions = {}) {
         const container = document.getElementById(containerId);
@@ -42,7 +44,8 @@ export class Spreadsheet {
         this.domManager = new DomManager(this.container);
         this.dimensionCalculator = new DimensionCalculator(this.options, this.stateManager, this.domManager);
         this.renderer = new Renderer(this.domManager.getContext(), this.options, this.stateManager, this.dimensionCalculator);
-        this.interactionManager = new InteractionManager(this.options, this.stateManager, this.renderer, this.dimensionCalculator, this.domManager);
+        this.historyManager = new HistoryManager(this.stateManager, this.options.verbose);
+        this.interactionManager = new InteractionManager(this.options, this.stateManager, this.renderer, this.dimensionCalculator, this.domManager, this.historyManager);
         this.interactionManager.bindCustomEvents((event: Event) => {
             if (event.type === 'resize') {
                 this.onDataUpdate();
@@ -57,7 +60,8 @@ export class Spreadsheet {
             this.dimensionCalculator,
             this.renderer,
             this.options,
-            this.domManager
+            this.domManager,
+            this.historyManager
         );
 
         this.stateManager.setInitialData(data);
@@ -176,6 +180,8 @@ export class Spreadsheet {
     }
 
     public updateCell({ rowIndex, colKey, value, flashError }: CellUpdateInput): void {
+        // Mark this update as from the parent app to avoid adding to history
+        this.historyManager.startBatchUpdate();
         let redrawNeeded = false;
         try {
             const updated = this.stateManager.updateCell(rowIndex, colKey, value, true);
@@ -194,6 +200,7 @@ export class Spreadsheet {
             this.renderer.setTemporaryErrors([{ row: rowIndex, col: colIndex, error: flashError }]);
         }
         if (redrawNeeded) this.draw();
+        this.historyManager.endBatchUpdate();
     }
     /**
      * Update multiple cells at once
@@ -201,6 +208,8 @@ export class Spreadsheet {
      * @returns An array of row indices that were updated
      */
     public updateCells(inputs: CellUpdateInput[]): number[] {
+        // Mark this update as from the parent app to avoid adding to history
+        this.historyManager.startBatchUpdate();
         let redrawNeeded = false;
         const updatedRows = new Set<number>();
         const cellsToFlashError: { row: number, col: number, error?: string }[] = [];
@@ -228,6 +237,7 @@ export class Spreadsheet {
             this.renderer.setTemporaryErrors(cellsToFlashError);
         }
         if (redrawNeeded) this.draw();
+        this.historyManager.endBatchUpdate();
         return Array.from(updatedRows);
     }
 
@@ -260,5 +270,50 @@ export class Spreadsheet {
     // --- Helper to expose redrawing for managers ---
     public redraw(): void {
         this.draw();
+    }
+
+    /**
+     * Undo the last change made to the spreadsheet
+     * @returns true if an undo operation was performed
+     */
+    public undo(): boolean {
+        const result = this.historyManager.undo();
+        if (result) {
+            this.draw();
+        }
+        return result;
+    }
+
+    /**
+     * Redo the last undone change
+     * @returns true if a redo operation was performed
+     */
+    public redo(): boolean {
+        const result = this.historyManager.redo();
+        if (result) {
+            this.draw();
+        }
+        return result;
+    }
+
+    /**
+     * Check if undo is available
+     */
+    public canUndo(): boolean {
+        return this.historyManager.canUndo();
+    }
+
+    /**
+     * Check if redo is available
+     */
+    public canRedo(): boolean {
+        return this.historyManager.canRedo();
+    }
+
+    /**
+     * Clear all undo/redo history
+     */
+    public clearHistory(): void {
+        this.historyManager.clearHistory();
     }
 } 

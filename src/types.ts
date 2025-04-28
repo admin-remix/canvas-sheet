@@ -133,6 +133,7 @@ export interface SpreadsheetOptions {
     autoAddNewRow?: boolean;
     lazySearchDebounceTime?: number;
     blankDropdownItemLabel?: string;
+    localStorageKey?: string | null;
     verbose?: boolean;
 
     onCellsUpdate?: Nullable<(rows: CellUpdateEvent[]) => void>;
