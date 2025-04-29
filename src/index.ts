@@ -155,22 +155,36 @@ export class Spreadsheet {
 
     public addRow(): number {
         const newRowIndex = this.stateManager.addRow();
+        // Record this operation for undo/redo
+        this.historyManager.recordRowAdd(newRowIndex);
         this.onDataUpdate(this.container.scrollHeight, 0);
         return newRowIndex;
     }
+
     public addColumn(fieldName: string, colSchema: ColumnSchema): number {
         const newColIndex = this.stateManager.addColumn(fieldName, colSchema);
+        // Record this operation for undo/redo
+        this.historyManager.recordColumnAdd(fieldName, colSchema);
         this.onDataUpdate(0, this.container.scrollWidth);
         return newColIndex;
     }
+
     public removeColumnByIndex(colIndex: number): void {
         const columns = this.stateManager.getColumns();
         if (colIndex < 0 || colIndex >= columns.length) {
             throw new Error(`Column index ${colIndex} is out of bounds`);
         }
+
+        const colKey = columns[colIndex];
+        const schema = this.stateManager.getSchemaForColumn(colIndex)!;
+
+        // Record before deletion for undo/redo
+        this.historyManager.recordColumnDelete(colKey, colIndex, schema);
+
         this.stateManager.removeColumn(colIndex);
         this.onDataUpdate(0, this.container.scrollWidth);
     }
+
     public removeColumnByKey(colKey: string): void {
         const colIndex = this.stateManager.getColumns().indexOf(colKey);
         if (colIndex < 0) {
@@ -278,10 +292,10 @@ export class Spreadsheet {
      */
     public undo(): boolean {
         const result = this.historyManager.undo();
-        if (result) {
+        if (result.success) {
             this.draw();
         }
-        return result;
+        return result.success;
     }
 
     /**
@@ -290,10 +304,10 @@ export class Spreadsheet {
      */
     public redo(): boolean {
         const result = this.historyManager.redo();
-        if (result) {
+        if (result.success) {
             this.draw();
         }
-        return result;
+        return result.success;
     }
 
     /**

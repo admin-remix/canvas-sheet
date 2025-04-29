@@ -723,6 +723,13 @@ export class StateManager {
         return newRowIndex;
     }
 
+    // insert a row at a specific index, used internally by history manager
+    // no validation is needed because the row will be from past stable state
+    public addRowAt(index: number, newRowData: DataRow): number {
+        this.data.splice(index, 0, newRowData);
+        return index;
+    }
+
     public addColumn(fieldName: string, colSchema: ColumnSchema): number {
         if (this.schema[fieldName]) {
             throw new Error(`Column ${fieldName} already exists`);
@@ -733,6 +740,17 @@ export class StateManager {
         this.schema[fieldName] = colSchema;
         this.addCachedDropdownOptionForColumn(fieldName);
         return newColIndex;
+    }
+
+    public addColumnAt(index: number, fieldName: string, colSchema: ColumnSchema): number {
+        if (this.schema[fieldName]) {
+            throw new Error(`Column ${fieldName} already exists`);
+        }
+        this.columns.splice(index, 0, fieldName);
+        this.columnWidths.splice(index, 0, this.options.defaultColumnWidth);
+        this.schema[fieldName] = colSchema;
+        this.addCachedDropdownOptionForColumn(fieldName);
+        return index;
     }
 
     public removeColumn(colIndex: number): void {

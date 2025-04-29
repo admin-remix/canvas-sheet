@@ -1005,32 +1005,46 @@ export class InteractionManager {
     }
 
     // --- Deletion --- HINT HINT
-    /** Returns true if rows were deleted */
+    /** Deletes the selected rows, returns true if redraw is needed */
     public deleteSelectedRows(): boolean {
-        const selectedRows = this.stateManager.getSelectedRows();
-        if (selectedRows.size === 0) return false;
+        const selectedRows = Array.from(this.stateManager.getSelectedRows());
+        if (selectedRows.length === 0) return false;
 
-        const rowsToDelete = Array.from(selectedRows);
-        log('log', this.options.verbose, "Deleting rows:", rowsToDelete);
+        // Sort rows in descending order to avoid index issues during deletion
+        const rowsToDelete = selectedRows.sort((a, b) => b - a);
 
-        const selectedRowData = rowsToDelete.map(rowIndex => this.stateManager.getRowData(rowIndex)!).filter(row => row);
-        let deletedCount = this.stateManager.deleteRows(rowsToDelete);
+        // Store row data before deletion for undo
+        const deletedRowData: any[] = [];
+        rowsToDelete.forEach(rowIndex => {
+            const rowData = this.stateManager.getRowData(rowIndex);
+            if (rowData) {
+                deletedRowData.unshift({ ...rowData }); // Add at beginning to match ascending index order
+            }
+        });
+
+        // Record before deletion for undo/redo (convert to ascending order for history)
+        const rowsToDeleteAscending = [...rowsToDelete].sort((a, b) => a - b);
+        this.historyManager.recordRowDelete(rowsToDeleteAscending, deletedRowData);
+
+        // Delete rows and call handler if present
+        const deletedCount = this.stateManager.deleteRows(rowsToDelete);
+
+        // Call the row deleted handler
         try {
-            this.options.onRowDeleted?.(selectedRowData);
+            this.options.onRowDeleted?.(deletedRowData);
         } catch (error) {
             log('error', this.options.verbose, `Error calling onRowDeleted: ${error}`);
         }
 
-        if (deletedCount > 0) {
-            this.clearSelections();
-            this.stateManager.setActiveCell(null);
-            this.clearCopiedCell();
+        this.triggerCustomEvent("resize");
 
-            // Recalculate everything after deletion
-            this.triggerCustomEvent('resize');
-            return true; // Indicate redraw needed
-        }
-        return false;
+        // Clear selection state
+        this.stateManager.setSelectedRows(new Set(), null);
+        this.stateManager.setActiveCell(null);
+        this.stateManager.clearSelectionRange();
+        this.clearCopiedCell();
+
+        return true;
     }
 
     // --- Selection Drag ---

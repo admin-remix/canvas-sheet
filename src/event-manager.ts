@@ -418,7 +418,12 @@ export class EventManager {
         // Handle undo/redo
         if (this.isCtrl && !this.isShift && e.key === 'z') {
             e.preventDefault();
-            if (this.historyManager.undo()) {
+            const { success, needsResize } = this.historyManager.undo();
+            if (!success) return;
+            if (needsResize) {
+                // Trigger resize event to recalculate dimensions and redraw
+                this.interactionManager.triggerCustomEvent('resize');
+            } else {
                 this.renderer.draw();
             }
             return;
@@ -426,7 +431,12 @@ export class EventManager {
 
         if (this.isCtrl && (e.key === 'y' || (this.isShift && e.key === 'z'))) {
             e.preventDefault();
-            if (this.historyManager.redo()) {
+            const { success, needsResize } = this.historyManager.redo();
+            if (!success) return;
+            if (needsResize) {
+                // Trigger resize event to recalculate dimensions and redraw
+                this.interactionManager.triggerCustomEvent('resize');
+            } else {
                 this.renderer.draw();
             }
             return;
@@ -546,9 +556,9 @@ export class EventManager {
         }
 
         if (resizeNeeded) {
-            this.dimensionCalculator.initializeSizes(this.stateManager.dataLength);
-            this.dimensionCalculator.calculateDimensions(this.container.clientWidth, this.container.clientHeight);
-            this.domManager.updateCanvasSize(this.stateManager.getTotalContentWidth(), this.stateManager.getTotalContentHeight());
+            // Trigger resize event to recalculate dimensions and redraw
+            this.interactionManager.triggerCustomEvent('resize');
+            return; // Don't redraw after resize event because it will be handled in the resize event handler
         }
 
         if (redrawNeeded && !resizeNeeded) {
