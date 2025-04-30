@@ -12,6 +12,7 @@ import { DimensionCalculator } from './dimension-calculator';
 import { log, validateInput } from './utils';
 import { DomManager } from './dom-manager';
 import { EditingManager } from './editing-manager'; // Needed for moving active cell
+import { ERROR_FIELD_PREFIX } from './config';
 
 export class InteractionManager {
     private options: RequiredSpreadsheetOptions;
@@ -709,13 +710,13 @@ export class InteractionManager {
         if ('error' in validationResult) {
             log('log', this.options.verbose, validationResult.error);
             if (validationResult.errorType === 'required' && !currentValue) {
-                this.stateManager.updateCell(targetRow, `error:${targetColKey}`, validationResult.error);
+                this.stateManager.updateCell(targetRow, `${ERROR_FIELD_PREFIX}${targetColKey}`, validationResult.error);
             } else {
                 this.renderer.setTemporaryErrors([{ row: targetRow, col: targetCol, error: validationResult.error }]);
             }
             return true;// redraw required for error
         } else {
-            this.stateManager.removeCellValue(targetRow, `error:${targetColKey}`);
+            this.stateManager.removeCellValue(targetRow, `${ERROR_FIELD_PREFIX}${targetColKey}`);
         }
         if (currentValue !== value) {
             const oldValue = this.stateManager.updateCellInternal(targetRow, targetCol, value);
@@ -753,7 +754,7 @@ export class InteractionManager {
                 if ('error' in validationResult) {
                     log('warn', this.options.verbose, validationResult.error);
                     if (validationResult.errorType === 'required' && !currentValue) {
-                        this.stateManager.updateCell(row, `error:${targetColKey}`, validationResult.error);
+                        this.stateManager.updateCell(row, `${ERROR_FIELD_PREFIX}${targetColKey}`, validationResult.error);
                     } else {
                         this.renderer.setTemporaryErrors([{ row, col, error: validationResult.error }]);
                     }
@@ -761,7 +762,7 @@ export class InteractionManager {
                     // TODO: add to affectedRows and affectedColumns
                     continue;
                 } else {
-                    this.stateManager.removeCellValue(row, `error:${targetColKey}`);
+                    this.stateManager.removeCellValue(row, `${ERROR_FIELD_PREFIX}${targetColKey}`);
                 }
 
                 if (currentValue !== valueToUse) {
@@ -885,7 +886,7 @@ export class InteractionManager {
                 if ('error' in validationResult) {
                     log('warn', this.options.verbose, validationResult.error);
                     if (validationResult.errorType === 'required' && !currentValue) {
-                        this.stateManager.updateCell(targetRow, `error:${targetColKey}`, validationResult.error);
+                        this.stateManager.updateCell(targetRow, `${ERROR_FIELD_PREFIX}${targetColKey}`, validationResult.error);
                     } else {
                         this.renderer.setTemporaryErrors([{ row: targetRow, col: targetCol, error: validationResult.error }]);
                     }
@@ -893,7 +894,7 @@ export class InteractionManager {
                     // TODO: add to affectedRows and affectedColumns
                     continue;
                 } else {
-                    this.stateManager.removeCellValue(targetRow, `error:${targetColKey}`);
+                    this.stateManager.removeCellValue(targetRow, `${ERROR_FIELD_PREFIX}${targetColKey}`);
                 }
 
                 if (currentValue !== valueToUse) {
@@ -957,7 +958,7 @@ export class InteractionManager {
                 if ('error' in validationResult) {
                     log('warn', this.options.verbose, validationResult.error);
                     if (validationResult.errorType === 'required' && !currentValue) {
-                        this.stateManager.updateCell(row, `error:${targetColKey}`, validationResult.error);
+                        this.stateManager.updateCell(row, `${ERROR_FIELD_PREFIX}${targetColKey}`, validationResult.error);
                     } else {
                         this.renderer.setTemporaryErrors([{ row, col, error: validationResult.error }]);
                     }
@@ -965,7 +966,7 @@ export class InteractionManager {
                     // TODO: add to affectedRows and affectedColumns
                     continue;
                 } else {
-                    this.stateManager.removeCellValue(row, `error:${targetColKey}`);
+                    this.stateManager.removeCellValue(row, `${ERROR_FIELD_PREFIX}${targetColKey}`);
                 }
 
                 if (currentValue !== valueToUse) {
@@ -1235,7 +1236,7 @@ export class InteractionManager {
                 if ('error' in validationResult) {
                     log('warn', this.options.verbose, validationResult.error);
                     if (validationResult.errorType === 'required' && !currentValue) {
-                        this.stateManager.updateCell(targetRow, `error:${targetColKey}`, validationResult.error);
+                        this.stateManager.updateCell(targetRow, `${ERROR_FIELD_PREFIX}${targetColKey}`, validationResult.error);
                     } else {
                         this.renderer.setTemporaryErrors([{ row: targetRow, col: targetCol, error: validationResult.error }]);
                     }
@@ -1243,7 +1244,7 @@ export class InteractionManager {
                     // TODO: add to affectedRows and affectedColumns
                     continue;
                 } else {
-                    this.stateManager.removeCellValue(targetRow, `error:${targetColKey}`);
+                    this.stateManager.removeCellValue(targetRow, `${ERROR_FIELD_PREFIX}${targetColKey}`);
                 }
 
                 if (currentValue !== valueToPaste) {
@@ -1300,7 +1301,7 @@ export class InteractionManager {
                 if ('error' in validationResult) {
                     log('warn', this.options.verbose, validationResult.error);
                     if (validationResult.errorType === 'required' && !currentValue) {
-                        this.stateManager.updateCell(row, `error:${targetColKey}`, validationResult.error);
+                        this.stateManager.updateCell(row, `${ERROR_FIELD_PREFIX}${targetColKey}`, validationResult.error);
                     } else {
                         this.renderer.setTemporaryErrors([{ row, col, error: validationResult.error }]);
                     }
@@ -1308,7 +1309,7 @@ export class InteractionManager {
                     // TODO: add to affectedRows and affectedColumns
                     continue;
                 } else {
-                    this.stateManager.removeCellValue(row, `error:${targetColKey}`);
+                    this.stateManager.removeCellValue(row, `${ERROR_FIELD_PREFIX}${targetColKey}`);
                 }
 
                 if (currentValue !== convertedValue) {

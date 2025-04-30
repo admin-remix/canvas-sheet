@@ -1,4 +1,4 @@
-import { DataType, ColumnSchema, SelectOption, ValidationErrorType } from './types';
+import { DataType, ColumnSchema, ValidationErrorType } from './types';
 
 /** Basic logger utility */
 export function log(type: 'log' | 'warn' | 'error', verbose: boolean, ...args: any[]): void {

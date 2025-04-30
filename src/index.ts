@@ -6,7 +6,7 @@ import {
     ValidationError,
     CellUpdateInput
 } from './types';
-import { DEFAULT_OPTIONS } from './config';
+import { DEFAULT_OPTIONS, ERROR_FIELD_PREFIX, LOADING_FIELD_PREFIX } from './config';
 import { DomManager } from './dom-manager';
 import { DimensionCalculator } from './dimension-calculator';
 import { Renderer } from './renderer';
@@ -38,7 +38,7 @@ export class Spreadsheet {
         this.options = { ...DEFAULT_OPTIONS, ...options };
 
         // Instantiate managers
-        this.stateManager = new StateManager(schema, data, this.options);
+        this.stateManager = new StateManager(schema, this.options);
         this.domManager = new DomManager(this.container);
         this.dimensionCalculator = new DimensionCalculator(this.options, this.stateManager, this.domManager);
         this.renderer = new Renderer(this.domManager.getContext(), this.options, this.stateManager, this.dimensionCalculator);
@@ -90,6 +90,9 @@ export class Spreadsheet {
     public async getData(options?: {
         raw?: boolean;
         visibleColumnsOnly?: boolean;
+        nonLoadingOnly?: boolean;
+        keepErrors?: boolean;
+        discardOthers?: boolean;
     }): Promise<DataRow[]> {
         let chunks: DataRow[][] = [];
         {
@@ -106,24 +109,36 @@ export class Spreadsheet {
                 if (chunkIndex >= chunks.length) return resolve(false);
                 for (const row of chunks[chunkIndex]) {
                     let hasErrors = false;
+                    let newRow: DataRow = {};
                     for (const col of Object.keys(row)) {
-                        if (col.startsWith('error:') || (schema[col]?.required && (row[col] ?? "") === "")) {
+                        if (options?.keepErrors && col.startsWith(ERROR_FIELD_PREFIX)) {
+                            newRow[col] = row[col];
+                            continue;
+                        }
+                        if (!options?.keepErrors && (col.startsWith(ERROR_FIELD_PREFIX) || (schema[col]?.required && (row[col] ?? "") === ""))) {
                             hasErrors = true;
                             break;
                         }
-                        if (columns.has(col)) continue;
-                        if (options?.visibleColumnsOnly && !columns.has(col)) {
-                            delete row[col];
+                        if (options?.nonLoadingOnly && col.startsWith(LOADING_FIELD_PREFIX)) {
+                            continue// we will handle loading rows later
+                        }
+                        if (options?.nonLoadingOnly && row[`${LOADING_FIELD_PREFIX}${col}`]) {
+                            newRow[col] = schema[col]?.defaultValue ?? null;
                             continue;
                         }
-                        if (col.includes(':')) {
-                            delete row[col];
+                        if (options?.visibleColumnsOnly && !columns.has(col)) {
+                            continue;
+                        }
+                        if (options?.discardOthers && col.includes(':')) {
+                            continue;
+                        } else {
+                            newRow[col] = row[col];
                         }
                     }
                     if (hasErrors) {
                         continue;
                     }
-                    dataToReturn.push(row);
+                    dataToReturn.push(newRow);
                 }
                 if (chunkIndex === chunks.length - 1) return resolve(true);
                 setTimeout(() => {
@@ -159,6 +174,13 @@ export class Spreadsheet {
         this.onDataUpdate(0, this.container.scrollWidth);
         return newColIndex;
     }
+    public set schema(schema: SpreadsheetSchema) {
+        this.stateManager.setSchema(schema);
+        this.onDataUpdate();
+    }
+    public get schema(): SpreadsheetSchema {
+        return this.stateManager.getSchema();
+    }
     public removeColumnByIndex(colIndex: number): void {
         const columns = this.stateManager.getColumns();
         if (colIndex < 0 || colIndex >= columns.length) {
@@ -183,7 +205,7 @@ export class Spreadsheet {
             redrawNeeded = true;
         } catch (error: unknown) {
             if (error instanceof ValidationError) {
-                this.stateManager.updateCell(rowIndex, `error:${colKey}`, error.message);
+                this.stateManager.updateCell(rowIndex, `${ERROR_FIELD_PREFIX}${colKey}`, error.message);
                 redrawNeeded = true;
             } else {
                 log('warn', this.options.verbose, error);
@@ -217,7 +239,7 @@ export class Spreadsheet {
                 }
             } catch (error: unknown) {
                 if (error instanceof ValidationError) {
-                    this.stateManager.updateCell(rowIndex, `error:${colKey}`, error.message);
+                    this.stateManager.updateCell(rowIndex, `${ERROR_FIELD_PREFIX}${colKey}`, error.message);
                     redrawNeeded = true;
                 } else {
                     log('warn', this.options.verbose, error);

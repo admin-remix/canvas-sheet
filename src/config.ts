@@ -59,4 +59,6 @@ export const DEFAULT_OPTIONS: RequiredSpreadsheetOptions = {
     onLazySearch: null,
 };
 
-export const DISABLED_FIELD_PREFIX = "disabled:"; 
+export const DISABLED_FIELD_PREFIX = "disabled:";
+export const LOADING_FIELD_PREFIX = "loading:";
+export const ERROR_FIELD_PREFIX = "error:";

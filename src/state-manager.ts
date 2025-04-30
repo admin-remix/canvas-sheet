@@ -13,7 +13,7 @@ import {
     ValidationError,
     SelectOption
 } from './types';
-import { DISABLED_FIELD_PREFIX } from './config';
+import { DISABLED_FIELD_PREFIX, ERROR_FIELD_PREFIX } from './config';
 import { log, validateInput } from './utils';
 
 export class StateManager {
@@ -58,13 +58,18 @@ export class StateManager {
 
     public cachedDropdownOptionsByColumn: Map<string, Map<string | number, string>> = new Map();
 
-    constructor(schema: SpreadsheetSchema, initialData: DataRow[], options: RequiredSpreadsheetOptions) {
+    constructor(schema: SpreadsheetSchema, options: RequiredSpreadsheetOptions) {
+        this.options = options;
+        this.data = [];
+        // Initialize schema and columns
         this.schema = schema;
         this.columns = Object.keys(schema);
-        this.data = []; // Initialized properly in setInitialData
-        this.options = options;
-        // Initial data processing and size calculation is handled after construction
-        // via setInitialData and subsequent dimension calculations
+        this._addCachedDropdownOptions();
+    }
+
+    public setSchema(schema: SpreadsheetSchema): void {
+        this.schema = schema;
+        this.columns = Object.keys(schema);
         this._addCachedDropdownOptions();
     }
 
@@ -201,7 +206,7 @@ export class StateManager {
                 this.data[rowIndex] = {};
             }
             if (!colKey.includes(':')) {
-                this.removeCellValue(rowIndex, `error:${colKey}`);
+                this.removeCellValue(rowIndex, `${ERROR_FIELD_PREFIX}${colKey}`);
             }
             if (this.data[rowIndex][colKey] !== value) {
                 this.data[rowIndex][colKey] = value;
@@ -689,9 +694,13 @@ export class StateManager {
                 return;
             }
             const columnSchema = this.schema[colKey];
-            let defaultValue = null;
+            if (columnSchema?.defaultValue !== undefined) {
+                newRow[colKey] = columnSchema.defaultValue;
+                return;
+            }
 
             // Set appropriate default values based on data type
+            let defaultValue = null;
             if (columnSchema) {
                 switch (columnSchema.type) {
                     case 'text':

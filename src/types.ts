@@ -23,6 +23,7 @@ export interface ColumnSchema {
     placeholder?: string;
     formatter?: (value: any) => string | null;
     lazySearch?: boolean;
+    defaultValue?: any;
 }
 
 export interface SpreadsheetSchema {

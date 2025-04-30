@@ -345,7 +345,7 @@
       // placeholder: "Enter email",
       label: "Email Address",
     },
-    dob: { type: "date", label: "Date of Birth" },
+    dob: { type: "date", label: "Date of Birth", defaultValue: new Date().toISOString().split('T')[0] },
     locationId: {
       type: "select",
       label: "Location",
@@ -384,7 +384,7 @@
       label: "Checkout",
       filterValues: getAsyncData,
     },
-    isRestricted: { type: "boolean", label: "Restricted", nullable: true },
+    isRestricted: { type: "boolean", label: "Restricted", nullable: true, defaultValue: true },
     salary: { type: "number", label: "Salary" },
     notes: { type: "text", label: "Notes" },
   };
