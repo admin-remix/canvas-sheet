@@ -57,7 +57,7 @@ async function getAsyncData(rowData: DataRow) {
 }
 // --- Schema Definition ---
 const schema: SpreadsheetSchema = {
-  id: { type: "number", label: "ID", readonly: true },
+  id: { type: "number", label: "ID", readonly: true, defaultValue: null },
   name: {
     type: "text",
     required: true,
@@ -72,7 +72,7 @@ const schema: SpreadsheetSchema = {
     label: "Email Address",
     placeholder: "Enter email address",
   },
-  dob: { type: "date", label: "Date of Birth" },
+  dob: { type: "date", label: "Date of Birth", defaultValue: new Date().toISOString().split('T')[0] },
   locationId: {
     type: "select",
     label: "Location",
@@ -104,7 +104,7 @@ const schema: SpreadsheetSchema = {
     filterValues: getAsyncData,
     placeholder: "Select One",
   },
-  isRestricted: { type: "boolean", label: "Restricted", nullable: true },
+  isRestricted: { type: "boolean", label: "Restricted", nullable: true, defaultValue: true },
   salary: { type: "number", label: "Salary" },
   notes: { type: "text", label: "Notes" },
 };

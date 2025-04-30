@@ -269,12 +269,14 @@ const schema = {
   isActive: {
     type: "boolean",
     label: "Active",
+    defaultValue: true,
   },
 
   // Date field
   createdAt: {
     type: "date",
     label: "Created Date",
+    defaultValue: new Date().toISOString().split("T")[0],
   },
 
   // Select/dropdown field

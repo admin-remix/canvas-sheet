@@ -51,7 +51,7 @@
         display: block;
       }
     </style>
-    <script type="module" crossorigin src="./assets/advanced.html-CNuAhoIC.js"></script>
+    <script type="module" crossorigin src="./assets/advanced.html-Dr6p7P8-.js"></script>
     <link rel="modulepreload" crossorigin href="./assets/spreadsheet-PL7LrGtx.js">
     <link rel="stylesheet" crossorigin href="./assets/spreadsheet-DUrUbtKw.css">
   </head>
@@ -348,7 +348,7 @@
       // placeholder: "Enter email",
       label: "Email Address",
     },
-    dob: { type: "date", label: "Date of Birth" },
+    dob: { type: "date", label: "Date of Birth", defaultValue: new Date().toISOString().split('T')[0] },
     locationId: {
       type: "select",
       label: "Location",
@@ -387,7 +387,7 @@
       label: "Checkout",
       filterValues: getAsyncData,
     },
-    isRestricted: { type: "boolean", label: "Restricted", nullable: true },
+    isRestricted: { type: "boolean", label: "Restricted", nullable: true, defaultValue: true },
     salary: { type: "number", label: "Salary" },
     notes: { type: "text", label: "Notes" },
   };
