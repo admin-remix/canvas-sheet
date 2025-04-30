@@ -58,13 +58,18 @@ export class StateManager {
 
     public cachedDropdownOptionsByColumn: Map<string, Map<string | number, string>> = new Map();
 
-    constructor(schema: SpreadsheetSchema, initialData: DataRow[], options: RequiredSpreadsheetOptions) {
+    constructor(schema: SpreadsheetSchema, options: RequiredSpreadsheetOptions) {
+        this.options = options;
+        this.data = [];
+        // Initialize schema and columns
         this.schema = schema;
         this.columns = Object.keys(schema);
-        this.data = []; // Initialized properly in setInitialData
-        this.options = options;
-        // Initial data processing and size calculation is handled after construction
-        // via setInitialData and subsequent dimension calculations
+        this._addCachedDropdownOptions();
+    }
+
+    public setSchema(schema: SpreadsheetSchema): void {
+        this.schema = schema;
+        this.columns = Object.keys(schema);
         this._addCachedDropdownOptions();
     }
 

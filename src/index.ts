@@ -38,7 +38,7 @@ export class Spreadsheet {
         this.options = { ...DEFAULT_OPTIONS, ...options };
 
         // Instantiate managers
-        this.stateManager = new StateManager(schema, data, this.options);
+        this.stateManager = new StateManager(schema, this.options);
         this.domManager = new DomManager(this.container);
         this.dimensionCalculator = new DimensionCalculator(this.options, this.stateManager, this.domManager);
         this.renderer = new Renderer(this.domManager.getContext(), this.options, this.stateManager, this.dimensionCalculator);
@@ -159,16 +159,6 @@ export class Spreadsheet {
         this.onDataUpdate();
     }
 
-    public async saveData() {
-        if (!this.options.localeStorageKey) throw new Error('localeStorageKey is not set');
-        const data = await this.getData({
-            keepErrors: true,
-            nonLoadingOnly: true,
-        });
-        if (!data.length) return;
-        localStorage.setItem(this.options.localeStorageKey, JSON.stringify(data));
-    }
-
     public updateColumnSchema(colKey: string, schema: ColumnSchema): void {
         this.stateManager.updateColumnSchema(colKey, schema);
         this.onDataUpdate();
@@ -183,6 +173,13 @@ export class Spreadsheet {
         const newColIndex = this.stateManager.addColumn(fieldName, colSchema);
         this.onDataUpdate(0, this.container.scrollWidth);
         return newColIndex;
+    }
+    public set schema(schema: SpreadsheetSchema) {
+        this.stateManager.setSchema(schema);
+        this.onDataUpdate();
+    }
+    public get schema(): SpreadsheetSchema {
+        return this.stateManager.getSchema();
     }
     public removeColumnByIndex(colIndex: number): void {
         const columns = this.stateManager.getColumns();

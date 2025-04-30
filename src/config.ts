@@ -49,7 +49,6 @@ export const DEFAULT_OPTIONS: RequiredSpreadsheetOptions = {
     autoAddNewRow: true,
     lazySearchDebounceTime: 300,
     blankDropdownItemLabel: '(Blank)',
-    localeStorageKey: null,
     verbose: false,
 
     onCellsUpdate: null,

@@ -486,7 +486,6 @@ document.addEventListener("DOMContentLoaded", () => {
             }, 2000 + (Math.random() * 1000));
           });
         },
-        localeStorageKey: 'cs-example-backup',
         verbose: true,
       }
     );
@@ -498,7 +497,31 @@ document.addEventListener("DOMContentLoaded", () => {
         return
       }
       if (confirm('Load data from local storage?')) {
-        spreadsheet?.setData(JSON.parse(localeStorageData));
+        const { data, columns } = JSON.parse(localeStorageData) as { data: DataRow[], columns: string[] };
+        const existingColumns = spreadsheet?.getColumns();
+        const newColumns = columns.filter(c => !existingColumns.includes(c));
+        // we can set schema if we find some columns are deleted, but for this
+        // example, we will just add the missing columns
+        // If the new columns have dynamic values, we will need to populate the existing
+        // values to the new column schema for rendering the names, otherwise those column
+        // cells will be empty
+        if (newColumns.length) {
+          // unique non-null values
+          const columnValues = new Set(data.map(d => d[newColumns[0]]).filter(v => v));
+          // find the appropriate label for the values, we know the values are from departments in this example
+          const values = Array.from(columnValues)
+            .map(v => DEPARTMENTS.find(d => d.id === v))
+            .filter(f => f) as SelectOption[];
+          spreadsheet?.addColumn(newColumns[0], {
+            type: "select",
+            label: "Status",
+            nullable: true,
+            lazySearch: true,
+            removable: true,
+            values,
+          });
+        }
+        spreadsheet?.setData(data);
         return
       }
       spreadsheet?.setData(sampleData);
@@ -541,7 +564,13 @@ document.addEventListener("DOMContentLoaded", () => {
     saving = true;
     document.title = "Saving...";
     try {
-      await spreadsheet?.saveData();
+      const data = await spreadsheet?.getData({
+        keepErrors: true,
+        nonLoadingOnly: true,
+      });
+      if (data?.length) {
+        localStorage.setItem('cs-example-backup', JSON.stringify({ data, columns: spreadsheet?.getColumns() }));
+      }
     } catch (error) {
       console.error("Failed to save data:", error);
     }
