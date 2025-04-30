@@ -23,6 +23,7 @@ export interface ColumnSchema {
     placeholder?: string;
     formatter?: (value: any) => string | null;
     lazySearch?: boolean;
+    defaultValue?: any;
 }
 
 export interface SpreadsheetSchema {
@@ -133,6 +134,7 @@ export interface SpreadsheetOptions {
     autoAddNewRow?: boolean;
     lazySearchDebounceTime?: number;
     blankDropdownItemLabel?: string;
+    localeStorageKey?: string | null;
     verbose?: boolean;
 
     onCellsUpdate?: Nullable<(rows: CellUpdateEvent[]) => void>;

@@ -8,6 +8,7 @@ import { DomManager } from './dom-manager';
 import { Renderer } from './renderer';
 import { InteractionManager } from './interaction-manager';
 import { formatValueForInput, parseValueFromInput, validateInput, log, debounce } from './utils';
+import { ERROR_FIELD_PREFIX, LOADING_FIELD_PREFIX } from './config';
 
 export class EditingManager {
     private container: HTMLElement;
@@ -102,7 +103,7 @@ export class EditingManager {
         const { scrollLeft, scrollTop } = this.interactionManager.bringBoundsIntoView(bounds);
 
         // If the cell is loading, prevent editing
-        if (rowData?.[`loading:${colKey}`]) {
+        if (rowData?.[`${LOADING_FIELD_PREFIX}${colKey}`]) {
             log('log', verbose, `Edit prevented: Cell ${rowIndex},${colIndex} is loading.`);
             return;
         }
@@ -222,13 +223,13 @@ export class EditingManager {
                         log('log', this.options.verbose, validationResult.error);
                         // Potentially show an error message to the user here
                         if (validationResult.errorType === 'required') {
-                            this.stateManager.updateCell(row, `error:${colKey}`, validationResult.error);
+                            this.stateManager.updateCell(row, `${ERROR_FIELD_PREFIX}${colKey}`, validationResult.error);
                         } else {
                             this.renderer.setTemporaryErrors([{ row, col, error: validationResult.error }]);
                         }
                         redrawRequired = true;
                     } else {
-                        this.stateManager.removeCellValue(row, `error:${colKey}`);
+                        this.stateManager.removeCellValue(row, `${ERROR_FIELD_PREFIX}${colKey}`);
                         if (newValue !== originalValue) {
                             this.stateManager.updateCellInternal(row, col, newValue); // Update data directly
                             valueChanged = true;
@@ -383,11 +384,11 @@ export class EditingManager {
                 const filterValues = schemaCol.filterValues?.(this.stateManager.getRowData(rowIndex) || {}, rowIndex);
                 if (filterValues && filterValues instanceof Promise) {
                     const jobId = this.stateManager.getActiveEditor()?.asyncJobId;
-                    this.stateManager.updateCell(rowIndex, `loading:${colKey}`, true);
+                    this.stateManager.updateCell(rowIndex, `${LOADING_FIELD_PREFIX}${colKey}`, true);
                     this.renderer.draw();
                     const filterValuesResult = await filterValues;
 
-                    this.stateManager.removeCellValue(rowIndex, `loading:${colKey}`);
+                    this.stateManager.removeCellValue(rowIndex, `${LOADING_FIELD_PREFIX}${colKey}`);
                     // async operation is done, verify if we need the result
                     if (jobId !== this.stateManager.currentAsyncJobId) {
                         log('log', verbose, `Async operation aborted: ${colKey}`);

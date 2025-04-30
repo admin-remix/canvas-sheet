@@ -13,7 +13,7 @@ import {
     ValidationError,
     SelectOption
 } from './types';
-import { DISABLED_FIELD_PREFIX } from './config';
+import { DISABLED_FIELD_PREFIX, ERROR_FIELD_PREFIX } from './config';
 import { log, validateInput } from './utils';
 
 export class StateManager {
@@ -201,7 +201,7 @@ export class StateManager {
                 this.data[rowIndex] = {};
             }
             if (!colKey.includes(':')) {
-                this.removeCellValue(rowIndex, `error:${colKey}`);
+                this.removeCellValue(rowIndex, `${ERROR_FIELD_PREFIX}${colKey}`);
             }
             if (this.data[rowIndex][colKey] !== value) {
                 this.data[rowIndex][colKey] = value;
@@ -689,9 +689,13 @@ export class StateManager {
                 return;
             }
             const columnSchema = this.schema[colKey];
-            let defaultValue = null;
+            if (columnSchema?.defaultValue !== undefined) {
+                newRow[colKey] = columnSchema.defaultValue;
+                return;
+            }
 
             // Set appropriate default values based on data type
+            let defaultValue = null;
             if (columnSchema) {
                 switch (columnSchema.type) {
                     case 'text':

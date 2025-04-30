@@ -10,6 +10,7 @@ import { DimensionCalculator } from './dimension-calculator';
 import { Renderer } from './renderer';
 import { log } from './utils';
 import { DomManager } from './dom-manager';
+import { ERROR_FIELD_PREFIX } from './config';
 
 export class EventManager {
     private container: HTMLElement;
@@ -450,7 +451,7 @@ export class EventManager {
                         if (error instanceof ValidationError) {
                             redrawNeeded = true;
                             if (error.errorType === 'required' && !currentValue) {
-                                this.stateManager.updateCell(row!, `error:${colKey}`, error.message);
+                                this.stateManager.updateCell(row!, `${ERROR_FIELD_PREFIX}${colKey}`, error.message);
                             } else {
                                 this.renderer.setTemporaryErrors([{ row: row!, col: col!, error: error.message }]);
                             }

@@ -5,6 +5,7 @@ import {
 import { StateManager } from './state-manager';
 import { DimensionCalculator } from './dimension-calculator';
 import { formatValue } from './utils';
+import { LOADING_FIELD_PREFIX, ERROR_FIELD_PREFIX } from './config';
 
 export class Renderer {
     private ctx: CanvasRenderingContext2D;
@@ -423,12 +424,12 @@ export class Renderer {
                 const colKey = columns[col];
                 const schemaCol = schema[colKey];
                 const canRenderCellDuringEdit = ['select', 'boolean', 'date'].includes(schemaCol?.type);
-                const currentCellError = data?.[`error:${colKey}`];
+                const currentCellError = data?.[`${ERROR_FIELD_PREFIX}${colKey}`];
                 const isDisabled = this.stateManager.isCellDisabled(row, col);
                 const isActive = activeCell?.row === row && activeCell?.col === col;
                 const isEditing = this.stateManager.getActiveEditor()?.row === row && this.stateManager.getActiveEditor()?.col === col;
                 const isColumnSelected = selectedColumn === col;
-                const isCellLoading = data?.[`loading:${colKey}`];
+                const isCellLoading = data?.[`${LOADING_FIELD_PREFIX}${colKey}`];
 
                 // Check if this cell has a temporary error
                 const temporaryError = this.temporaryErrors.get(`${row}:${col}`)?.error;

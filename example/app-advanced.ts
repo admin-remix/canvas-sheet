@@ -418,7 +418,7 @@ document.addEventListener("DOMContentLoaded", () => {
     spreadsheet = new Spreadsheet(
       "spreadsheet-container",
       schema as SpreadsheetSchema,
-      sampleData,
+      [],
       {
         // Optional: Override default options here
         // cellWidth: 180,
@@ -486,9 +486,23 @@ document.addEventListener("DOMContentLoaded", () => {
             }, 2000 + (Math.random() * 1000));
           });
         },
+        localeStorageKey: 'cs-example-backup',
         verbose: true,
       }
     );
+
+    (() => {
+      const localeStorageData = localStorage.getItem('cs-example-backup');
+      if (!localeStorageData) {
+        spreadsheet?.setData(sampleData);
+        return
+      }
+      if (confirm('Load data from local storage?')) {
+        spreadsheet?.setData(JSON.parse(localeStorageData));
+        return
+      }
+      spreadsheet?.setData(sampleData);
+    })();
 
     // Example of using the API after instantiation
     // setTimeout(async () => {
@@ -521,4 +535,17 @@ document.addEventListener("DOMContentLoaded", () => {
     const data = await spreadsheet?.getData();
     console.log("data", data);
   });
+  let saving = false;
+  setInterval(async () => {
+    if (saving) return;
+    saving = true;
+    document.title = "Saving...";
+    try {
+      await spreadsheet?.saveData();
+    } catch (error) {
+      console.error("Failed to save data:", error);
+    }
+    saving = false;
+    document.title = "canvas-sheet";
+  }, 3000);
 });
