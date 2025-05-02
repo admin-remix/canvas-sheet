@@ -362,7 +362,6 @@ export class Renderer {
             font,
             textColor,
             textAlign,
-            textBaseline,
             padding,
             cellBgColor,
             activeCellBgColor,
@@ -406,7 +405,7 @@ export class Renderer {
         // Set base text properties
         this.ctx.font = font;
         this.ctx.textAlign = textAlign as CanvasTextAlign;
-        this.ctx.textBaseline = textBaseline as CanvasTextBaseline;
+        this.ctx.textBaseline = "middle";
 
         let currentY = this.dimensionCalculator.getRowTop(visibleRowStart);
 
@@ -497,8 +496,8 @@ export class Renderer {
                                 textX = currentX + colWidth - padding;
                             }
                             // do not apply maxWidth to fillText
-                            this.ctx.fillText(formattedValue, textX, textY);
-                            // this.wrapText(formattedValue, textX, textY, colWidth - padding * 2);
+                            // this.ctx.fillText(formattedValue, textX, textY);
+                            this.wrapText(formattedValue, textX, currentY, colWidth - padding * 2, rowHeight);
                         }
                     }
                 }
@@ -809,47 +808,119 @@ export class Renderer {
         this.ctx.restore();
     }
 
-    // TODO: Implement proper text wrapping
-    /*private wrapText(text: string, x: number, y: number, maxWidth: number, lineHeight: number = 16) {
-        if (!text) return;
-        // The following is the text wrapping logic, but it's not fully implemented
-        // TODO: align text vertically depending on the height of the cell and its own height
-        if (this.ctx.measureText(text).width <= maxWidth) {
-            this.ctx.fillText(text, x, y);
-            return;
-        }
-        let words = text.split(/[ \n]/);
-        let currentLine = '';
-        let testLine = '';
-        let metrics;
-        let currentY = y;
+    /**
+     * Wraps text and draws it within a specified bounding box.
+     * Default vertical alignment is middle. If the text's total height
+     * exceeds maxHeight, alignment switches to top.
+     * Optimizes by skipping draw calls for lines entirely outside vertical bounds.
+     *
+     * @param text The text string to wrap.
+     * @param x The x coordinate for the left edge of the text lines.
+     * @param top The y coordinate for the top edge of the bounding box.
+     * @param maxWidth The maximum width for text lines.
+     * @param maxHeight The maximum height for the bounding box.
+     * @param lineHeight The desired height for each line of text (default 16).
+     */
+    private wrapText(
+        text: string,
+        x: number,
+        top: number,
+        maxWidth: number,
+        maxHeight: number,
+        lineHeight: number = 16
+    ) {
+        // Ensure context exists and text is provided
+        if (!this.ctx || !text) return;
+        // Ensure positive dimensions to avoid issues
+        if (maxWidth <= 0 || maxHeight <= 0) return;
 
+        // --- 1. Setup and Calculate Lines ---
+        const originalBaseline = this.ctx.textBaseline;
+        this.ctx.textBaseline = 'middle';
+        // ...(line calculation logic remains the same as the previous version)...
+        let words = text.split(/[ \n]/);
+        let lines: string[] = [];
+        let currentLine = '';
+        // ...(loop through words, build lines, handle long words if needed)...
         for (let i = 0; i < words.length; i++) {
             let word = words[i];
-            // Add space only if currentLine is not empty
-            testLine = currentLine ? currentLine + ' ' + word : word;
-
-            // Measure the width of the potential line
-            metrics = this.ctx.measureText(testLine);
-            let testWidth = metrics.width;
-
-            // If the potential line fits or it's the only word and still too long
-            if (testWidth <= maxWidth || !currentLine) {
-                 currentLine = testLine;
+            if (!word) continue;
+            let testLine = currentLine ? currentLine + ' ' + word : word;
+            let metrics = this.ctx.measureText(testLine);
+            if (metrics.width <= maxWidth || !currentLine) {
+                currentLine = testLine;
             } else {
-                // Draw the previous line that fit
-                this.ctx.fillText(currentLine, x, currentY);
-                // Start new line with the current word
-                currentLine = word;
-                // Move to the next line
-                currentY += lineHeight;
+                const wordWidth = this.ctx.measureText(word).width;
+                if (!currentLine && wordWidth > maxWidth) {
+                    lines.push(word);
+                    currentLine = '';
+                    continue;
+                } else {
+                    lines.push(currentLine);
+                    currentLine = word;
+                    if (this.ctx.measureText(currentLine).width > maxWidth) {
+                        lines.push(currentLine);
+                        currentLine = '';
+                    }
+                }
             }
         }
-        // Draw the last line of the current paragraph
-        if (currentLine.trim().length) {
-            this.ctx.fillText(currentLine, x, currentY);
+        if (currentLine) {
+            lines.push(currentLine);
         }
-    }*/
+
+        // --- 2. Determine Vertical Alignment & Starting Y ---
+        const numLines = lines.length;
+        const totalHeight = numLines * lineHeight;
+        let startY: number;
+        if (totalHeight <= maxHeight) {
+            const boxCenterY = top + maxHeight / 2;
+            startY = boxCenterY - totalHeight / 2 + lineHeight / 2;
+        } else {
+            startY = top + lineHeight / 2;
+        }
+
+        // --- 3. Draw the Text with Clipping and Optimization ---
+        this.ctx.save();
+        this.ctx.beginPath();
+        this.ctx.rect(x, top, maxWidth, maxHeight);
+        this.ctx.clip();
+
+        const lineTopEdgeMargin = lineHeight / 2; // Approx distance from baseline to top
+        const lineBottomEdgeMargin = lineHeight / 2; // Approx distance from baseline to bottom
+        const boundaryBottom = top + maxHeight;
+
+        for (let i = 0; i < numLines; i++) {
+            const lineY = startY + i * lineHeight; // Middle baseline Y of the current line
+
+            // OPTIMIZATION: Check if line is entirely outside the vertical bounds
+
+            // 1. Check if line is entirely ABOVE the top boundary
+            // (Is the *bottom* edge of the line above the 'top' coordinate?)
+            if (lineY + lineBottomEdgeMargin < top) {
+                continue; // Skip drawing this line and check the next one
+            }
+
+            // 2. Check if line is entirely BELOW the bottom boundary
+            // (Is the *top* edge of the line below the 'boundaryBottom' coordinate?)
+            if (lineY - lineTopEdgeMargin > boundaryBottom) {
+                // Since we are drawing lines top-to-bottom, if this line is fully below,
+                // all subsequent lines will also be fully below. We can stop drawing.
+                break;
+            }
+
+            // If we passed the checks, the line is at least partially visible.
+            // Draw the text - the clipping region handles exact boundaries.
+            this.ctx.fillText(lines[i], x, lineY);
+        }
+
+        this.ctx.restore(); // Remove clipping region
+
+        // Restore original baseline if necessary
+        if (this.ctx.textBaseline !== originalBaseline) {
+            this.ctx.textBaseline = originalBaseline;
+        }
+    }
 
     // --- Helper to get cell bounds in VIEWPORT coordinates --- HINT HINT
     public getCellBounds(rowIndex: number, colIndex: number): CellBounds | null {

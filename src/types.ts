@@ -13,6 +13,7 @@ export interface ColumnSchema {
     values?: SelectOption[]; // For 'select' type
     decimal?: boolean;      // For 'number' type (false means integer)
     maxlength?: number;     // For 'text' type
+    multiline?: boolean;    // For 'text' type, as textarea
     disabled?: (rowData: DataRow, rowIndex: number) => boolean; // Optional dynamic disabling
     filterValues?: (rowData: DataRow, rowIndex: number) => SelectOption[] | Promise<SelectOption[]>; // Optional dynamic filtering
     error?: string;
@@ -126,7 +127,6 @@ export interface SpreadsheetOptions {
     resizeHandleSize?: number;
     padding?: number; // Internal padding for cell text
     textAlign?: 'left' | 'center' | 'right';
-    textBaseline?: 'top' | 'middle' | 'bottom';
     copyHighlightBorderColor?: string;
     copyHighlightBorderDash?: number[];
     temporaryErrorTimeout?: number;
