@@ -257,9 +257,14 @@ export class EditingManager {
     this.renderer.draw();
   }
 
-  public deactivateEditor(saveChanges = true, activateCell = false): void {
+  public deactivateEditor(
+    saveChanges = true,
+    activateCell = false,
+    includeCustomEditor = false
+  ): void {
     const activeEditor = this.stateManager.getActiveEditor();
-    if (!activeEditor) return;
+    if (!activeEditor || (activeEditor.isCustomEditor && !includeCustomEditor))
+      return;
 
     this.stateManager.newAsyncJobId(); // reset the current async job
 
@@ -361,6 +366,7 @@ export class EditingManager {
   }
 
   private _handleEditorKeyDown(event: KeyboardEvent): void {
+    if (!this.isEditorActive()) return;
     let redrawNeeded = false;
     switch (event.key) {
       case "Enter":
@@ -725,6 +731,8 @@ export class EditingManager {
   }
 
   private _handleDropdownKeyDown(event: KeyboardEvent): void {
+    // is dropdown open?
+    if (!this.isDropdownVisible()) return;
     const visibleItems = Array.from(
       this.dropdownList.querySelectorAll("li:not(.hidden)")
     ) as HTMLLIElement[];

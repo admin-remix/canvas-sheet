@@ -5,6 +5,7 @@ import {
   ColumnSchema,
   ValidationError,
   CellUpdateInput,
+  VisibleCell,
 } from "./types";
 import {
   DEFAULT_OPTIONS,
@@ -357,22 +358,42 @@ export class Spreadsheet {
     return this.stateManager.getColumns().slice(); // Deep copy
   }
 
-  public focus() {
+  public focus(): void {
     this.domManager.focusContainer();
   }
   public setValueFromCustomEditor({
     rowIndex,
     colKey,
     value,
-  }: CellUpdateInput) {
+  }: CellUpdateInput): void {
     this.focus();
     if (this.editingManager.isEditorActive()) {
-      this.editingManager.deactivateEditor(false, true);
+      this.editingManager.deactivateEditor(false, true, true);
+    }
+    const colIndex = this.stateManager.getColumns().indexOf(colKey);
+    if (colIndex >= 0) {
+      // in case the selection is gone, redraw will be done by updateCell
+      this.stateManager.setActiveCell({
+        row: rowIndex,
+        col: colIndex,
+      });
     }
     this.updateCell({ rowIndex, colKey, value });
   }
+  public deactivateCustomEditor(focusCell?: VisibleCell): void {
+    this.focus();
+    this.editingManager.deactivateEditor(false, true, true);
+    if (!focusCell) return;
+    const colIndex = this.stateManager.getColumns().indexOf(focusCell.colKey);
+    if (colIndex < 0) return;
+    this.stateManager.setActiveCell({
+      row: focusCell.rowIndex,
+      col: colIndex,
+    });
+    this.draw();
+  }
 
-  // --- Helper to expose redrawing for managers ---
+  // --- Helper to expose redrawing ---
   public redraw(): void {
     this.draw();
   }

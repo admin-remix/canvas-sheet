@@ -457,7 +457,7 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("add-column")?.addEventListener("click", () => {
     spreadsheet?.addColumn("new-column", { type: "text", label: "New Column" });
   });
-  document.getElementById("close-modal")?.addEventListener("click", () => {
+  document.getElementById("save-modal")?.addEventListener("click", () => {
     toggleModal(false);
     const datePicker = document.getElementById(
       "date-picker"
@@ -470,6 +470,16 @@ document.addEventListener("DOMContentLoaded", () => {
         colKey: selectedCellForEditor.colKey,
         value: datePicker.value,
       });
+      selectedCellForEditor = null;
     }, 100);
+  });
+  document.getElementById("close-modal")?.addEventListener("click", () => {
+    toggleModal(false);
+    if (!selectedCellForEditor) return;
+    spreadsheet?.deactivateCustomEditor({
+      rowIndex: selectedCellForEditor.rowIndex,
+      colKey: selectedCellForEditor.colKey,
+    });
+    selectedCellForEditor = null;
   });
 });

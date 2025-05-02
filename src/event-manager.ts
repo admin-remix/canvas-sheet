@@ -510,7 +510,6 @@ export class EventManager {
       this.editingManager.isDropdownVisible()
     )
       return;
-
     const activeCell = this.stateManager.getActiveCell();
     let redrawNeeded = false;
     // we need tab action on keydown to prevent losing focus
