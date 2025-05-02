@@ -146,6 +146,8 @@ export interface SpreadsheetOptions {
   autoAddNewRow?: boolean;
   lazySearchDebounceTime?: number;
   blankDropdownItemLabel?: string;
+  allowTabInTextarea?: boolean;
+  wrapText?: boolean;
   verbose?: boolean;
 
   onCellsUpdate?: Nullable<(rows: CellUpdateEvent[]) => void>;

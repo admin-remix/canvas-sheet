@@ -48,6 +48,8 @@ export const DEFAULT_OPTIONS: RequiredSpreadsheetOptions = {
   autoAddNewRow: true,
   lazySearchDebounceTime: 300,
   blankDropdownItemLabel: "(Blank)",
+  allowTabInTextarea: false,
+  wrapText: false,
   verbose: false,
 
   onCellsUpdate: null,

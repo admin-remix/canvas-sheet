@@ -3,6 +3,7 @@ export class DomManager {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
   private editorInput: HTMLInputElement;
+  private editorTextarea: HTMLTextAreaElement;
   private dropdownWrapper: HTMLDivElement;
   private dropdown: HTMLDivElement;
   private dropdownSearchInput: HTMLInputElement;
@@ -54,6 +55,16 @@ export class DomManager {
     this.editorInput.style.display = "none";
     this.editorInput.style.boxSizing = "border-box"; // Include padding/border in size
     this.container.appendChild(this.editorInput);
+
+    // Textarea Editor setup
+    this.editorTextarea = document.createElement("textarea");
+    this.editorTextarea.className =
+      "spreadsheet-editor spreadsheet-editor-textarea";
+    this.editorTextarea.style.position = "absolute";
+    this.editorTextarea.style.display = "none";
+    this.editorTextarea.style.boxSizing = "border-box";
+    this.editorTextarea.style.overflow = "auto";
+    this.container.appendChild(this.editorTextarea);
 
     // Dropdown setup
     this.dropdown = document.createElement("div");
@@ -228,6 +239,10 @@ export class DomManager {
 
   public getEditorInput(): HTMLInputElement {
     return this.editorInput;
+  }
+
+  public getEditorTextarea(): HTMLTextAreaElement {
+    return this.editorTextarea;
   }
 
   public getDropdownElements(): {

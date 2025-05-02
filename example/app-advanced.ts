@@ -132,7 +132,7 @@ const schema: SpreadsheetSchema = {
     defaultValue: true,
   },
   salary: { type: "number", label: "Salary" },
-  notes: { type: "text", label: "Notes" },
+  notes: { type: "text", label: "Notes", multiline: true },
 };
 
 function generateRandomData(numRows: number): DataRow[] {

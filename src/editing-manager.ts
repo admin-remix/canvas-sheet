@@ -26,6 +26,7 @@ export class EditingManager {
 
   // DOM Elements specific to editing
   private editorInput: HTMLInputElement;
+  private editorTextarea: HTMLTextAreaElement;
   private dropdown: HTMLDivElement;
   private dropdownSearchInput: HTMLInputElement;
   private dropdownList: HTMLUListElement;
@@ -53,6 +54,7 @@ export class EditingManager {
 
     // Get references to DOM elements created by DomManager
     this.editorInput = this.domManager.getEditorInput();
+    this.editorTextarea = this.domManager.getEditorTextarea();
     const dropdownElements = this.domManager.getDropdownElements();
     this.dropdown = dropdownElements.dropdown;
     this.dropdownSearchInput = dropdownElements.searchInput;
@@ -68,10 +70,12 @@ export class EditingManager {
   public bindInternalEvents(): void {
     // Editor Input Events
     this.editorInput.addEventListener(
-      "blur",
-      this._handleEditorBlur.bind(this)
+      "keydown",
+      this._handleEditorKeyDown.bind(this)
     );
-    this.editorInput.addEventListener(
+
+    // Textarea Events
+    this.editorTextarea.addEventListener(
       "keydown",
       this._handleEditorKeyDown.bind(this)
     );
@@ -218,38 +222,75 @@ export class EditingManager {
       );
       return;
     } else {
-      // Configure and show the text input editor
-      this.editorInput.style.display = "block";
-      this.editorInput.style.left = `${editorX}px`;
-      this.editorInput.style.top = `${editorY}px`;
-      this.editorInput.style.width = `${editorWidth}px`;
-      this.editorInput.style.height = `${editorHeight}px`;
-      this.editorInput.style.font = font;
+      // Determine if we should use textarea (multiline) or input
+      const isMultiline = schema?.type === "text" && schema?.multiline === true;
+      const editorElement = isMultiline
+        ? this.editorTextarea
+        : this.editorInput;
 
-      // Set input type based on schema
-      if (schema?.type === "number") {
-        this.editorInput.type = "number";
-        this.editorInput.step = schema.decimal === false ? "1" : "any";
-        this.editorInput.placeholder = schema?.placeholder || "";
-      } else if (schema?.type === "email") {
-        this.editorInput.type = "email";
-      } else if (schema?.type === "date") {
-        this.editorInput.type = "date";
+      // Configure and show the editor
+      editorElement.style.display = "block";
+      editorElement.style.left = `${editorX}px`;
+      editorElement.style.top = `${editorY}px`;
+      editorElement.style.width = `${editorWidth}px`;
+
+      // For textarea, might want to show more rows
+      if (isMultiline) {
+        // Set a taller height for the textarea, constrained by available space
+        const availableHeight = Math.min(
+          window.innerHeight - editorY - 20, // 20px buffer
+          Math.max(editorHeight * 2, 100) // At least 100px or 2x row height
+        );
+        this.editorTextarea.style.height = `${availableHeight}px`;
+        this.editorTextarea.placeholder = schema?.placeholder || "";
       } else {
-        this.editorInput.type = "text";
-        this.editorInput.placeholder = schema?.placeholder || "";
+        // Regular input configuration
+        this.editorInput.style.height = `${editorHeight}px`;
+
+        // Set input type based on schema
+        if (schema?.type === "number") {
+          this.editorInput.type = "number";
+          this.editorInput.step = schema.decimal === false ? "1" : "any";
+          this.editorInput.placeholder = schema?.placeholder || "";
+        } else if (schema?.type === "email") {
+          this.editorInput.type = "email";
+        } else if (schema?.type === "date") {
+          this.editorInput.type = "date";
+        } else {
+          this.editorInput.type = "text";
+          this.editorInput.placeholder = schema?.placeholder || "";
+        }
       }
 
-      this.editorInput.value = formatValueForInput(cellValue, schema?.type);
-      this.editorInput.focus();
-      if (
-        initialChar &&
-        (["text", "email"].includes(schema?.type as string) ||
-          (schema?.type === "number" && initialChar.match(/^\d*\.?\d*$/)))
-      ) {
-        this.editorInput.value = initialChar;
+      // Format and set the value
+      const formattedValue = formatValueForInput(cellValue, schema?.type);
+
+      if (isMultiline) {
+        this.editorTextarea.value = formattedValue;
+        this.editorTextarea.focus();
+
+        // Handle initial character or select all
+        if (initialChar && schema?.type === "text") {
+          this.editorTextarea.value = initialChar;
+          // Position cursor at end
+          this.editorTextarea.selectionStart =
+            this.editorTextarea.selectionEnd = initialChar.length;
+        } else {
+          this.editorTextarea.select();
+        }
       } else {
-        this.editorInput.select();
+        this.editorInput.value = formattedValue;
+        this.editorInput.focus();
+
+        if (
+          initialChar &&
+          (["text", "email"].includes(schema?.type as string) ||
+            (schema?.type === "number" && initialChar.match(/^\d*\.?\d*$/)))
+        ) {
+          this.editorInput.value = initialChar;
+        } else {
+          this.editorInput.select();
+        }
       }
     }
 
@@ -281,10 +322,16 @@ export class EditingManager {
       const currentValue = this.stateManager.getCellData(row, col);
       valueChanged = currentValue !== originalValue;
     } else {
-      // For text input editor
-      if (this.editorInput.style.display !== "none") {
+      // For text input editor and textarea
+      const isTextareaActive = this.editorTextarea.style.display !== "none";
+      const isInputActive = this.editorInput.style.display !== "none";
+
+      if (isTextareaActive || isInputActive) {
         if (saveChanges) {
-          const newValueRaw = this.editorInput.value;
+          const newValueRaw = isTextareaActive
+            ? this.editorTextarea.value
+            : this.editorInput.value;
+
           const schemaCol = this.stateManager.getSchemaForColumn(col);
           const colKey = this.stateManager.getColumnKey(col);
           const newValue = parseValueFromInput(newValueRaw, schemaCol?.type);
@@ -327,8 +374,16 @@ export class EditingManager {
             }
           }
         }
-        this.editorInput.style.display = "none";
-        this.editorInput.value = "";
+
+        // Hide and reset the active editor
+        if (isTextareaActive) {
+          this.editorTextarea.style.display = "none";
+          this.editorTextarea.value = "";
+        } else {
+          this.editorInput.style.display = "none";
+          this.editorInput.value = "";
+        }
+
         redrawRequired = true; // Hiding editor requires redraw
       }
     }
@@ -351,33 +406,88 @@ export class EditingManager {
     return this.highlightedDropdownIndex >= 0;
   }
 
-  private _handleEditorBlur(event: FocusEvent): void {
-    // Use setTimeout to allow clicks on dropdown items before blur deactivates
-    setTimeout(() => {
-      // Check if the new focused element is the editor itself or part of the dropdown
-      const relatedTarget = event.relatedTarget as Node | null;
-      if (
-        document.activeElement !== this.editorInput &&
-        !this.dropdown.contains(relatedTarget)
-      ) {
-        this.deactivateEditor(true); // Save changes on blur
-      }
-    }, 0);
-  }
-
   private _handleEditorKeyDown(event: KeyboardEvent): void {
     if (!this.isEditorActive()) return;
+
+    // Determine if we're dealing with textarea or input
+    const isTextarea = event.target === this.editorTextarea;
     let redrawNeeded = false;
-    switch (event.key) {
-      case "Enter":
+    // For textarea, only handle special keys, allow normal typing otherwise
+    if (isTextarea) {
+      // For Tab key in a textarea, we want to handle it ourselves
+      if (event.key === "Tab") {
+        // Prevent the default tab behavior (focus change)
+        event.preventDefault();
+
+        // If not shift, add a tab character to the textarea
+        if (this.options.allowTabInTextarea) {
+          const start = this.editorTextarea.selectionStart;
+          const end = this.editorTextarea.selectionEnd;
+          this.editorTextarea.value =
+            this.editorTextarea.value.substring(0, start) +
+            "\t" +
+            this.editorTextarea.value.substring(end);
+
+          // Move cursor after inserted tab
+          this.editorTextarea.selectionStart =
+            this.editorTextarea.selectionEnd = start + 1;
+          return;
+        } else {
+          this.deactivateEditor(true);
+          redrawNeeded = this.interactionManager.moveActiveCell(
+            0,
+            event.shiftKey ? -1 : 1
+          ); // Move left/right
+          // clear selections and selection range after moving
+          if (redrawNeeded) {
+            this.interactionManager.clearSelections();
+            this.stateManager.clearSelectionRange();
+          }
+        }
+      }
+
+      // For Escape, just close the editor without saving
+      if (event.key === "Escape") {
+        this.deactivateEditor(false, true);
+        this.domManager.focusContainer();
+        event.preventDefault();
+        return;
+      }
+
+      // For textarea, don't handle Enter (allow multiline) or other keys
+      // unless combined with Ctrl or Command
+      if (!(event.ctrlKey || event.metaKey)) {
+        return;
+      }
+
+      // Handle Ctrl/Cmd + Enter to save and move to next row
+      if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
         this.deactivateEditor(true);
-        redrawNeeded = this.interactionManager.moveActiveCell(1, 0); // Move down
-        // clear selections and selection range after moving
+        const redrawNeeded = this.interactionManager.moveActiveCell(1, 0);
         if (redrawNeeded) {
           this.interactionManager.clearSelections();
           this.stateManager.clearSelectionRange();
+          this.renderer.draw();
         }
         event.preventDefault();
+        return;
+      }
+    }
+
+    // Regular input handling (same as before)
+    switch (event.key) {
+      case "Enter":
+        // For regular input, process Enter normally
+        if (!isTextarea) {
+          this.deactivateEditor(true);
+          redrawNeeded = this.interactionManager.moveActiveCell(1, 0); // Move down
+          // clear selections and selection range after moving
+          if (redrawNeeded) {
+            this.interactionManager.clearSelections();
+            this.stateManager.clearSelectionRange();
+          }
+          event.preventDefault();
+        }
         break;
       case "Escape":
         this.deactivateEditor(false, true); // Discard changes, activate cell
@@ -385,17 +495,20 @@ export class EditingManager {
         event.preventDefault();
         return; // redraw already handled in deactivateEditor
       case "Tab":
-        this.deactivateEditor(true);
-        redrawNeeded = this.interactionManager.moveActiveCell(
-          0,
-          event.shiftKey ? -1 : 1
-        ); // Move left/right
-        // clear selections and selection range after moving
-        if (redrawNeeded) {
-          this.interactionManager.clearSelections();
-          this.stateManager.clearSelectionRange();
+        // For regular input, process Tab normally
+        if (!isTextarea) {
+          this.deactivateEditor(true);
+          redrawNeeded = this.interactionManager.moveActiveCell(
+            0,
+            event.shiftKey ? -1 : 1
+          ); // Move left/right
+          // clear selections and selection range after moving
+          if (redrawNeeded) {
+            this.interactionManager.clearSelections();
+            this.stateManager.clearSelectionRange();
+          }
+          event.preventDefault();
         }
-        event.preventDefault();
         break;
     }
     if (redrawNeeded) {

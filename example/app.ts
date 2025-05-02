@@ -393,6 +393,7 @@ document.addEventListener("DOMContentLoaded", () => {
           document.getElementById("error-container")!.textContent =
             rowData[`error:${colKey}`] || "";
         },
+        wrapText: true,
         verbose: true,
       }
     );
