@@ -575,6 +575,7 @@ document.addEventListener("DOMContentLoaded", () => {
             }, 2000 + Math.random() * 1000);
           });
         },
+        lineHeight: 18, // 18 pixels
         verbose: true,
       }
     );

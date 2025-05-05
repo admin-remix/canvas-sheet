@@ -148,6 +148,7 @@ export interface SpreadsheetOptions {
   blankDropdownItemLabel?: string;
   allowTabInTextarea?: boolean;
   wrapText?: boolean;
+  lineHeight?: number; // in pixels
   verbose?: boolean;
 
   onCellsUpdate?: Nullable<(rows: CellUpdateEvent[]) => void>;

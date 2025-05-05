@@ -445,6 +445,7 @@ export class Renderer {
       placeholderTextColor,
       defaultRowHeight,
       wrapText,
+      lineHeight,
     } = this.options;
     const dataLength = this.stateManager.dataLength;
     const columns = this.stateManager.getColumns();
@@ -614,7 +615,8 @@ export class Renderer {
                   currentY,
                   colWidth - padding * 2,
                   rowHeight,
-                  wrapText
+                  wrapText,
+                  lineHeight
                 );
               }
             }
@@ -982,7 +984,7 @@ export class Renderer {
     maxWidth: number,
     maxHeight: number,
     wrap: boolean,
-    lineHeight: number = 16
+    lineHeight: number
   ) {
     // Ensure context exists and text is provided
     if (!this.ctx || !text) return;

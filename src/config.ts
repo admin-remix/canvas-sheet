@@ -50,6 +50,7 @@ export const DEFAULT_OPTIONS: RequiredSpreadsheetOptions = {
   blankDropdownItemLabel: "(Blank)",
   allowTabInTextarea: false,
   wrapText: false,
+  lineHeight: 16, // in pixels
   verbose: false,
 
   onCellsUpdate: null,
