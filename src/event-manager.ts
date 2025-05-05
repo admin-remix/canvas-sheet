@@ -805,9 +805,32 @@ export class EventManager {
     const rect = this.domManager.getCanvasBoundingClientRect();
     const canvasX = event.clientX - rect.left;
     const canvasY = event.clientY - rect.top;
-    const contentX = canvasX + this.stateManager.getScrollLeft();
-    const contentY = canvasY + this.stateManager.getScrollTop();
     const { headerHeight, rowNumberWidth, defaultRowHeight } = this.options;
+
+    // Convert canvas coordinates to content coordinates
+    // For fixed headers/row numbers, we need to account for their position
+    let contentX: number;
+    let contentY: number;
+
+    // If we're in the content area (not in header or row numbers),
+    // adjust for scroll position
+    if (canvasX >= rowNumberWidth && canvasY >= headerHeight) {
+      contentX = canvasX - rowNumberWidth + this.stateManager.getScrollLeft();
+      contentY = canvasY - headerHeight + this.stateManager.getScrollTop();
+    } else if (canvasY < headerHeight && canvasX >= rowNumberWidth) {
+      // In header area - horizontal scroll applies, no vertical scroll
+      contentX = canvasX - rowNumberWidth + this.stateManager.getScrollLeft();
+      contentY = canvasY;
+    } else if (canvasX < rowNumberWidth && canvasY >= headerHeight) {
+      // In row number area - vertical scroll applies, no horizontal scroll
+      contentX = canvasX;
+      contentY = canvasY - headerHeight + this.stateManager.getScrollTop();
+    } else {
+      // In corner box
+      contentX = canvasX;
+      contentY = canvasY;
+    }
+
     // Get dimensions directly from state/calculator as needed
     const dataLength = this.stateManager.dataLength; // More efficient than getData()
     const columns = this.stateManager.getColumns();
@@ -818,10 +841,10 @@ export class EventManager {
     let targetCol: number | null = null;
 
     // Find Row
-    if (contentY >= headerHeight) {
-      let currentY = headerHeight;
+    if (canvasY >= headerHeight) {
+      // In data area or row number area
+      let currentY = 0; // Start from 0 since we already adjusted for header in contentY
       for (let i = 0; i < dataLength; i++) {
-        // Use cached length
         const rowHeight = rowHeights.get(i) || defaultRowHeight;
         if (contentY >= currentY && contentY < currentY + rowHeight) {
           targetRow = i;
@@ -832,67 +855,52 @@ export class EventManager {
       }
     }
 
-    // Find Column (only if a row was found)
-    if (targetRow !== null) {
-      if (contentX >= rowNumberWidth) {
-        let currentX = rowNumberWidth;
-        for (let j = 0; j < columns.length; j++) {
-          const colWidth = columnWidths[j] || this.options.defaultColumnWidth;
-          if (contentX >= currentX && contentX < currentX + colWidth) {
-            targetCol = j;
-            break;
-          }
-          currentX += colWidth;
-          if (currentX > contentX) break;
+    // Find Column
+    if (canvasX >= rowNumberWidth) {
+      // In data area or header area
+      let currentX = 0; // Start from 0 since we already adjusted for row numbers in contentX
+      for (let j = 0; j < columns.length; j++) {
+        const colWidth = columnWidths[j] || this.options.defaultColumnWidth;
+        if (contentX >= currentX && contentX < currentX + colWidth) {
+          targetCol = j;
+          break;
         }
-      } else {
-        targetCol = null; // Click was in row number area
+        currentX += colWidth;
+        if (currentX > contentX) break;
       }
-    } else {
-      targetRow = null; // Ensure row is null if clicked above data area
-      targetCol = null;
     }
 
-    if (
-      targetRow === null &&
-      targetCol === null &&
-      contentX > rowNumberWidth &&
-      contentY < headerHeight
-    ) {
-      // Clicked in header area, but not on resize handles (handled in mousedown)
-      // Treat as no specific cell coordinate
-      return null;
-    }
-    if (
-      targetRow === null &&
-      targetCol === null &&
-      contentX < rowNumberWidth &&
-      contentY < headerHeight
-    ) {
+    // Handle special cases
+    if (canvasY < headerHeight && canvasX < rowNumberWidth) {
       // Clicked in corner box
       return null;
     }
 
-    // If targetRow is valid, return coords, otherwise null
-    return targetRow !== null ? { row: targetRow, col: targetCol } : null;
+    // Return the coordinates or null
+    return { row: targetRow, col: targetCol };
   }
 
   private _getColumnFromEvent(event: MouseEvent): number | null {
     const rect = this.domManager.getCanvasBoundingClientRect();
-    const canvasX =
-      event.clientX - rect.left + this.stateManager.getScrollLeft();
+    const canvasX = event.clientX - rect.left;
     const { rowNumberWidth } = this.options;
+
+    // Check if we're in the header/data area horizontally
+    if (canvasX < rowNumberWidth) {
+      return null; // In row number area, not a column
+    }
+
+    // Adjust for row number width and horizontal scroll
+    const contentX =
+      canvasX - rowNumberWidth + this.stateManager.getScrollLeft();
     const columns = this.stateManager.getColumns();
     const columnWidths = this.stateManager.getColumnWidths();
 
-    if (canvasX < rowNumberWidth) {
-      return null; // Not in the header area
-    }
-
-    let currentX = rowNumberWidth;
+    // Find the column at the given position
+    let currentX = 0;
     for (let j = 0; j < columns.length; j++) {
       const colWidth = columnWidths[j] || this.options.defaultColumnWidth;
-      if (canvasX >= currentX && canvasX < currentX + colWidth) {
+      if (contentX >= currentX && contentX < currentX + colWidth) {
         return j;
       }
       currentX += colWidth;
@@ -946,6 +954,10 @@ export class EventManager {
       const touch = event.touches[0];
       const currentX = touch.clientX;
       const currentY = touch.clientY;
+      const rect = this.domManager.getCanvasBoundingClientRect();
+      const canvasX = currentX - rect.left;
+      const canvasY = currentY - rect.top;
+      const { headerHeight, rowNumberWidth } = this.options;
 
       // Calculate delta movement
       const deltaX = this.lastTouchX - currentX;
@@ -959,8 +971,18 @@ export class EventManager {
         this.touchVelocityY = (deltaY / timeElapsed) * 15;
       }
 
-      // Perform the scroll
-      this.interactionManager.moveScroll(deltaX, deltaY);
+      // Only scroll content area if touch is in content area
+      if (canvasX >= rowNumberWidth && canvasY >= headerHeight) {
+        // Full scroll in content area
+        this.interactionManager.moveScroll(deltaX, deltaY);
+      } else if (canvasY < headerHeight && canvasX >= rowNumberWidth) {
+        // Only horizontal scroll in header area
+        this.interactionManager.moveScroll(deltaX, 0);
+      } else if (canvasX < rowNumberWidth && canvasY >= headerHeight) {
+        // Only vertical scroll in row number area
+        this.interactionManager.moveScroll(0, deltaY);
+      }
+
       this._handleScroll();
 
       // Update last positions and time
@@ -984,6 +1006,14 @@ export class EventManager {
   }
 
   private _startKineticScroll(): void {
+    // Store the last touch position to determine which area was touched
+    const rect = this.domManager.getCanvasBoundingClientRect();
+    const lastTouchPosition = {
+      x: this.lastTouchX !== null ? this.lastTouchX - rect.left : 0,
+      y: this.lastTouchY !== null ? this.lastTouchY - rect.top : 0,
+    };
+    const { headerHeight, rowNumberWidth } = this.options;
+
     // Clear any existing interval
     if (this.kineticScrollInterval !== null) {
       window.clearInterval(this.kineticScrollInterval);
@@ -1005,11 +1035,30 @@ export class EventManager {
         return;
       }
 
-      // Perform the scroll with the current velocity
-      this.interactionManager.moveScroll(
-        this.touchVelocityX,
-        this.touchVelocityY
-      );
+      // Determine which area was touched and apply scroll accordingly
+      if (
+        lastTouchPosition.x >= rowNumberWidth &&
+        lastTouchPosition.y >= headerHeight
+      ) {
+        // Content area - both vertical and horizontal scroll
+        this.interactionManager.moveScroll(
+          this.touchVelocityX,
+          this.touchVelocityY
+        );
+      } else if (
+        lastTouchPosition.y < headerHeight &&
+        lastTouchPosition.x >= rowNumberWidth
+      ) {
+        // Header area - only horizontal scroll
+        this.interactionManager.moveScroll(this.touchVelocityX, 0);
+      } else if (
+        lastTouchPosition.x < rowNumberWidth &&
+        lastTouchPosition.y >= headerHeight
+      ) {
+        // Row number area - only vertical scroll
+        this.interactionManager.moveScroll(0, this.touchVelocityY);
+      }
+
       this._handleScroll();
     }, 16); // ~60fps
   }

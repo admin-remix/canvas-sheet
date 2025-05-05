@@ -96,7 +96,9 @@ export class Spreadsheet {
     this.dimensionCalculator.initializeSizes(data.length);
     this.domManager.setup(
       this.stateManager.getTotalContentWidth(),
-      this.stateManager.getTotalContentHeight()
+      this.stateManager.getTotalContentHeight(),
+      this.options.headerHeight,
+      this.options.rowNumberWidth
     );
     this.dimensionCalculator.calculateDimensions(
       this.container.clientWidth,
@@ -123,6 +125,11 @@ export class Spreadsheet {
     this.domManager.updateCanvasSize(
       this.stateManager.getTotalContentWidth(),
       this.stateManager.getTotalContentHeight()
+    );
+    // Update scrollbar positions for fixed headers and row numbers
+    this.domManager.updateScrollbarPositions(
+      this.options.headerHeight,
+      this.options.rowNumberWidth
     );
     this.dimensionCalculator.calculateDimensions(
       this.container.clientWidth,

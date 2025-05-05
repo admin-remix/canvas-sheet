@@ -53,13 +53,12 @@ export class DimensionCalculator {
   }
 
   public calculateTotalSize(): void {
-    let totalWidth = this.options.rowNumberWidth;
+    let totalWidth = 0; //this.options.rowNumberWidth;
     this.stateManager
       .getColumnWidths()
       .forEach((width) => (totalWidth += width));
 
-    const totalHeight =
-      this.options.headerHeight + this.stateManager.getTotalRowHeight();
+    const totalHeight = this.stateManager.getTotalRowHeight(); //this.options.headerHeight +
 
     this.stateManager.updateTotalContentSize(totalWidth, totalHeight);
   }

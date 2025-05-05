@@ -636,6 +636,8 @@ export class EditingManager {
           // async operation is done, verify if we need the result
           if (jobId !== this.stateManager.currentAsyncJobId) {
             log("log", verbose, `Async operation aborted: ${colKey}`);
+            // redraw to hide the loader
+            this.renderer.draw();
             return;
           }
 

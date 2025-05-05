@@ -33,8 +33,6 @@ export class DomManager {
     this.hScrollbar.id = "spreadsheet-hscrollbar";
     this.hScrollbar.style.position = "absolute";
     this.hScrollbar.style.bottom = "0";
-    this.hScrollbar.style.left = "0";
-    this.hScrollbar.style.width = `calc(100% - ${this.systemScrollbarWidth}px)`;
     this.hScrollbar.style.overflow = "auto";
     this.container.appendChild(this.hScrollbar);
 
@@ -42,9 +40,7 @@ export class DomManager {
     this.vScrollbar.id = "spreadsheet-vscrollbar";
     this.vScrollbar.style.position = "absolute";
     this.vScrollbar.style.right = "0";
-    this.vScrollbar.style.top = "0";
     this.vScrollbar.style.width = `${this.systemScrollbarWidth}px`;
-    this.vScrollbar.style.height = `calc(100% - ${this.systemScrollbarWidth}px)`;
     this.vScrollbar.style.overflow = "auto";
     this.container.appendChild(this.vScrollbar);
 
@@ -168,8 +164,27 @@ export class DomManager {
     return scrollbarWidth;
   }
 
-  public setup(totalContentWidth: number, totalContentHeight: number): void {
+  public updateScrollbarPositions(
+    headerHeight: number,
+    rowNumberWidth: number
+  ): void {
+    // Update horizontal scrollbar position and dimensions
+    this.hScrollbar.style.left = `${rowNumberWidth}px`;
+    this.hScrollbar.style.width = `calc(100% - ${rowNumberWidth}px - ${this.systemScrollbarWidth}px)`;
+
+    // Update vertical scrollbar position and dimensions
+    this.vScrollbar.style.top = `${headerHeight}px`;
+    this.vScrollbar.style.height = `calc(100% - ${headerHeight}px - ${this.systemScrollbarWidth}px)`;
+  }
+
+  public setup(
+    totalContentWidth: number,
+    totalContentHeight: number,
+    headerHeight: number = 0,
+    rowNumberWidth: number = 0
+  ): void {
     this.updateCanvasSize(totalContentWidth, totalContentHeight);
+    this.updateScrollbarPositions(headerHeight, rowNumberWidth);
   }
 
   public updateCanvasSize(width: number, height: number): void {

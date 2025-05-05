@@ -78,13 +78,31 @@ export class Renderer {
     // Clean up expired temporary errors before drawing
     this._cleanupExpiredErrors();
 
+    // Draw the fixed parts first (without translation)
+    this._drawCornerBox(); // Fixed corner
+    this._drawHeaders(); // Fixed headers on top
+    this._drawRowNumbers(); // Fixed row numbers on left
+
+    // Now apply translation for scrollable content area only
+    this.ctx.save();
+    this.ctx.beginPath();
+    // Create a clipping region for the scrollable content area
+    const { headerHeight, rowNumberWidth } = this.options;
+    this.ctx.rect(
+      rowNumberWidth,
+      headerHeight,
+      this.stateManager.getViewportWidth() - rowNumberWidth,
+      this.stateManager.getViewportHeight() - headerHeight
+    );
+    this.ctx.clip();
+
+    // Apply scroll translation only for the content area
     this.ctx.translate(
       -this.stateManager.getScrollLeft(),
       -this.stateManager.getScrollTop()
     );
 
-    this._drawHeaders();
-    this._drawRowNumbers();
+    // Draw the scrollable content
     this._drawCells();
     this._drawGridLines();
     this._drawCopiedCellHighlight();
@@ -93,9 +111,8 @@ export class Renderer {
     this._drawSelectedRowsHighlight();
     this._drawDragRange();
 
-    // // Draw the corner box fixed relative to the viewport
-    this._drawCornerBox();
-    this.ctx.restore();
+    this.ctx.restore(); // Restore from clip/translation
+    this.ctx.restore(); // Restore from first save
   }
 
   private _cleanupExpiredErrors(): void {
@@ -110,10 +127,10 @@ export class Renderer {
   private _clearCanvas(): void {
     this.ctx.fillStyle = "#ffffff"; // Assuming white background
     this.ctx.fillRect(
-      0, // No need to use scrollLeft, canvas is translated in draw()
-      0, // No need to use scrollTop, canvas is translated in draw()
+      0,
+      0,
       this.stateManager.getViewportWidth(),
-      this.stateManager.getViewportHeight() + this.options.headerHeight
+      this.stateManager.getViewportHeight()
     );
   }
 
@@ -150,56 +167,77 @@ export class Renderer {
       readonlyHeaderBgColor,
       selectedHeaderTextColor,
       readonlyHeaderTextColor,
+      highlightBorderColor,
     } = this.options;
     const columns = this.stateManager.getColumns();
     const schema = this.stateManager.getSchema();
     const columnWidths = this.stateManager.getColumnWidths();
-    const visibleColStart = this.stateManager.getVisibleColStartIndex();
-    const visibleColEnd = this.stateManager.getVisibleColEndIndex();
-    const width = this.stateManager.getTotalContentWidth();
     const selectedColumn = this.stateManager.getSelectedColumn();
+    // Get scroll position for header horizontal scrolling
+    const scrollLeft = this.stateManager.getScrollLeft();
+
     this.ctx.save();
 
-    // Clip drawing to the visible header area (canvas is already translated)
-    const headerVisibleX = rowNumberWidth; // Content area start X
+    // Clip drawing to the visible header area (fixed vertical position)
+    const headerVisibleX = rowNumberWidth; // Start after row numbers
     const headerVisibleY = 0;
-    const headerVisibleWidth = width; // Full viewport width
+    const headerVisibleWidth =
+      this.stateManager.getViewportWidth() - rowNumberWidth;
     const headerVisibleHeight = headerHeight;
 
     this.ctx.beginPath();
     this.ctx.rect(
-      headerVisibleX, // No need to add scrollLeft, already handled by global translate
+      headerVisibleX,
       headerVisibleY,
-      headerVisibleWidth - rowNumberWidth, // Clip width excludes row numbers
+      headerVisibleWidth,
       headerVisibleHeight
     );
     this.ctx.clip();
 
-    // Background for the entire logical header width (might extend beyond viewport)
+    // Apply horizontal scroll for headers (but not vertical)
+    this.ctx.translate(-scrollLeft, 0);
+
+    // Background for the entire logical header width
     this.ctx.fillStyle = headerBgColor;
-    this.ctx.fillRect(rowNumberWidth, 0, width - rowNumberWidth, headerHeight);
+    this.ctx.fillRect(
+      rowNumberWidth,
+      0,
+      this.stateManager.getTotalContentWidth(),
+      headerHeight
+    );
 
     // Draw Header Text and Vertical Lines
     this.ctx.font = headerFont;
     this.ctx.textAlign = headerTextAlign;
     this.ctx.textBaseline = "middle";
 
-    let currentX = this.dimensionCalculator.getColumnLeft(visibleColStart);
+    // Calculate which columns are visible
+    let currentX = rowNumberWidth;
 
-    for (let col = visibleColStart; col <= visibleColEnd; col++) {
-      if (col < 0 || col >= columns.length) continue; // Should not happen with correct visible range
+    for (let col = 0; col < columns.length; col++) {
+      const colWidth = columnWidths[col];
+
+      // Skip if column is completely out of view
+      if (currentX + colWidth < scrollLeft + rowNumberWidth) {
+        currentX += colWidth;
+        continue;
+      }
+
+      // Break if column is beyond right edge of viewport
+      if (currentX > scrollLeft + this.stateManager.getViewportWidth()) {
+        break;
+      }
 
       const colKey = columns[col];
       const schemaCol = schema[colKey];
       const headerText = schemaCol?.label || colKey;
-      const colWidth = columnWidths[col];
       const isColumnSelected = selectedColumn === col;
 
       let customBgColor: string | null = null;
       let customTextColor = headerTextColor;
       // Highlight selected column headers or if custom column
       if (isColumnSelected) {
-        customBgColor = selectedHeaderBgColor; // Reuse the same color as selected row numbers
+        customBgColor = selectedHeaderBgColor;
         customTextColor = selectedHeaderTextColor;
       } else if (schemaCol?.removable) {
         customBgColor = customHeaderBgColor;
@@ -210,6 +248,12 @@ export class Renderer {
       if (customBgColor) {
         this.ctx.fillStyle = customBgColor;
         this.ctx.fillRect(currentX, 0, colWidth, headerHeight);
+      }
+
+      if (isColumnSelected) {
+        this.ctx.strokeStyle = highlightBorderColor;
+        this.ctx.lineWidth = 2;
+        this.ctx.strokeRect(currentX + 1, 1, colWidth - 2, headerHeight);
       }
 
       // Draw text centered in the column
@@ -225,7 +269,7 @@ export class Renderer {
           headerText,
           textX,
           headerHeight / 2,
-          colWidth - padding * 2 // Max width to prevent text overflow
+          colWidth - padding * 2
         );
       } else {
         this.ctx.save();
@@ -236,26 +280,32 @@ export class Renderer {
         this.ctx.restore();
       }
 
-      // Draw vertical separator line
-      this.ctx.strokeStyle = gridLineColor;
-      this.ctx.beginPath();
-      const lineX = Math.round(currentX + colWidth) - 0.5; // Align to pixel grid
-      this.ctx.moveTo(lineX, 0);
-      this.ctx.lineTo(lineX, headerHeight);
-      this.ctx.stroke();
+      if (!isColumnSelected) {
+        // Draw vertical separator line
+        this.ctx.strokeStyle = gridLineColor;
+        this.ctx.lineWidth = 1;
+        this.ctx.beginPath();
+        const lineX = Math.round(currentX + colWidth) - 0.5; // Align to pixel grid
+        this.ctx.moveTo(lineX, 0);
+        this.ctx.lineTo(lineX, headerHeight);
+        this.ctx.stroke();
+      }
 
       currentX += colWidth;
     }
-
-    this.ctx.restore(); // Restore clipping context
 
     // Draw bottom border of the header row
     this.ctx.strokeStyle = gridLineColor;
     this.ctx.beginPath();
     const lineY = headerHeight - 0.5;
     this.ctx.moveTo(rowNumberWidth, lineY);
-    this.ctx.lineTo(this.stateManager.getTotalContentWidth(), lineY);
+    this.ctx.lineTo(
+      Math.max(currentX, this.stateManager.getViewportWidth() + scrollLeft),
+      lineY
+    );
     this.ctx.stroke();
+
+    this.ctx.restore(); // Restore clipping context
   }
 
   private _drawRowNumbers(): void {
@@ -268,56 +318,73 @@ export class Renderer {
       textColor,
       gridLineColor,
       defaultRowHeight,
+      highlightBorderColor,
     } = this.options;
     const dataLength = this.stateManager.dataLength;
     const totalContentHeight = this.stateManager.getTotalContentHeight();
+    // Get scroll position for row numbers vertical scrolling
+    const scrollTop = this.stateManager.getScrollTop();
+
     if (dataLength) {
       const rowHeights = this.stateManager.getRowHeights();
       const selectedRows = this.stateManager.getSelectedRows();
-      const visibleRowStart = this.stateManager.getVisibleRowStartIndex();
-      const visibleRowEnd = this.stateManager.getVisibleRowEndIndex();
+
       this.ctx.save();
 
-      // Clip drawing to the visible row number area
+      // Clip drawing to the visible row number area (fixed horizontal position)
       const rowNumVisibleX = 0;
-      const rowNumVisibleY = headerHeight; // Below header
+      const rowNumVisibleY = headerHeight;
       const rowNumVisibleWidth = rowNumberWidth;
-      const rowNumVisibleHeight = totalContentHeight; // Full viewport height
+      const rowNumVisibleHeight =
+        this.stateManager.getViewportHeight() - headerHeight;
 
       this.ctx.beginPath();
       this.ctx.rect(
-        rowNumVisibleX, // No horizontal scroll for row numbers
-        rowNumVisibleY, // No need to add scrollTop, already handled by global translate
+        rowNumVisibleX,
+        rowNumVisibleY,
         rowNumVisibleWidth,
-        rowNumVisibleHeight - headerHeight // Clip height excludes header
+        rowNumVisibleHeight
       );
       this.ctx.clip();
 
+      // Apply vertical scroll for row numbers (but not horizontal)
+      this.ctx.translate(0, -scrollTop);
+
       // Background for the entire logical row number column height
       this.ctx.fillStyle = rowNumberBgColor;
-      this.ctx.fillRect(
-        0,
-        headerHeight,
-        rowNumberWidth,
-        totalContentHeight - headerHeight
-      );
+      this.ctx.fillRect(0, headerHeight, rowNumberWidth, totalContentHeight);
 
       // Draw Row Numbers and Horizontal Lines
       this.ctx.font = font;
       this.ctx.textAlign = "center";
       this.ctx.textBaseline = "middle";
 
-      let currentY = this.dimensionCalculator.getRowTop(visibleRowStart);
+      // Calculate which rows are visible
+      let currentY = headerHeight;
 
-      for (let row = visibleRowStart; row <= visibleRowEnd; row++) {
-        if (row < 0 || row >= dataLength) continue;
-
+      for (let row = 0; row < dataLength; row++) {
         const rowHeight = rowHeights.get(row) || defaultRowHeight;
 
+        // Skip if row is completely out of view
+        if (currentY + rowHeight < scrollTop + headerHeight) {
+          currentY += rowHeight;
+          continue;
+        }
+
+        // Break if row is beyond bottom edge of viewport
+        if (currentY > scrollTop + this.stateManager.getViewportHeight()) {
+          break;
+        }
+        const isSelected = selectedRows.has(row);
         // Highlight selected row number background
-        if (selectedRows.has(row)) {
+        if (isSelected) {
           this.ctx.fillStyle = selectedRowNumberBgColor;
           this.ctx.fillRect(0, currentY, rowNumberWidth, rowHeight);
+
+          // stroke the row number
+          this.ctx.strokeStyle = highlightBorderColor;
+          this.ctx.lineWidth = 2;
+          this.ctx.strokeRect(0, currentY, rowNumberWidth, rowHeight);
         }
 
         // Draw row number text
@@ -328,33 +395,34 @@ export class Renderer {
           currentY + rowHeight / 2
         );
 
-        // Draw horizontal separator line
-        this.ctx.strokeStyle = gridLineColor;
-        this.ctx.beginPath();
-        const lineY = Math.round(currentY + rowHeight) - 0.5;
-        this.ctx.moveTo(0, lineY);
-        this.ctx.lineTo(rowNumberWidth, lineY);
-        this.ctx.stroke();
+        if (!isSelected) {
+          // Draw horizontal separator line
+          this.ctx.strokeStyle = gridLineColor;
+          this.ctx.beginPath();
+          this.ctx.lineWidth = 1;
+          const lineY = Math.round(currentY + rowHeight) - 0.5;
+          this.ctx.moveTo(0, lineY);
+          this.ctx.lineTo(rowNumberWidth, lineY);
+          this.ctx.stroke();
+        }
 
         currentY += rowHeight;
       }
 
+      // Draw right border of the row number column
+      this.ctx.strokeStyle = gridLineColor;
+      this.ctx.lineWidth = 1;
+      this.ctx.beginPath();
+      const lineX = rowNumberWidth - 0.5;
+      this.ctx.moveTo(lineX, headerHeight);
+      this.ctx.lineTo(
+        lineX,
+        Math.max(currentY, this.stateManager.getViewportHeight() + scrollTop)
+      );
+      this.ctx.stroke();
+
       this.ctx.restore(); // Restore clipping context
     }
-
-    // Draw right border of the row number column
-    this.ctx.strokeStyle = gridLineColor;
-    this.ctx.beginPath();
-    const lineX = rowNumberWidth - 0.5;
-    this.ctx.moveTo(lineX, headerHeight);
-    this.ctx.lineTo(
-      lineX,
-      Math.max(
-        totalContentHeight,
-        this.stateManager.getViewportHeight() + headerHeight
-      )
-    );
-    this.ctx.stroke();
   }
 
   private _drawCells(): void {
@@ -393,14 +461,16 @@ export class Renderer {
     const selectionRange = this.stateManager.getNormalizedSelectionRange();
     const scrollLeft = this.stateManager.getScrollLeft();
     const scrollTop = this.stateManager.getScrollTop();
+    const viewportWidth = this.stateManager.getViewportWidth();
+    const viewportHeight = this.stateManager.getViewportHeight();
 
     this.ctx.save();
 
     // Clip drawing to the visible data area
     const clipX = Math.max(0, rowNumberWidth - scrollLeft);
     const clipY = Math.max(0, headerHeight - scrollTop);
-    const clipWidth = this.stateManager.getTotalContentWidth() - clipX;
-    const clipHeight = this.stateManager.getTotalContentHeight() - clipY;
+    const clipWidth = viewportWidth - clipX;
+    const clipHeight = viewportHeight - clipY;
     this.ctx.beginPath();
     this.ctx.rect(clipX + scrollLeft, clipY + scrollTop, clipWidth, clipHeight);
     this.ctx.clip();
@@ -587,7 +657,7 @@ export class Renderer {
       if (lineX >= rowNumberWidth && lineX <= viewportWidth + scrollLeft) {
         this.ctx.beginPath();
         this.ctx.moveTo(lineX, headerHeight); // Start below header
-        this.ctx.lineTo(lineX, totalHeight); // Draw full logical height
+        this.ctx.lineTo(lineX, totalHeight + headerHeight); // Draw full logical height
         this.ctx.stroke();
       }
       if (col < columns.length) {
@@ -606,7 +676,7 @@ export class Renderer {
       if (lineY >= headerHeight && lineY <= viewportHeight + scrollTop) {
         this.ctx.beginPath();
         this.ctx.moveTo(rowNumberWidth, lineY); // Start right of row numbers
-        this.ctx.lineTo(totalWidth, lineY); // Draw full logical width
+        this.ctx.lineTo(totalWidth + rowNumberWidth, lineY); // Draw full logical width
         this.ctx.stroke();
       }
       if (row < dataLength) {
@@ -840,7 +910,7 @@ export class Renderer {
   private _drawSelectedColumnHighlight(): void {
     const selectedColumn = this.stateManager.getSelectedColumn();
     if (selectedColumn === null) return; // Only draw when exactly one column is selected
-    const { highlightBorderColor } = this.options;
+    const { highlightBorderColor, headerHeight } = this.options;
     const totalContentHeight = this.stateManager.getTotalContentHeight();
     const columnWidths = this.stateManager.getColumnWidths();
 
@@ -857,9 +927,9 @@ export class Renderer {
     // Draw border around the entire column
     this.ctx.strokeRect(
       columnLeft + 1,
-      1,
+      headerHeight - 1,
       columnWidth - 2,
-      totalContentHeight - 2
+      totalContentHeight
     );
 
     this.ctx.restore();
@@ -868,7 +938,8 @@ export class Renderer {
   private _drawSelectedRowsHighlight(): void {
     const selectedRows = this.stateManager.getSelectedRows();
     if (selectedRows.size === 0) return;
-    const { highlightBorderColor, defaultRowHeight } = this.options;
+    const { highlightBorderColor, defaultRowHeight, rowNumberWidth } =
+      this.options;
     const totalContentWidth = this.stateManager.getTotalContentWidth();
     const rowHeights = this.stateManager.getRowHeights();
 
@@ -880,7 +951,12 @@ export class Renderer {
       const rowHeight = rowHeights.get(row) || defaultRowHeight;
       const rowY = this.dimensionCalculator.getRowTop(row);
 
-      this.ctx.strokeRect(0, rowY, totalContentWidth, rowHeight);
+      this.ctx.strokeRect(
+        rowNumberWidth - 1,
+        rowY,
+        totalContentWidth,
+        rowHeight
+      );
     }
 
     this.ctx.restore();
@@ -1014,13 +1090,16 @@ export class Renderer {
     }
   }
 
-  // --- Helper to get cell bounds in VIEWPORT coordinates --- HINT HINT
+  // --- Helper to get cell bounds in VIEWPORT coordinates ---
   public getCellBounds(rowIndex: number, colIndex: number): CellBounds | null {
+    const { headerHeight, rowNumberWidth } = this.options;
     const dataLength = this.stateManager.dataLength;
     const columns = this.stateManager.getColumns();
     const columnWidths = this.stateManager.getColumnWidths();
-    const totalContentWidth = this.stateManager.getTotalContentWidth();
-    const totalContentHeight = this.stateManager.getTotalContentHeight();
+    const totalContentWidth =
+      this.stateManager.getTotalContentWidth() + rowNumberWidth;
+    const totalContentHeight =
+      this.stateManager.getTotalContentHeight() + headerHeight;
 
     if (
       rowIndex < 0 ||
@@ -1063,8 +1142,7 @@ export class Renderer {
   ): CellBounds | null {
     const cellBounds = this.getCellBounds(rowIndex, colIndex);
     if (!cellBounds) return null;
-
-    const { fillHandleSize } = this.options;
+    const { fillHandleSize, headerHeight, rowNumberWidth } = this.options;
     const handleRadius = fillHandleSize / 2;
 
     // Calculate center based on viewport coordinates from getCellBounds
@@ -1072,9 +1150,10 @@ export class Renderer {
     const handleCenterY = cellBounds.y + cellBounds.height - handleRadius - 1;
 
     // Return bounds centered around the calculated center point
+    // also subtract the fixed rowNumberWidth and headerHeight
     return {
-      x: handleCenterX - handleRadius,
-      y: handleCenterY - handleRadius,
+      x: handleCenterX - handleRadius - rowNumberWidth,
+      y: handleCenterY - handleRadius - headerHeight,
       width: fillHandleSize,
       height: fillHandleSize,
     };

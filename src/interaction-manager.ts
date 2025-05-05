@@ -87,24 +87,37 @@ export class InteractionManager {
     const scrollLeft = this.domManager.getHScrollPosition();
     const scrollTop = this.domManager.getVScrollPosition();
     const canvasRect = this.domManager.getCanvasBoundingClientRect();
+    const { headerHeight, rowNumberWidth } = this.options;
+    // Adjust bounds coordinates to account for fixed headers and row numbers
+    // Convert from content coordinates to viewport coordinates
     const boundsX = bounds.x - scrollLeft;
     const boundsY = bounds.y - scrollTop;
     const boundsWidth = bounds.width;
     const boundsHeight = bounds.height;
+
     let newScrollLeft = scrollLeft;
     let newScrollTop = scrollTop;
 
-    if (boundsX < 0) {
-      newScrollLeft += boundsX;
+    // Check if the cell is visible horizontally, accounting for rowNumberWidth
+    if (boundsX < rowNumberWidth) {
+      // Cell is scrolled too far left
+      newScrollLeft += boundsX - rowNumberWidth;
     } else if (boundsX + boundsWidth > canvasRect.width) {
+      // Cell extends beyond right edge
       newScrollLeft += boundsX + boundsWidth - canvasRect.width;
     }
 
-    if (boundsY < 0) {
-      newScrollTop += boundsY;
+    // Check if the cell is visible vertically, accounting for headerHeight
+    if (boundsY < headerHeight) {
+      // Cell is scrolled too far up
+      newScrollTop += boundsY - headerHeight;
     } else if (boundsY + boundsHeight > canvasRect.height) {
+      // Cell extends beyond bottom edge
       newScrollTop += boundsY + boundsHeight - canvasRect.height;
     }
+    // Ensure we don't scroll to negative values
+    newScrollLeft = Math.max(0, newScrollLeft);
+    newScrollTop = Math.max(0, newScrollTop);
 
     if (newScrollLeft !== scrollLeft || newScrollTop !== scrollTop) {
       this.moveScroll(newScrollLeft, newScrollTop, true);
@@ -260,20 +273,24 @@ export class InteractionManager {
   // --- Resizing --- HINT HINT
   public checkResizeHandles(event: MouseEvent): "column" | "row" | null {
     const rect = this.domManager.getCanvasBoundingClientRect();
-    const viewportX = event.clientX - rect.left;
-    const viewportY = event.clientY - rect.top;
-    const contentX = viewportX + this.stateManager.getScrollLeft();
-    const contentY = viewportY + this.stateManager.getScrollTop();
+    const canvasX = event.clientX - rect.left;
+    const canvasY = event.clientY - rect.top;
     const { headerHeight, rowNumberWidth, resizeHandleSize, defaultRowHeight } =
       this.options;
-    const columns = this.stateManager.getColumns();
-    const dataLength = this.stateManager.dataLength;
-    const columnWidths = this.stateManager.getColumnWidths();
-    const rowHeights = this.stateManager.getRowHeights();
 
-    // Check Column Resize Handles (in header)
-    if (contentY < headerHeight && contentX > rowNumberWidth) {
-      let currentX = rowNumberWidth;
+    // Convert to content coordinates based on where in the grid we are
+    let contentX: number;
+    let contentY: number;
+
+    // Check Column Resize Handles (in header area)
+    if (canvasY < headerHeight && canvasX >= rowNumberWidth) {
+      contentX = canvasX - rowNumberWidth + this.stateManager.getScrollLeft();
+
+      // For column resize, we need to check if we're near a column border
+      const columns = this.stateManager.getColumns();
+      const columnWidths = this.stateManager.getColumnWidths();
+
+      let currentX = 0; // Start at 0 since we've already adjusted for rowNumberWidth
       for (let col = 0; col < columns.length; col++) {
         const colWidth = columnWidths[col];
         const borderX = currentX + colWidth;
@@ -281,13 +298,20 @@ export class InteractionManager {
           this._startColumnResize(col, event.clientX);
           return "column";
         }
-        currentX = borderX;
+        currentX += colWidth;
+        if (currentX > contentX + resizeHandleSize) break; // Optimization
       }
     }
 
     // Check Row Resize Handles (in row number area)
-    if (contentX < rowNumberWidth && contentY > headerHeight) {
-      let currentY = headerHeight;
+    if (canvasX < rowNumberWidth && canvasY >= headerHeight) {
+      contentY = canvasY - headerHeight + this.stateManager.getScrollTop();
+
+      // For row resize, we need to check if we're near a row border
+      const dataLength = this.stateManager.dataLength;
+      const rowHeights = this.stateManager.getRowHeights();
+
+      let currentY = 0; // Start at 0 since we've already adjusted for headerHeight
       for (let row = 0; row < dataLength; row++) {
         const rowHeight = rowHeights.get(row) || defaultRowHeight;
         const borderY = currentY + rowHeight;
@@ -295,7 +319,8 @@ export class InteractionManager {
           this._startRowResize(row, event.clientY);
           return "row";
         }
-        currentY = borderY;
+        currentY += rowHeight;
+        if (currentY > contentY + resizeHandleSize) break; // Optimization
       }
     }
 
@@ -450,15 +475,38 @@ export class InteractionManager {
       this.stateManager.isDraggingFillHandle()
     )
       return; // Don't change cursor during active drag/resize
-    const scrollTop = this.stateManager.getScrollTop();
-    const scrollLeft = this.stateManager.getScrollLeft();
+
     const rect = this.domManager.getCanvasBoundingClientRect();
-    const viewportX = event.clientX - rect.left;
-    const viewportY = event.clientY - rect.top;
-    const contentX = viewportX + scrollLeft;
-    const contentY = viewportY + scrollTop;
+    const canvasX = event.clientX - rect.left;
+    const canvasY = event.clientY - rect.top;
     const { headerHeight, rowNumberWidth, resizeHandleSize, defaultRowHeight } =
       this.options;
+
+    // Convert to content coordinates based on where the mouse is
+    let contentX: number;
+    let contentY: number;
+
+    // In header area (for column resize)
+    if (canvasY < headerHeight && canvasX >= rowNumberWidth) {
+      contentX = canvasX - rowNumberWidth + this.stateManager.getScrollLeft();
+      contentY = canvasY;
+    }
+    // In row number area (for row resize)
+    else if (canvasX < rowNumberWidth && canvasY >= headerHeight) {
+      contentX = canvasX;
+      contentY = canvasY - headerHeight + this.stateManager.getScrollTop();
+    }
+    // In content area (for fill handle)
+    else if (canvasX >= rowNumberWidth && canvasY >= headerHeight) {
+      contentX = canvasX - rowNumberWidth + this.stateManager.getScrollLeft();
+      contentY = canvasY - headerHeight + this.stateManager.getScrollTop();
+    }
+    // In corner box or outside
+    else {
+      contentX = canvasX;
+      contentY = canvasY;
+    }
+
     const columns = this.stateManager.getColumns();
     const dataLength = this.stateManager.dataLength;
     const columnWidths = this.stateManager.getColumnWidths();
@@ -467,19 +515,16 @@ export class InteractionManager {
     let newCursor = "default";
 
     // Check Column Resize Handles
-    if (
-      contentY < headerHeight &&
-      contentX > rowNumberWidth &&
-      scrollTop < headerHeight
-    ) {
-      let currentX = rowNumberWidth;
+    if (canvasY < headerHeight && canvasX >= rowNumberWidth) {
+      let currentX = 0; // Start at 0 since we already adjusted for rowNumberWidth in contentX
       for (let col = 0; col < columns.length; col++) {
-        const borderX = currentX + columnWidths[col];
+        const colWidth = columnWidths[col];
+        const borderX = currentX + colWidth;
         if (Math.abs(contentX - borderX) <= resizeHandleSize) {
           newCursor = "col-resize";
           break;
         }
-        currentX = borderX;
+        currentX += colWidth;
         if (currentX > contentX + resizeHandleSize) break; // Optimization
       }
     }
@@ -487,18 +532,18 @@ export class InteractionManager {
     // Check Row Resize Handles
     if (
       newCursor === "default" &&
-      contentX < rowNumberWidth &&
-      contentY > headerHeight &&
-      scrollLeft < rowNumberWidth
+      canvasX < rowNumberWidth &&
+      canvasY >= headerHeight
     ) {
-      let currentY = headerHeight;
+      let currentY = 0; // Start at 0 since we already adjusted for headerHeight in contentY
       for (let row = 0; row < dataLength; row++) {
-        const borderY = currentY + (rowHeights.get(row) || defaultRowHeight);
+        const rowHeight = rowHeights.get(row) || defaultRowHeight;
+        const borderY = currentY + rowHeight;
         if (Math.abs(contentY - borderY) <= resizeHandleSize) {
           newCursor = "row-resize";
           break;
         }
-        currentY = borderY;
+        currentY += rowHeight;
         if (currentY > contentY + resizeHandleSize) break; // Optimization
       }
     }
@@ -510,12 +555,15 @@ export class InteractionManager {
       activeCell &&
       activeCell.row !== null &&
       activeCell.col !== null &&
-      !this.stateManager.getActiveEditor()
+      !this.stateManager.getActiveEditor() &&
+      canvasX >= rowNumberWidth &&
+      canvasY >= headerHeight
     ) {
       const handleBounds = this.renderer.getFillHandleBounds(
         activeCell.row,
         activeCell.col
       );
+      document.title = `${handleBounds?.x},${handleBounds?.y},${contentX},${contentY}`;
       if (
         handleBounds &&
         contentX >= handleBounds.x &&
@@ -550,16 +598,29 @@ export class InteractionManager {
     if (!handleBounds) return false;
 
     const rect = this.domManager.getCanvasBoundingClientRect();
-    const viewportX =
-      event.clientX - rect.left + this.stateManager.getScrollLeft();
-    const viewportY =
-      event.clientY - rect.top + this.stateManager.getScrollTop();
+    const { headerHeight, rowNumberWidth } = this.options;
+
+    // Convert mouse position to content coordinates, accounting for fixed headers/row numbers
+    // and scrolling position
+    const canvasX = event.clientX - rect.left;
+    const canvasY = event.clientY - rect.top;
+
+    let contentX, contentY;
+
+    // If in content area, adjust for header and row number and add scroll offset
+    if (canvasX >= rowNumberWidth && canvasY >= headerHeight) {
+      contentX = canvasX - rowNumberWidth + this.stateManager.getScrollLeft();
+      contentY = canvasY - headerHeight + this.stateManager.getScrollTop();
+    } else {
+      // Not in content area, can't be on the fill handle
+      return false;
+    }
 
     if (
-      viewportX >= handleBounds.x &&
-      viewportX <= handleBounds.x + handleBounds.width &&
-      viewportY >= handleBounds.y &&
-      viewportY <= handleBounds.y + handleBounds.height
+      contentX >= handleBounds.x &&
+      contentX <= handleBounds.x + handleBounds.width &&
+      contentY >= handleBounds.y &&
+      contentY <= handleBounds.y + handleBounds.height
     ) {
       this._startFillHandleDrag(activeCell);
       return true;
@@ -595,22 +656,38 @@ export class InteractionManager {
     if (!startCell || startCell.row === null) return;
 
     const rect = this.domManager.getCanvasBoundingClientRect();
-    const viewportY =
-      event.clientY - rect.top + this.stateManager.getScrollTop();
-    const { headerHeight, defaultRowHeight } = this.options;
+    const { headerHeight, rowNumberWidth, defaultRowHeight } = this.options;
+    const canvasY = event.clientY - rect.top;
+
+    // Only proceed if we're in the content area or row number area
+    if (canvasY < headerHeight) {
+      // Mouse is above the header, clamp to first row
+      this.stateManager.setDragState({
+        isDragging: true,
+        startCell: startCell,
+        endRow: 0,
+      });
+      this.renderer.draw();
+      return;
+    }
+
+    // Adjust for header height and add scroll offset to get content Y coordinate
+    const contentY = canvasY - headerHeight + this.stateManager.getScrollTop();
+
     const rowHeights = this.stateManager.getRowHeights();
     const dataLength = this.stateManager.dataLength;
 
     let targetRow: number | null = null;
-    let currentY = headerHeight;
+    let currentY = 0; // Start at 0 since we've adjusted for header height
+
     for (let i = 0; i < dataLength; i++) {
       const rowHeight = rowHeights.get(i) || defaultRowHeight;
-      if (viewportY >= currentY && viewportY < currentY + rowHeight) {
+      if (contentY >= currentY && contentY < currentY + rowHeight) {
         targetRow = i;
         break;
       }
       currentY += rowHeight;
-      if (currentY > viewportY) break; // Optimization
+      if (currentY > contentY) break; // Optimization
     }
 
     let newEndRow = this.stateManager.getDragEndRow();
@@ -618,9 +695,6 @@ export class InteractionManager {
     if (targetRow !== null) {
       // Allow dragging in any direction (up or down)
       newEndRow = targetRow;
-    } else if (viewportY < headerHeight) {
-      // Mouse is above the header, clamp to first row
-      newEndRow = 0;
     } else {
       // Mouse is below the last row, clamp to last row
       newEndRow = dataLength - 1;
