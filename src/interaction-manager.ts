@@ -563,7 +563,6 @@ export class InteractionManager {
         activeCell.row,
         activeCell.col
       );
-      document.title = `${handleBounds?.x},${handleBounds?.y},${contentX},${contentY}`;
       if (
         handleBounds &&
         contentX >= handleBounds.x &&
