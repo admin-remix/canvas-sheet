@@ -1,198 +1,213 @@
-export type DataType = 'text' | 'number' | 'boolean' | 'date' | 'select' | 'email';
+export type DataType =
+  | "text"
+  | "number"
+  | "boolean"
+  | "date"
+  | "select"
+  | "email";
 export type Nullable<T> = T | null;
 
 export interface SelectOption {
-    id: string | number;
-    name: string;
+  id: string | number;
+  name: string;
 }
 
 export interface ColumnSchema {
-    type: DataType;
-    label: string;
-    required?: boolean;
-    values?: SelectOption[]; // For 'select' type
-    decimal?: boolean;      // For 'number' type (false means integer)
-    maxlength?: number;     // For 'text' type
-    disabled?: (rowData: DataRow, rowIndex: number) => boolean; // Optional dynamic disabling
-    filterValues?: (rowData: DataRow, rowIndex: number) => SelectOption[] | Promise<SelectOption[]>; // Optional dynamic filtering
-    error?: string;
-    loading?: boolean;
-    nullable?: boolean;
-    readonly?: boolean;
-    removable?: boolean;
-    placeholder?: string;
-    formatter?: (value: any) => string | null;
-    lazySearch?: boolean;
-    defaultValue?: any;
+  type: DataType;
+  label: string;
+  required?: boolean;
+  values?: SelectOption[]; // For 'select' type
+  decimal?: boolean; // For 'number' type (false means integer)
+  maxlength?: number; // For 'text' type
+  multiline?: boolean; // For 'text' type, as textarea
+  disabled?: (rowData: DataRow, rowIndex: number) => boolean; // Optional dynamic disabling
+  filterValues?: (
+    rowData: DataRow,
+    rowIndex: number
+  ) => SelectOption[] | Promise<SelectOption[]>; // Optional dynamic filtering
+  error?: string;
+  loading?: boolean;
+  nullable?: boolean;
+  readonly?: boolean;
+  removable?: boolean;
+  placeholder?: string;
+  formatter?: (value: any) => string | null;
+  lazySearch?: boolean;
+  defaultValue?: any;
 }
 
 export interface SpreadsheetSchema {
-    [key: string]: ColumnSchema;
+  [key: string]: ColumnSchema;
 }
 
 export interface DataRow {
-    [key: string]: any; // Allows any value type initially
+  [key: string]: any; // Allows any value type initially
 }
 
 export interface CellCoords {
-    row: number | null;
-    col: number | null;
+  row: number | null;
+  col: number | null;
 }
 
 export interface CellBounds {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
 export interface ActiveEditorState {
-    row: number;
-    col: number;
-    type?: DataType;
-    originalValue: any;
-    isCustomEditor?: boolean;
-    asyncJobId?: number;
+  row: number;
+  col: number;
+  type?: DataType;
+  originalValue: any;
+  isCustomEditor?: boolean;
+  asyncJobId?: number;
 }
 
 export interface DragState {
-    startCell: CellCoords | null;
-    endRow: number | null;
-    isDragging: boolean;
+  startCell: CellCoords | null;
+  endRow: number | null;
+  isDragging: boolean;
 }
 
 export interface ResizeColumnState {
-    isResizing: boolean;
-    columnIndex: number | null;
-    startX: number | null;
+  isResizing: boolean;
+  columnIndex: number | null;
+  startX: number | null;
 }
 
 export interface ResizeRowState {
-    isResizing: boolean;
-    rowIndex: number | null;
-    startY: number | null;
+  isResizing: boolean;
+  rowIndex: number | null;
+  startY: number | null;
 }
 
-export interface CellEvent {
-    rowIndex: number;
-    colKey: string;
-    rowData: DataRow;
+export interface VisibleCell {
+  rowIndex: number;
+  colKey: string;
+}
+
+export interface CellEvent extends VisibleCell {
+  rowData: DataRow;
 }
 export interface CellEventWithBounds extends CellEvent {
-    bounds: CellBounds;
+  bounds: CellBounds;
 }
 export interface CellEventWithSearch extends CellEvent {
-    searchTerm: string;
+  searchTerm: string;
 }
 
 export interface SpreadsheetOptions {
-    defaultColumnWidth?: number;
-    defaultRowHeight?: number;
-    minColumnWidth?: number;
-    maxColumnWidth?: number;
-    minRowHeight?: number;
-    maxRowHeight?: number;
-    headerHeight?: number;
-    rowNumberWidth?: number;
-    font?: string;
-    headerFont?: string;
-    textColor?: string;
-    placeholderTextColor?: string;
-    loadingTextColor?: string;
-    errorTextColor?: string;
-    cellBgColor?: string; // Default cell background
-    activeCellBgColor?: string; // Background for active (selected) cell
-    errorCellBgColor?: string;
-    selectedRowBgColor?: string; // Background for cells in selected rows
-    selectedRangeBgColor?: string; // Background for cells in multi-select range (excluding active)
-    headerTextColor?: string;
-    selectedHeaderTextColor?: string;
-    customHeaderBgColor?: string;
-    headerBgColor?: string;
-    selectedHeaderBgColor?: string;
-    readonlyHeaderBgColor?: string;
-    readonlyHeaderTextColor?: string;
-    headerClipText?: boolean; // Clip text or adjust(squish) text width to fit the header
-    headerTextAlign?: 'left' | 'center' | 'right';
-    gridLineColor?: string;
-    rowNumberBgColor?: string;
-    selectedRowNumberBgColor?: string;
-    disabledCellBgColor?: string;
-    disabledCellTextColor?: string; // Text color for disabled cells
-    highlightBorderColor?: string;
-    fillHandleColor?: string;
-    fillHandleSize?: number;
-    dragRangeBorderColor?: string;
-    resizeHandleSize?: number;
-    padding?: number; // Internal padding for cell text
-    textAlign?: 'left' | 'center' | 'right';
-    textBaseline?: 'top' | 'middle' | 'bottom';
-    copyHighlightBorderColor?: string;
-    copyHighlightBorderDash?: number[];
-    temporaryErrorTimeout?: number;
-    customDatePicker?: boolean;
-    autoAddNewRow?: boolean;
-    lazySearchDebounceTime?: number;
-    blankDropdownItemLabel?: string;
-    verbose?: boolean;
+  defaultColumnWidth?: number;
+  defaultRowHeight?: number;
+  minColumnWidth?: number;
+  maxColumnWidth?: number;
+  minRowHeight?: number;
+  maxRowHeight?: number;
+  headerHeight?: number;
+  rowNumberWidth?: number;
+  font?: string;
+  headerFont?: string;
+  textColor?: string;
+  placeholderTextColor?: string;
+  loadingTextColor?: string;
+  errorTextColor?: string;
+  cellBgColor?: string; // Default cell background
+  activeCellBgColor?: string; // Background for active (selected) cell
+  errorCellBgColor?: string;
+  selectedRowBgColor?: string; // Background for cells in selected rows
+  selectedRangeBgColor?: string; // Background for cells in multi-select range (excluding active)
+  headerTextColor?: string;
+  selectedHeaderTextColor?: string;
+  customHeaderBgColor?: string;
+  headerBgColor?: string;
+  selectedHeaderBgColor?: string;
+  readonlyHeaderBgColor?: string;
+  readonlyHeaderTextColor?: string;
+  headerClipText?: boolean; // Clip text or adjust(squish) text width to fit the header
+  headerTextAlign?: "left" | "center" | "right";
+  gridLineColor?: string;
+  rowNumberBgColor?: string;
+  selectedRowNumberBgColor?: string;
+  disabledCellBgColor?: string;
+  disabledCellTextColor?: string; // Text color for disabled cells
+  highlightBorderColor?: string;
+  fillHandleColor?: string;
+  fillHandleSize?: number;
+  dragRangeBorderColor?: string;
+  resizeHandleSize?: number;
+  padding?: number; // Internal padding for cell text
+  textAlign?: "left" | "center" | "right";
+  copyHighlightBorderColor?: string;
+  copyHighlightBorderDash?: number[];
+  temporaryErrorTimeout?: number;
+  customDatePicker?: boolean;
+  autoAddNewRow?: boolean;
+  lazySearchDebounceTime?: number;
+  blankDropdownItemLabel?: string;
+  allowTabInTextarea?: boolean;
+  wrapText?: boolean;
+  lineHeight?: number; // in pixels
+  verbose?: boolean;
 
-    onCellsUpdate?: Nullable<(rows: CellUpdateEvent[]) => void>;
-    onCellSelected?: Nullable<(event: CellEvent) => void>;
-    onEditorOpen?: Nullable<(event: CellEventWithBounds) => void>;
-    onRowDeleted?: Nullable<(rows: DataRow[]) => void>;
-    onColumnDelete?: Nullable<(colIndex: number, schema: ColumnSchema) => void>;
-    onLazySearch?: Nullable<(event: CellEventWithSearch) => Promise<Nullable<SelectOption[]>>>;
+  onCellsUpdate?: Nullable<(rows: CellUpdateEvent[]) => void>;
+  onCellSelected?: Nullable<(event: CellEvent) => void>;
+  onEditorOpen?: Nullable<(event: CellEventWithBounds) => void>;
+  onRowDeleted?: Nullable<(rows: DataRow[]) => void>;
+  onColumnDelete?: Nullable<(colIndex: number, schema: ColumnSchema) => void>;
+  onLazySearch?: Nullable<
+    (event: CellEventWithSearch) => Promise<Nullable<SelectOption[]>>
+  >;
 }
 
-export interface CellUpdateInput {
-    rowIndex: number;
-    colKey: string;
-    value: any;
-    flashError?: string;
+export interface CellUpdateInput extends VisibleCell {
+  value: any;
+  flashError?: string;
 }
 export interface CellUpdateEvent {
-    rowIndex: number;
-    columnKeys: string[];
-    data: DataRow;
-    oldData?: DataRow;
+  rowIndex: number;
+  columnKeys: string[];
+  data: DataRow;
+  oldData?: DataRow;
 }
 
 // Required version of options for internal use
 export type RequiredSpreadsheetOptions = Required<SpreadsheetOptions>;
 
 export interface DropdownItem {
-    id: any;
-    name: string;
+  id: any;
+  name: string;
 }
 
-export type ValidationErrorType = 'required' | 'maxlength' | 'value';
+export type ValidationErrorType = "required" | "maxlength" | "value";
 
 export class ValidationError extends Error {
+  rowIndex: number;
+  colKey: string;
+  value: any;
+  schema: ColumnSchema;
+  errorType: ValidationErrorType;
+  constructor({
+    errorMessage,
+    rowIndex,
+    colKey,
+    value,
+    schema,
+    errorType,
+  }: {
+    errorMessage: string;
     rowIndex: number;
     colKey: string;
     value: any;
     schema: ColumnSchema;
     errorType: ValidationErrorType;
-    constructor({
-        errorMessage,
-        rowIndex,
-        colKey,
-        value,
-        schema,
-        errorType
-    }: {
-        errorMessage: string;
-        rowIndex: number;
-        colKey: string;
-        value: any;
-        schema: ColumnSchema;
-        errorType: ValidationErrorType;
-    }) {
-        super(errorMessage);
-        this.rowIndex = rowIndex;
-        this.colKey = colKey;
-        this.value = value;
-        this.schema = schema;
-        this.errorType = errorType;
-    }
+  }) {
+    super(errorMessage);
+    this.rowIndex = rowIndex;
+    this.colKey = colKey;
+    this.value = value;
+    this.schema = schema;
+    this.errorType = errorType;
+  }
 }
