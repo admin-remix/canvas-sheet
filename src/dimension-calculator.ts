@@ -18,21 +18,6 @@ export class DimensionCalculator {
     this.domManager = domManager;
   }
 
-  public initializeSizes(rowCount: number): void {
-    const columnWidths = this.stateManager
-      .getColumns()
-      .map(() => this.options.defaultColumnWidth);
-    // we will not set default row heights here, because only the updated row heights will be stored in the StateManager
-    this.stateManager.setColumnWidths(columnWidths);
-    log(
-      "log",
-      this.options.verbose,
-      "Initialized column widths:",
-      columnWidths
-    );
-    this.calculateTotalSize();
-  }
-
   public calculateDimensions(
     viewportWidth: number,
     viewportHeight: number
@@ -53,18 +38,18 @@ export class DimensionCalculator {
   }
 
   public calculateTotalSize(): void {
-    let totalWidth = 0; //this.options.rowNumberWidth;
-    this.stateManager
-      .getColumnWidths()
-      .forEach((width) => (totalWidth += width));
-
-    const totalHeight = this.stateManager.getTotalRowHeight(); //this.options.headerHeight +
-
+    const totalWidth = this.stateManager.getTotalColumnWidth();
+    const totalHeight = this.stateManager.getTotalRowHeight();
     this.stateManager.updateTotalContentSize(totalWidth, totalHeight);
   }
 
   public calculateVisibleRange(): void {
-    const { headerHeight, rowNumberWidth, defaultRowHeight } = this.options;
+    const {
+      headerHeight,
+      rowNumberWidth,
+      defaultRowHeight,
+      defaultColumnWidth,
+    } = this.options;
     const dataLength = this.stateManager.dataLength;
     const columns = this.stateManager.getColumns();
     const columnWidths = this.stateManager.getColumnWidths();
@@ -79,7 +64,7 @@ export class DimensionCalculator {
     let visibleColStart = -1;
     let visibleColEnd = columns.length - 1;
     for (let col = 0; col < columns.length; col++) {
-      const colWidth = columnWidths[col];
+      const colWidth = columnWidths.get(col) || defaultColumnWidth;
       const colRight = currentX + colWidth;
       if (colRight > scrollLeft && currentX < scrollLeft + viewportWidth) {
         if (visibleColStart === -1) {
@@ -136,22 +121,26 @@ export class DimensionCalculator {
   // --- Getters for position/size needed by other modules ---
 
   public getColumnLeft(colIndex: number): number {
-    let left = this.options.rowNumberWidth;
-    const columnWidths = this.stateManager.getColumnWidths();
-    for (let i = 0; i < colIndex; i++) {
-      left += columnWidths[i];
+    const { rowNumberWidth, defaultColumnWidth } = this.options;
+    let left = rowNumberWidth + colIndex * defaultColumnWidth;
+    // Use direct access for better performance when calculating row positions
+    const columnWidths = this.stateManager.getColumnWidths().entries();
+    for (const [index, width] of columnWidths) {
+      if (index < colIndex) {
+        left += width - defaultColumnWidth;
+      }
     }
     return left;
   }
 
   public getRowTop(rowIndex: number): number {
-    let top =
-      this.options.headerHeight + rowIndex * this.options.defaultRowHeight;
+    const { headerHeight, defaultRowHeight } = this.options;
+    let top = headerHeight + rowIndex * defaultRowHeight;
     // Use direct access for better performance when calculating row positions
     const rowHeights = this.stateManager.getRowHeights().entries();
     for (const [index, height] of rowHeights) {
       if (index < rowIndex) {
-        top += height - this.options.defaultRowHeight;
+        top += height - defaultRowHeight;
       }
     }
     return top;

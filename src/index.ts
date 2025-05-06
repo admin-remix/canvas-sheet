@@ -93,7 +93,7 @@ export class Spreadsheet {
     );
 
     this.stateManager.setInitialData(data);
-    this.dimensionCalculator.initializeSizes(data.length);
+    this.dimensionCalculator.calculateTotalSize();
     this.domManager.setup(
       this.stateManager.getTotalContentWidth(),
       this.stateManager.getTotalContentHeight(),

@@ -288,6 +288,8 @@ export class EditingManager {
             (schema?.type === "number" && initialChar.match(/^\d*\.?\d*$/)))
         ) {
           this.editorInput.value = initialChar;
+        } else if (schema?.type === "date") {
+          this.editorInput.showPicker();
         } else {
           this.editorInput.select();
         }

@@ -805,7 +805,12 @@ export class EventManager {
     const rect = this.domManager.getCanvasBoundingClientRect();
     const canvasX = event.clientX - rect.left;
     const canvasY = event.clientY - rect.top;
-    const { headerHeight, rowNumberWidth, defaultRowHeight } = this.options;
+    const {
+      headerHeight,
+      rowNumberWidth,
+      defaultRowHeight,
+      defaultColumnWidth,
+    } = this.options;
 
     // Convert canvas coordinates to content coordinates
     // For fixed headers/row numbers, we need to account for their position
@@ -860,7 +865,7 @@ export class EventManager {
       // In data area or header area
       let currentX = 0; // Start from 0 since we already adjusted for row numbers in contentX
       for (let j = 0; j < columns.length; j++) {
-        const colWidth = columnWidths[j] || this.options.defaultColumnWidth;
+        const colWidth = columnWidths.get(j) || defaultColumnWidth;
         if (contentX >= currentX && contentX < currentX + colWidth) {
           targetCol = j;
           break;
@@ -883,7 +888,7 @@ export class EventManager {
   private _getColumnFromEvent(event: MouseEvent): number | null {
     const rect = this.domManager.getCanvasBoundingClientRect();
     const canvasX = event.clientX - rect.left;
-    const { rowNumberWidth } = this.options;
+    const { rowNumberWidth, defaultColumnWidth } = this.options;
 
     // Check if we're in the header/data area horizontally
     if (canvasX < rowNumberWidth) {
@@ -899,7 +904,7 @@ export class EventManager {
     // Find the column at the given position
     let currentX = 0;
     for (let j = 0; j < columns.length; j++) {
-      const colWidth = columnWidths[j] || this.options.defaultColumnWidth;
+      const colWidth = columnWidths.get(j) || defaultColumnWidth;
       if (contentX >= currentX && contentX < currentX + colWidth) {
         return j;
       }

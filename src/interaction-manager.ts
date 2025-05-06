@@ -275,8 +275,13 @@ export class InteractionManager {
     const rect = this.domManager.getCanvasBoundingClientRect();
     const canvasX = event.clientX - rect.left;
     const canvasY = event.clientY - rect.top;
-    const { headerHeight, rowNumberWidth, resizeHandleSize, defaultRowHeight } =
-      this.options;
+    const {
+      headerHeight,
+      rowNumberWidth,
+      resizeHandleSize,
+      defaultRowHeight,
+      defaultColumnWidth,
+    } = this.options;
 
     // Convert to content coordinates based on where in the grid we are
     let contentX: number;
@@ -292,7 +297,7 @@ export class InteractionManager {
 
       let currentX = 0; // Start at 0 since we've already adjusted for rowNumberWidth
       for (let col = 0; col < columns.length; col++) {
-        const colWidth = columnWidths[col];
+        const colWidth = columnWidths.get(col) || defaultColumnWidth;
         const borderX = currentX + colWidth;
         if (Math.abs(contentX - borderX) <= resizeHandleSize) {
           this._startColumnResize(col, event.clientX);
@@ -376,17 +381,14 @@ export class InteractionManager {
     ) {
       const { minColumnWidth, maxColumnWidth } = this.options;
       const deltaX = event.clientX - columnResizeState.startX;
-      const originalWidths = this.stateManager.getColumnWidths();
       const colIndex = columnResizeState.columnIndex;
-      const originalWidth = originalWidths[colIndex];
+      const originalWidth = this.stateManager.getColumnWidth(colIndex);
       let newWidth = originalWidth + deltaX;
 
       newWidth = Math.max(minColumnWidth, Math.min(newWidth, maxColumnWidth));
 
       if (newWidth !== originalWidth) {
-        const newWidths = [...originalWidths];
-        newWidths[colIndex] = newWidth;
-        this.stateManager.setColumnWidths(newWidths);
+        this.stateManager.setColumnWidth(colIndex, newWidth);
         this.stateManager.setResizeColumnState({
           ...columnResizeState,
           startX: event.clientX,
@@ -439,9 +441,9 @@ export class InteractionManager {
         this.options.verbose,
         `Finished column resize for index ${
           columnResizeState.columnIndex
-        }. New width: ${
-          this.stateManager.getColumnWidths()[columnResizeState.columnIndex!]
-        }`
+        }. New width: ${this.stateManager.getColumnWidth(
+          columnResizeState.columnIndex!
+        )}`
       );
       this.stateManager.setResizeColumnState({
         isResizing: false,
@@ -479,8 +481,13 @@ export class InteractionManager {
     const rect = this.domManager.getCanvasBoundingClientRect();
     const canvasX = event.clientX - rect.left;
     const canvasY = event.clientY - rect.top;
-    const { headerHeight, rowNumberWidth, resizeHandleSize, defaultRowHeight } =
-      this.options;
+    const {
+      headerHeight,
+      rowNumberWidth,
+      resizeHandleSize,
+      defaultRowHeight,
+      defaultColumnWidth,
+    } = this.options;
 
     // Convert to content coordinates based on where the mouse is
     let contentX: number;
@@ -518,7 +525,7 @@ export class InteractionManager {
     if (canvasY < headerHeight && canvasX >= rowNumberWidth) {
       let currentX = 0; // Start at 0 since we already adjusted for rowNumberWidth in contentX
       for (let col = 0; col < columns.length; col++) {
-        const colWidth = columnWidths[col];
+        const colWidth = columnWidths.get(col) || defaultColumnWidth;
         const borderX = currentX + colWidth;
         if (Math.abs(contentX - borderX) <= resizeHandleSize) {
           newCursor = "col-resize";

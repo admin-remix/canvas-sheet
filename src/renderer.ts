@@ -168,6 +168,7 @@ export class Renderer {
       selectedHeaderTextColor,
       readonlyHeaderTextColor,
       highlightBorderColor,
+      defaultColumnWidth,
     } = this.options;
     const columns = this.stateManager.getColumns();
     const schema = this.stateManager.getSchema();
@@ -215,7 +216,7 @@ export class Renderer {
     let currentX = rowNumberWidth;
 
     for (let col = 0; col < columns.length; col++) {
-      const colWidth = columnWidths[col];
+      const colWidth = columnWidths.get(col) || defaultColumnWidth;
 
       // Skip if column is completely out of view
       if (currentX + colWidth < scrollLeft + rowNumberWidth) {
@@ -446,6 +447,7 @@ export class Renderer {
       defaultRowHeight,
       wrapText,
       lineHeight,
+      defaultColumnWidth,
     } = this.options;
     const dataLength = this.stateManager.dataLength;
     const columns = this.stateManager.getColumns();
@@ -493,7 +495,7 @@ export class Renderer {
       for (let col = visibleColStart; col <= visibleColEnd; col++) {
         if (col < 0 || col >= columns.length) continue;
 
-        const colWidth = columnWidths[col];
+        const colWidth = columnWidths.get(col) || defaultColumnWidth;
         const colKey = columns[col];
         const schemaCol = schema[colKey];
         const canRenderCellDuringEdit = ["select", "boolean", "date"].includes(
@@ -631,8 +633,13 @@ export class Renderer {
   }
 
   private _drawGridLines(): void {
-    const { headerHeight, rowNumberWidth, gridLineColor, defaultRowHeight } =
-      this.options;
+    const {
+      headerHeight,
+      rowNumberWidth,
+      gridLineColor,
+      defaultRowHeight,
+      defaultColumnWidth,
+    } = this.options;
     const totalWidth = this.stateManager.getTotalContentWidth();
     const totalHeight = this.stateManager.getTotalContentHeight();
     const columns = this.stateManager.getColumns();
@@ -663,7 +670,7 @@ export class Renderer {
         this.ctx.stroke();
       }
       if (col < columns.length) {
-        currentX += columnWidths[col];
+        currentX += columnWidths.get(col) || defaultColumnWidth;
       }
       // Optimization: Stop drawing if we've passed the right edge of the viewport
       if (currentX > viewportWidth + scrollLeft) break;
@@ -792,16 +799,18 @@ export class Renderer {
     const { row: startRow, col: startCol } = dragStartCell;
     if (startRow === null || startCol === null) return;
 
-    const { dragRangeBorderColor, defaultRowHeight } = this.options;
+    const { dragRangeBorderColor, defaultRowHeight, defaultColumnWidth } =
+      this.options;
     const endRow = dragEndRow;
     const columnWidths = this.stateManager.getColumnWidths();
     const rowHeights = this.stateManager.getRowHeights();
     const dataLength = this.stateManager.dataLength;
 
     // Ensure startCol is valid
-    if (startCol < 0 || startCol >= columnWidths.length) return;
+    if (startCol < 0 || startCol >= this.stateManager.getColumns().length)
+      return;
 
-    const startColWidth = columnWidths[startCol];
+    const startColWidth = columnWidths.get(startCol) || defaultColumnWidth;
     const startColX = this.dimensionCalculator.getColumnLeft(startCol);
 
     // Determine if we're dragging down or up
@@ -912,13 +921,14 @@ export class Renderer {
   private _drawSelectedColumnHighlight(): void {
     const selectedColumn = this.stateManager.getSelectedColumn();
     if (selectedColumn === null) return; // Only draw when exactly one column is selected
-    const { highlightBorderColor, headerHeight } = this.options;
+    const { highlightBorderColor, headerHeight, defaultColumnWidth } =
+      this.options;
     const totalContentHeight = this.stateManager.getTotalContentHeight();
     const columnWidths = this.stateManager.getColumnWidths();
 
     // Get column position and width
     const columnLeft = this.dimensionCalculator.getColumnLeft(selectedColumn);
-    const columnWidth = columnWidths[selectedColumn];
+    const columnWidth = columnWidths.get(selectedColumn) || defaultColumnWidth;
 
     if (!columnWidth) return;
 
@@ -1097,7 +1107,6 @@ export class Renderer {
     const { headerHeight, rowNumberWidth } = this.options;
     const dataLength = this.stateManager.dataLength;
     const columns = this.stateManager.getColumns();
-    const columnWidths = this.stateManager.getColumnWidths();
     const totalContentWidth =
       this.stateManager.getTotalContentWidth() + rowNumberWidth;
     const totalContentHeight =
@@ -1112,7 +1121,7 @@ export class Renderer {
       return null;
     }
 
-    const cellWidth = columnWidths[colIndex];
+    const cellWidth = this.stateManager.getColumnWidth(colIndex);
     const cellHeight = this.stateManager.getRowHeight(rowIndex);
     const contentX = this.dimensionCalculator.getColumnLeft(colIndex);
     const contentY = this.dimensionCalculator.getRowTop(rowIndex);

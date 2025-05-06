@@ -23,7 +23,7 @@ export class StateManager {
   private options: RequiredSpreadsheetOptions;
 
   // --- Core State ---
-  private columnWidths: number[] = [];
+  private columnWidths: Map<number, number> = new Map();
   private rowHeights: Map<number, number> = new Map();
   private scrollTop: number = 0;
   private scrollLeft: number = 0;
@@ -86,6 +86,7 @@ export class StateManager {
   public setSchema(schema: SpreadsheetSchema): void {
     this.schema = schema;
     this.columns = Object.keys(schema);
+    this.columnWidths = new Map();
     this._addCachedDropdownOptions();
   }
 
@@ -146,6 +147,7 @@ export class StateManager {
   public setData(newData: DataRow[]): void {
     // Used by the public API, performs deep copy and updates disabled states
     this.data = JSON.parse(JSON.stringify(newData || []));
+    this.rowHeights = new Map(); // Reset row heights
     this._updateAllDisabledStates();
     this.resetInteractionState();
     // Recalculation of sizes, dimensions, and redraw is handled by Spreadsheet class
@@ -342,12 +344,47 @@ export class StateManager {
   }
 
   // --- Dimensions and Sizing ---
-  public getColumnWidths(): number[] {
+  public getColumnWidths(): Map<number, number> {
     return this.columnWidths;
   }
 
   public setColumnWidths(widths: number[]): void {
-    this.columnWidths = widths;
+    // Store only non-default values in the map
+    this.columnWidths = new Map();
+    widths.forEach((width, index) => {
+      if (width !== this.options.defaultColumnWidth) {
+        this.columnWidths.set(index, width);
+      }
+    });
+  }
+
+  /**
+   * Gets the width for a specific column, using the default width if not specified
+   */
+  public getColumnWidth(colIndex: number): number {
+    return this.columnWidths.get(colIndex) || this.options.defaultColumnWidth;
+  }
+
+  /**
+   * Sets the width for a specific column
+   */
+  public setColumnWidth(colIndex: number, width: number): void {
+    if (width === this.options.defaultColumnWidth) {
+      // No need to store default widths
+      this.columnWidths.delete(colIndex);
+    } else {
+      this.columnWidths.set(colIndex, width);
+    }
+  }
+
+  public getTotalColumnWidth(): number {
+    const defaultWidth = this.options.defaultColumnWidth;
+    let totalWidth = this.columns.length * defaultWidth;
+    // forEach on map iterates over the values
+    this.columnWidths.forEach((width) => {
+      totalWidth += width - defaultWidth;
+    });
+    return totalWidth;
   }
 
   public getRowHeights(): Map<number, number> {
@@ -355,10 +392,11 @@ export class StateManager {
   }
 
   public getTotalRowHeight(): number {
-    let totalHeight = this.data.length * this.options.defaultRowHeight;
+    const defaultHeight = this.options.defaultRowHeight;
+    let totalHeight = this.data.length * defaultHeight;
     // forEach on map iterates over the values
     this.rowHeights.forEach((height) => {
-      totalHeight += height - this.options.defaultRowHeight;
+      totalHeight += height - defaultHeight;
     });
     return totalHeight;
   }
@@ -863,7 +901,7 @@ export class StateManager {
     }
     const newColIndex = this.columns.length;
     this.columns.push(fieldName);
-    this.columnWidths.push(this.options.defaultColumnWidth);
+    // No need to store default column width
     this.schema[fieldName] = colSchema;
     this.addCachedDropdownOptionForColumn(fieldName);
     return newColIndex;
@@ -874,7 +912,7 @@ export class StateManager {
     this.clearAllSelections();
     delete this.schema[colKey];
     this.columns.splice(colIndex, 1);
-    this.columnWidths.splice(colIndex, 1);
+    this.columnWidths.delete(colIndex);
     this.data.forEach((row) => {
       delete row[colKey];
     });
