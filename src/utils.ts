@@ -43,6 +43,17 @@ export function formatValue(
       return value === true ? "True" : value === false ? "False" : "";
     case "select":
       if (cachedDropdownOptions) {
+        // Handle multi-select (array of values)
+        if (Array.isArray(value)) {
+          if (value.length === 0) return "";
+
+          // Format each selected item and join with commas
+          return value
+            .map((v) => cachedDropdownOptions.get(v) || "")
+            .join(", ");
+        }
+
+        // Single-select (legacy support)
         const selectedOption = cachedDropdownOptions.get(value);
         return selectedOption ? selectedOption : "";
       }
@@ -129,7 +140,10 @@ export function validateInput(
   // Check required
   if (
     schemaCol.required &&
-    (value === null || value === undefined || value === "")
+    (value === null ||
+      value === undefined ||
+      value === "" ||
+      (Array.isArray(value) && value.length === 0))
   ) {
     const error = `Column "${colLabel}" is required.`;
     log("warn", verbose, `Validation failed: ${error}.`);
@@ -137,7 +151,12 @@ export function validateInput(
   }
 
   // Skip further checks if value is null/empty and not required
-  if (value === null || value === undefined || value === "")
+  if (
+    value === null ||
+    value === undefined ||
+    value === "" ||
+    (Array.isArray(value) && value.length === 0)
+  )
     return { success: true };
 
   // Check type-specific constraints
@@ -197,16 +216,28 @@ export function validateInput(
       }
       break;
     case "select":
+      // For multi-select, check each value in the array
+      if (Array.isArray(value)) {
+        for (const item of value) {
+          if (item !== null && dropdownOptions && !dropdownOptions.has(item)) {
+            const error = `Invalid option "${item}" for column "${colLabel}".`;
+            log("warn", verbose, `Validation failed: ${error}.`);
+            return { success: false, error, errorType: "value" };
+          }
+        }
+        return { success: true };
+      }
+
       // Check if the value exists in the provided options (allow null for blank)
       if (value !== null && dropdownOptions && !dropdownOptions.has(value)) {
-        const error = `Invalid selection for column "${colLabel}".`;
+        const error = `Invalid option "${value}" for column "${colLabel}".`;
         log("warn", verbose, `Validation failed: ${error}.`);
         return { success: false, error, errorType: "value" };
       }
       break;
   }
 
-  return { success: true }; // All checks passed
+  return { success: true };
 }
 
 export function chunkArray<T>(array: T[], chunkSize: number): T[][] {

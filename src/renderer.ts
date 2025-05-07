@@ -489,6 +489,7 @@ export class Renderer {
         const colWidth = columnWidths.get(col) || defaultColumnWidth;
         const colKey = columns[col];
         const schemaCol = schema[colKey];
+        console.log(colKey, schemaCol.multiline);
         const canRenderCellDuringEdit = ["select", "boolean", "date"].includes(
           schemaCol?.type
         );
@@ -604,19 +605,23 @@ export class Renderer {
                 textX = currentX + colWidth - padding;
               }
               // do not apply maxWidth to fillText
-              if (!schemaCol.multiline && !wrapText) {
-                // optimize basic text rendering
-                this.ctx.fillText(formattedValue, textX, textY);
-              } else {
+              if (schemaCol.multiline || wrapText) {
                 this.wrapText(
                   formattedValue,
                   textX,
                   currentY,
                   colWidth - padding * 2,
                   rowHeight,
-                  wrapText,
+                  // allow wrapping for multiline non-text types
+                  wrapText ||
+                    (schemaCol.multiline && schemaCol.type !== "text"
+                      ? true
+                      : false),
                   lineHeight
                 );
+              } else {
+                // optimize basic text rendering
+                this.ctx.fillText(formattedValue, textX, textY);
               }
             }
           }

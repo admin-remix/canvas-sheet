@@ -19,7 +19,8 @@ export interface ColumnSchema {
   values?: SelectOption[]; // For 'select' type
   decimal?: boolean; // For 'number' type (false means integer)
   maxlength?: number; // For 'text' type
-  multiline?: boolean; // For 'text' type, as textarea
+  multiline?: boolean; // For 'text' type, as textarea and word wrap for non-text types
+  multiple?: boolean; // For 'select' type, allows multiple selections
   disabled?: (rowData: DataRow, rowIndex: number) => boolean; // Optional dynamic disabling
   filterValues?: (
     rowData: DataRow,
