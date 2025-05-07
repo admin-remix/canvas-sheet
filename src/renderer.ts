@@ -176,14 +176,14 @@ export class Renderer {
     const selectedColumn = this.stateManager.getSelectedColumn();
     // Get scroll position for header horizontal scrolling
     const scrollLeft = this.stateManager.getScrollLeft();
-
+    const totalContentWidth = this.stateManager.getTotalContentWidth();
+    const viewportWidth = this.stateManager.getViewportWidth();
     this.ctx.save();
 
     // Clip drawing to the visible header area (fixed vertical position)
     const headerVisibleX = rowNumberWidth; // Start after row numbers
     const headerVisibleY = 0;
-    const headerVisibleWidth =
-      this.stateManager.getViewportWidth() - rowNumberWidth;
+    const headerVisibleWidth = viewportWidth - rowNumberWidth;
     const headerVisibleHeight = headerHeight;
 
     this.ctx.beginPath();
@@ -200,12 +200,7 @@ export class Renderer {
 
     // Background for the entire logical header width
     this.ctx.fillStyle = headerBgColor;
-    this.ctx.fillRect(
-      rowNumberWidth,
-      0,
-      this.stateManager.getTotalContentWidth(),
-      headerHeight
-    );
+    this.ctx.fillRect(rowNumberWidth, 0, totalContentWidth, headerHeight);
 
     // Draw Header Text and Vertical Lines
     this.ctx.font = headerFont;
@@ -225,7 +220,7 @@ export class Renderer {
       }
 
       // Break if column is beyond right edge of viewport
-      if (currentX > scrollLeft + this.stateManager.getViewportWidth()) {
+      if (currentX > scrollLeft + viewportWidth) {
         break;
       }
 
@@ -300,10 +295,7 @@ export class Renderer {
     this.ctx.beginPath();
     const lineY = headerHeight - 0.5;
     this.ctx.moveTo(rowNumberWidth, lineY);
-    this.ctx.lineTo(
-      Math.max(currentX, this.stateManager.getViewportWidth() + scrollLeft),
-      lineY
-    );
+    this.ctx.lineTo(Math.max(currentX, totalContentWidth + scrollLeft), lineY);
     this.ctx.stroke();
 
     this.ctx.restore(); // Restore clipping context
@@ -325,7 +317,7 @@ export class Renderer {
     const totalContentHeight = this.stateManager.getTotalContentHeight();
     // Get scroll position for row numbers vertical scrolling
     const scrollTop = this.stateManager.getScrollTop();
-
+    const viewportHeight = this.stateManager.getViewportHeight();
     if (dataLength) {
       const rowHeights = this.stateManager.getRowHeights();
       const selectedRows = this.stateManager.getSelectedRows();
@@ -336,8 +328,7 @@ export class Renderer {
       const rowNumVisibleX = 0;
       const rowNumVisibleY = headerHeight;
       const rowNumVisibleWidth = rowNumberWidth;
-      const rowNumVisibleHeight =
-        this.stateManager.getViewportHeight() - headerHeight;
+      const rowNumVisibleHeight = viewportHeight - headerHeight;
 
       this.ctx.beginPath();
       this.ctx.rect(
@@ -373,7 +364,7 @@ export class Renderer {
         }
 
         // Break if row is beyond bottom edge of viewport
-        if (currentY > scrollTop + this.stateManager.getViewportHeight()) {
+        if (currentY > scrollTop + viewportHeight) {
           break;
         }
         const isSelected = selectedRows.has(row);
@@ -418,7 +409,7 @@ export class Renderer {
       this.ctx.moveTo(lineX, headerHeight);
       this.ctx.lineTo(
         lineX,
-        Math.max(currentY, this.stateManager.getViewportHeight() + scrollTop)
+        Math.max(currentY, totalContentHeight + scrollTop)
       );
       this.ctx.stroke();
 

@@ -740,10 +740,11 @@ export class StateManager {
       const currentDisabledState = !!rowData[disabledKey];
       // Use the user-provided function to determine the new state
       const schemaCol = this.schema[colKey];
-      const newDisabledState = schemaCol?.disabled
-        ? schemaCol.disabled(rowData, rowIndex)
-        : false;
-
+      if (!schemaCol?.disabled) {
+        // no function provided, so keep the current state
+        return;
+      }
+      const newDisabledState = schemaCol.disabled(rowData, rowIndex);
       if (currentDisabledState !== newDisabledState) {
         rowData[disabledKey] = newDisabledState;
         changed = true;
