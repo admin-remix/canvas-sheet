@@ -85,7 +85,10 @@ export class EventManager {
       this._handleCanvasMouseDown.bind(this)
     );
     // Mouse move handled on document to capture movement outside canvas during drag/resize
-
+    this.canvas.addEventListener(
+      "contextmenu",
+      this._handleCanvasContextMenu.bind(this)
+    );
     // Document/Window Events
     document.addEventListener(
       "mousemove",
@@ -244,7 +247,6 @@ export class EventManager {
       this._ignoreNextClick = false;
       return;
     }
-
     // Ignore clicks if currently dragging the fill handle or resizing
     if (
       this.stateManager.isDraggingFillHandle() ||
@@ -323,6 +325,62 @@ export class EventManager {
     }
 
     // Final Redraw
+    if (redrawNeeded) {
+      this.renderer.draw();
+    }
+    if (event.button === 2) {
+    }
+  }
+  private _handleCanvasContextMenu(event: MouseEvent): void {
+    event.preventDefault();
+    const coords = this._getCoordsFromEvent(event);
+    const isCellClick = coords && coords.row !== null && coords.col !== null;
+    const isRowNumberClick =
+      coords &&
+      coords.row !== null &&
+      coords.col === null &&
+      this._isRowNumberAreaClick(event);
+    const isHeaderClick = this._isHeaderAreaClick(event);
+    let redrawNeeded = false;
+    if (isCellClick) {
+      try {
+        this.options.onCellContextMenu?.({
+          rowIndex: coords?.row!,
+          colKey: this.stateManager.getColumnKey(coords?.col!),
+          rowData: this.stateManager.getRowData(coords?.row!) || {},
+          x: event.clientX,
+          y: event.clientY,
+        });
+      } catch (error: unknown) {
+        log("warn", this.options.verbose, error);
+      }
+    } else if (isRowNumberClick) {
+      redrawNeeded = this.interactionManager.handleRowNumberClick(
+        coords?.row!,
+        event.shiftKey,
+        event.ctrlKey || event.metaKey
+      );
+      try {
+        this.options.onRowNumberContextMenu?.({
+          rowIndex: coords?.row!,
+          x: event.clientX,
+          y: event.clientY,
+        });
+      } catch (error: unknown) {
+        log("warn", this.options.verbose, error);
+      }
+    } else if (isHeaderClick && coords?.col !== null) {
+      redrawNeeded = this.interactionManager.handleHeaderClick(coords?.col!);
+      try {
+        this.options.onColumnHeaderContextMenu?.({
+          colIndex: coords?.col!,
+          x: event.clientX,
+          y: event.clientY,
+        });
+      } catch (error: unknown) {
+        log("warn", this.options.verbose, error);
+      }
+    }
     if (redrawNeeded) {
       this.renderer.draw();
     }

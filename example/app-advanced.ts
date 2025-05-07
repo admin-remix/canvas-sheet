@@ -8,6 +8,9 @@ import {
   CellUpdateInput,
   CellEvent,
   CellEventWithSearch,
+  RowNumberContextMenuEvent,
+  ColumnHeaderContextMenuEvent,
+  CellContextMenuEvent,
 } from "canvas-sheet";
 import "@/spreadsheet.css"; // basic styles
 
@@ -454,6 +457,20 @@ const sampleData = !window.location.search.includes("bigdata")
 function updateRowSizeText(length: number) {
   document.getElementById("data-size")!.textContent = length.toString();
 }
+function showContextMenu(x: number, y: number) {
+  const contextMenu = document.getElementById("context-menu");
+  if (contextMenu) {
+    contextMenu.style.left = `${x}px`;
+    contextMenu.style.top = `${y}px`;
+    contextMenu.classList.remove("hidden");
+  }
+}
+function hideContextMenu() {
+  const contextMenu = document.getElementById("context-menu");
+  if (contextMenu) {
+    contextMenu.classList.add("hidden");
+  }
+}
 // --- Instantiate the Spreadsheet ---
 document.addEventListener("DOMContentLoaded", () => {
   updateRowSizeText(sampleData.length);
@@ -575,6 +592,31 @@ document.addEventListener("DOMContentLoaded", () => {
             }, 2000 + Math.random() * 1000);
           });
         },
+        onRowNumberContextMenu: ({
+          rowIndex,
+          x,
+          y,
+        }: RowNumberContextMenuEvent) => {
+          console.log("row number context menu", rowIndex, x, y);
+          showContextMenu(x, y);
+        },
+        onColumnHeaderContextMenu: ({
+          colIndex,
+          x,
+          y,
+        }: ColumnHeaderContextMenuEvent) => {
+          console.log("column header context menu", colIndex, x, y);
+          showContextMenu(x, y);
+        },
+        onCellContextMenu: ({
+          rowIndex,
+          colKey,
+          x,
+          y,
+        }: CellContextMenuEvent) => {
+          console.log("cell context menu", rowIndex, colKey, x, y);
+          showContextMenu(x, y);
+        },
         lineHeight: 18, // 18 pixels
         verbose: true,
       }
@@ -641,6 +683,11 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("add-row")?.addEventListener("click", () => {
     const newRowIndex = spreadsheet?.addRow();
     updateRowSizeText((newRowIndex || 0) + 1);
+  });
+  document.addEventListener("click", (event) => {
+    if (event.target !== document.getElementById("context-menu")) {
+      hideContextMenu();
+    }
   });
   document.getElementById("add-column")?.addEventListener("click", () => {
     spreadsheet?.addColumn("status", {

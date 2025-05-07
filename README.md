@@ -241,6 +241,12 @@ const options = {
   onCellSelected: (event: CellEvent) => void,
   // when cells are updated
   onCellsUpdate: (rows: CellUpdateEvent[]) => void,
+  // right click on a cell
+  onCellContextMenu: (event: CellContextMenuEvent) => void,
+  // right click on a row number
+  onRowNumberContextMenu: (event: RowNumberContextMenuEvent) => void,
+  // right click on a column name
+  onColumnHeaderContextMenu: (event: ColumnHeaderContextMenuEvent) => void
 };
 ```
 

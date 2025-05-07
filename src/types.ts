@@ -49,9 +49,12 @@ export interface CellCoords {
   col: number | null;
 }
 
-export interface CellBounds {
+export interface Position {
   x: number;
   y: number;
+}
+
+export interface CellBounds extends Position {
   width: number;
   height: number;
 }
@@ -97,6 +100,9 @@ export interface CellEventWithBounds extends CellEvent {
 export interface CellEventWithSearch extends CellEvent {
   searchTerm: string;
 }
+export type CellContextMenuEvent = CellEvent & Position;
+export type RowNumberContextMenuEvent = { rowIndex: number } & Position;
+export type ColumnHeaderContextMenuEvent = { colIndex: number } & Position;
 
 export interface SpreadsheetOptions {
   defaultColumnWidth?: number;
@@ -158,6 +164,11 @@ export interface SpreadsheetOptions {
   onColumnDelete?: Nullable<(colIndex: number, schema: ColumnSchema) => void>;
   onLazySearch?: Nullable<
     (event: CellEventWithSearch) => Promise<Nullable<SelectOption[]>>
+  >;
+  onCellContextMenu?: Nullable<(event: CellContextMenuEvent) => void>;
+  onRowNumberContextMenu?: Nullable<(event: RowNumberContextMenuEvent) => void>;
+  onColumnHeaderContextMenu?: Nullable<
+    (event: ColumnHeaderContextMenuEvent) => void
   >;
 }
 

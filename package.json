@@ -1,9 +1,10 @@
 {
   "name": "canvas-sheet",
-  "version": "0.0.9",
+  "version": "0.1.0",
   "main": "dist/index.js",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
+  "type": "module",
   "scripts": {
     "dev": "vite",
     "copy:preview": "cpy example/dist/* docs",

@@ -59,6 +59,9 @@ export const DEFAULT_OPTIONS: RequiredSpreadsheetOptions = {
   onRowDeleted: null,
   onColumnDelete: null,
   onLazySearch: null,
+  onCellContextMenu: null,
+  onRowNumberContextMenu: null,
+  onColumnHeaderContextMenu: null,
 };
 
 export const DISABLED_FIELD_PREFIX = "disabled:";
