@@ -548,6 +548,12 @@ export class Renderer {
           currentCellBg = errorCellBgColor;
         }
 
+        // clip the cell
+        this.ctx.save();
+        this.ctx.beginPath();
+        this.ctx.rect(currentX, currentY, colWidth, rowHeight);
+        this.ctx.clip();
+
         // Fill background if not editing
         if ((!isEditing || canRenderCellDuringEdit) && currentCellBg) {
           this.ctx.fillStyle = currentCellBg;
@@ -624,6 +630,9 @@ export class Renderer {
             }
           }
         }
+
+        // restore the cell clip
+        this.ctx.restore();
 
         currentX += colWidth;
       }
@@ -1065,13 +1074,7 @@ export class Renderer {
       startY = top + lineHeight / 2; // Adjust for middle baseline
     }
 
-    // --- 3. Draw the Text with Clipping and Optimization ---
-    this.ctx.save();
-    this.ctx.beginPath();
-    // Apply clipping based on the cell bounds
-    this.ctx.rect(x, top, maxWidth, maxHeight);
-    this.ctx.clip();
-
+    // --- 3. Draw the Text with Optimization ---
     const lineTopEdgeMargin = lineHeight / 2; // Approx distance from baseline to top
     const lineBottomEdgeMargin = lineHeight / 2; // Approx distance from baseline to bottom
     const boundaryBottom = top + maxHeight;
@@ -1093,8 +1096,6 @@ export class Renderer {
       // Draw the text - the clipping region handles exact boundaries.
       this.ctx.fillText(lines[i], x, lineY); // Draw the line (might exceed maxWidth if wrap=false)
     }
-
-    this.ctx.restore(); // Remove clipping region
 
     // Restore original baseline if necessary
     if (this.ctx.textBaseline !== originalBaseline) {
