@@ -14,7 +14,8 @@ const schema: SpreadsheetSchema = {
   name: {
     type: "text",
     required: true,
-    maxlength: 20,
+    maxlength: 30,
+    wordWrap: true,
     label: "Full Name",
   },
   email: {
@@ -39,7 +40,7 @@ const schema: SpreadsheetSchema = {
     type: "select",
     label: "Location",
     multiple: true,
-    multiline: true, // word wrap
+    wordWrap: true,
     values: [
       { id: 1, name: "New York" },
       { id: 2, name: "London" },
@@ -109,7 +110,7 @@ const sampleData = !window.location.search.includes("bigdata")
         email: "charlie@testing.org",
         ["error:email"]: "User does not exist",
         dob: "1998-02-10",
-        locationId: [1, 2],
+        locationId: [1, 2, 4],
         isRestricted: false,
         salary: 55000,
         notes: "",
@@ -433,6 +434,7 @@ document.addEventListener("DOMContentLoaded", () => {
         onEditorOpen: (event: CellEventWithBounds) => {
           openDatePicker(event);
         },
+        autoResizeRowHeight: true,
         verbose: true,
       }
     );

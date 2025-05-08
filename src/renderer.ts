@@ -22,6 +22,8 @@ export class Renderer {
     this.options = options;
     this.stateManager = stateManager;
     this.dimensionCalculator = dimensionCalculator;
+    // Set the canvas context for dimension calculator to use for text measurements
+    this.dimensionCalculator.setCanvasContext(ctx);
   }
 
   /**
@@ -489,7 +491,6 @@ export class Renderer {
         const colWidth = columnWidths.get(col) || defaultColumnWidth;
         const colKey = columns[col];
         const schemaCol = schema[colKey];
-        console.log(colKey, schemaCol.multiline);
         const canRenderCellDuringEdit = ["select", "boolean", "date"].includes(
           schemaCol?.type
         );
@@ -605,7 +606,7 @@ export class Renderer {
                 textX = currentX + colWidth - padding;
               }
               // do not apply maxWidth to fillText
-              if (schemaCol.multiline || wrapText) {
+              if (schemaCol.wordWrap || wrapText) {
                 this.wrapText(
                   formattedValue,
                   textX,
@@ -613,10 +614,7 @@ export class Renderer {
                   colWidth - padding * 2,
                   rowHeight,
                   // allow wrapping for multiline non-text types
-                  wrapText ||
-                    (schemaCol.multiline && schemaCol.type !== "text"
-                      ? true
-                      : false),
+                  wrapText || !!schemaCol.wordWrap,
                   lineHeight
                 );
               } else {
@@ -1011,50 +1009,79 @@ export class Renderer {
     this.ctx.textBaseline = "middle";
     let lines: string[] = [];
 
-    if (wrap) {
-      // --- Logic for when wrap is TRUE (existing logic) ---
-      let words = text.split(/[ \n]/); // Split by space OR newline
+    // If multiline input, handle explicit newlines first
+    if (text.includes("\n")) {
+      const textLines = text.split("\n");
+
+      // For each explicit line, check if it needs further wrapping
+      for (const line of textLines) {
+        if (!line) {
+          // Empty line
+          lines.push("");
+          continue;
+        }
+
+        // Process each explicit line for word wrapping if needed
+        if (wrap) {
+          const lineWords = line.split(" ");
+          let currentLine = "";
+
+          for (const word of lineWords) {
+            const testLine = currentLine ? `${currentLine} ${word}` : word;
+            const metrics = this.ctx.measureText(testLine);
+
+            if (metrics.width <= maxWidth) {
+              currentLine = testLine;
+            } else {
+              // Word doesn't fit, push current line and start a new one
+              if (currentLine) {
+                lines.push(currentLine);
+              }
+              // If single word is too long for the line, it gets its own line
+              currentLine = word;
+            }
+          }
+
+          // Add the last line from this explicit line
+          if (currentLine) {
+            lines.push(currentLine);
+          }
+        } else {
+          // No word wrap, just add the explicit line as is
+          lines.push(line);
+        }
+      }
+    } else if (wrap) {
+      // No explicit newlines, just word wrapping
+      const words = text.split(" ");
       let currentLine = "";
-      for (let i = 0; i < words.length; i++) {
-        let word = words[i];
-        if (!word) continue; // Skip empty strings resulting from multiple spaces/newlines
 
-        let testLine = currentLine ? currentLine + " " + word : word;
-        let metrics = this.ctx.measureText(testLine);
+      for (const word of words) {
+        const testLine = currentLine ? `${currentLine} ${word}` : word;
+        const metrics = this.ctx.measureText(testLine);
 
-        if (metrics.width <= maxWidth || !currentLine) {
-          // Word fits or it's the first word on the line
+        if (metrics.width <= maxWidth) {
           currentLine = testLine;
         } else {
-          // Word doesn't fit, push the current line and start a new one with the word
-          // Check if the single word itself is too long (optional, but good practice)
-          const wordWidth = this.ctx.measureText(word).width;
-          if (!currentLine && wordWidth > maxWidth) {
-            // Handle very long word that exceeds maxWidth on its own
-            lines.push(word); // Add the long word as its own line (will be clipped)
-            currentLine = ""; // Reset current line
-          } else {
-            // Push the completed line
+          // If not the first word on the line, push current line and start new with this word
+          if (currentLine) {
             lines.push(currentLine);
-            // Start new line with the current word
             currentLine = word;
-            // Check again if this new word *alone* exceeds width (edge case for next iteration)
-            if (this.ctx.measureText(currentLine).width > maxWidth) {
-              lines.push(currentLine);
-              currentLine = "";
-            }
+          } else {
+            // This is a single word too long for the line
+            lines.push(word);
+            currentLine = "";
           }
         }
       }
-      // Add the last remaining line
+
+      // Add the last line
       if (currentLine) {
         lines.push(currentLine);
       }
     } else {
-      // --- Logic for when wrap is FALSE ---
-      // Split *only* by explicit newline characters
-      lines = text.split("\n");
-      // No further width-based wrapping needed. Each element in 'lines' is a line.
+      // No newlines and no wrap - just use the text as a single line
+      lines.push(text);
     }
 
     // --- 2. Determine Vertical Alignment & Starting Y ---
@@ -1090,7 +1117,7 @@ export class Renderer {
 
       // If we passed the checks, the line is at least partially visible.
       // Draw the text - the clipping region handles exact boundaries.
-      this.ctx.fillText(lines[i], x, lineY); // Draw the line (might exceed maxWidth if wrap=false)
+      this.ctx.fillText(lines[i], x, lineY, maxWidth); // Add maxWidth for clipping
     }
 
     // Restore original baseline if necessary

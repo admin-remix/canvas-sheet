@@ -135,7 +135,7 @@ const schema: SpreadsheetSchema = {
     defaultValue: true,
   },
   salary: { type: "number", label: "Salary" },
-  notes: { type: "text", label: "Notes", multiline: true },
+  notes: { type: "text", label: "Notes", multiline: true, wordWrap: true },
 };
 
 function generateRandomData(numRows: number): DataRow[] {
@@ -617,6 +617,7 @@ document.addEventListener("DOMContentLoaded", () => {
           console.log("cell context menu", rowIndex, colKey, x, y);
           showContextMenu(x, y);
         },
+        autoResizeRowHeight: true,
         lineHeight: 18, // 18 pixels
         verbose: true,
       }

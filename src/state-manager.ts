@@ -24,7 +24,8 @@ export class StateManager {
 
   // --- Core State ---
   private columnWidths: Map<number, number> = new Map();
-  private rowHeights: Map<number, number> = new Map();
+  private rowHeights: Map<number, number> = new Map(); // Track auto-resized row heights
+  private userResizedRows: Map<number, boolean> = new Map(); // Track rows resized by the user
   private scrollTop: number = 0;
   private scrollLeft: number = 0;
   private viewportWidth: number = 0;
@@ -148,6 +149,7 @@ export class StateManager {
     // Used by the public API, performs deep copy and updates disabled states
     this.data = JSON.parse(JSON.stringify(newData || []));
     this.rowHeights = new Map(); // Reset row heights
+    this.userResizedRows = new Map(); // Reset user-resized rows tracking
     this._updateAllDisabledStates();
     this.resetInteractionState();
     // Recalculation of sizes, dimensions, and redraw is handled by Spreadsheet class
@@ -412,11 +414,29 @@ export class StateManager {
    * Sets the height for a specific row
    */
   public setRowHeight(rowIndex: number, height: number): void {
-    if (height === this.options.defaultRowHeight) {
-      // No need to store default heights
-      this.rowHeights.delete(rowIndex);
-    } else {
+    height = Math.max(
+      Math.min(height, this.options.maxRowHeight),
+      this.options.minRowHeight
+    );
+    if (this.rowHeights.get(rowIndex) !== height) {
       this.rowHeights.set(rowIndex, height);
+      // Mark this row as user-resized
+      this.userResizedRows.set(rowIndex, true);
+    }
+  }
+
+  /**
+   * Sets the row height without marking it as user-resized
+   * Used for automatic height calculations
+   */
+  public setAutoRowHeight(rowIndex: number, height: number): void {
+    height = Math.max(
+      Math.min(height, this.options.maxRowHeight),
+      this.options.minRowHeight
+    );
+    if (this.rowHeights.get(rowIndex) !== height) {
+      this.rowHeights.set(rowIndex, height);
+      // Don't mark as user-resized since this is automatic
     }
   }
 
@@ -918,5 +938,13 @@ export class StateManager {
       delete row[colKey];
     });
     this.cachedDropdownOptionsByColumn.delete(colKey);
+  }
+
+  public isRowUserResized(rowIndex: number): boolean {
+    return this.userResizedRows.get(rowIndex) === true;
+  }
+
+  public getUserResizedRows(): Map<number, boolean> {
+    return this.userResizedRows;
   }
 }

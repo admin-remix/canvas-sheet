@@ -394,6 +394,12 @@ export class InteractionManager {
           startX: event.clientX,
         }); // Update startX
         this.dimensionCalculator.calculateTotalSize(); // Recalculate total size
+
+        // Auto-resize row heights if enabled
+        if (this.options.autoResizeRowHeight) {
+          this.dimensionCalculator.autoResizeRowHeights(colIndex);
+        }
+
         this.dimensionCalculator.calculateVisibleRange(); // Visible range might change
         this.domManager.updateCanvasSize(
           this.stateManager.getTotalContentWidth(),
@@ -431,6 +437,18 @@ export class InteractionManager {
     }
   }
 
+  public resizeRowsForColumn(colIndex: number): void {
+    this.dimensionCalculator.autoResizeRowHeights(colIndex);
+    this.dimensionCalculator.calculateTotalSize(); // Recalculate totals
+    this.dimensionCalculator.calculateVisibleRange(); // Update visible range
+    // Update canvas size if needed
+    this.domManager.updateCanvasSize(
+      this.stateManager.getTotalContentWidth(),
+      this.stateManager.getTotalContentHeight()
+    );
+    this.renderer.draw();
+  }
+
   public endResize(): void {
     const columnResizeState = this.stateManager.getResizeColumnState();
     const rowResizeState = this.stateManager.getResizeRowState();
@@ -445,6 +463,12 @@ export class InteractionManager {
           columnResizeState.columnIndex!
         )}`
       );
+
+      // Final auto-resize row heights if enabled (ensures the final column width is used)
+      if (this.options.autoResizeRowHeight) {
+        this.resizeRowsForColumn(columnResizeState.columnIndex!);
+      }
+
       this.stateManager.setResizeColumnState({
         isResizing: false,
         columnIndex: null,

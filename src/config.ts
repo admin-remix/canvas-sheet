@@ -46,6 +46,7 @@ export const DEFAULT_OPTIONS: RequiredSpreadsheetOptions = {
   temporaryErrorTimeout: 2000,
   customDatePicker: false,
   autoAddNewRow: true,
+  autoResizeRowHeight: false, // Whether to automatically resize row heights based on content
   lazySearchDebounceTime: 300,
   blankDropdownItemLabel: "(Blank)",
   allowTabInTextarea: false,

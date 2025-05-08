@@ -19,7 +19,7 @@ export interface ColumnSchema {
   values?: SelectOption[]; // For 'select' type
   decimal?: boolean; // For 'number' type (false means integer)
   maxlength?: number; // For 'text' type
-  multiline?: boolean; // For 'text' type, as textarea and word wrap for non-text types
+  multiline?: boolean; // For 'text' type, as textarea
   multiple?: boolean; // For 'select' type, allows multiple selections
   disabled?: (rowData: DataRow, rowIndex: number) => boolean; // Optional dynamic disabling
   filterValues?: (
@@ -35,6 +35,7 @@ export interface ColumnSchema {
   formatter?: (value: any) => string | null;
   lazySearch?: boolean;
   defaultValue?: any;
+  wordWrap?: boolean;
 }
 
 export interface SpreadsheetSchema {
@@ -151,6 +152,7 @@ export interface SpreadsheetOptions {
   temporaryErrorTimeout?: number;
   customDatePicker?: boolean;
   autoAddNewRow?: boolean;
+  autoResizeRowHeight?: boolean; // Whether to automatically resize row heights based on content
   lazySearchDebounceTime?: number;
   blankDropdownItemLabel?: string;
   allowTabInTextarea?: boolean;

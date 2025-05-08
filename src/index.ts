@@ -94,6 +94,13 @@ export class Spreadsheet {
 
     this.stateManager.setInitialData(data);
     this.dimensionCalculator.calculateTotalSize();
+
+    // Auto-resize row heights if enabled (during initialization)
+    if (this.options.autoResizeRowHeight && data.length) {
+      this.dimensionCalculator.autoResizeRowHeights();
+      this.dimensionCalculator.calculateTotalSize();
+    }
+
     this.domManager.setup(
       this.stateManager.getTotalContentWidth(),
       this.stateManager.getTotalContentHeight(),
@@ -119,9 +126,16 @@ export class Spreadsheet {
     this.renderer.draw();
   }
 
-  private onDataUpdate(top: number = 0, left: number = 0) {
-    // Need to re-initialize sizes, recalculate dimensions, and redraw
-    this.dimensionCalculator.calculateTotalSize();
+  private reCalculate() {
+    // Auto-resize row heights if enabled
+    if (this.options.autoResizeRowHeight) {
+      this.dimensionCalculator.autoResizeRowHeights();
+      this.dimensionCalculator.calculateTotalSize(); // Recalculate totals
+      this.dimensionCalculator.calculateVisibleRange();
+    } else {
+      this.dimensionCalculator.calculateTotalSize();
+    }
+
     this.domManager.updateCanvasSize(
       this.stateManager.getTotalContentWidth(),
       this.stateManager.getTotalContentHeight()
@@ -135,6 +149,11 @@ export class Spreadsheet {
       this.container.clientWidth,
       this.container.clientHeight
     );
+  }
+
+  private onDataUpdate(top: number = 0, left: number = 0) {
+    // Need to re-initialize sizes, recalculate dimensions, and redraw
+    this.reCalculate();
     this.interactionManager.moveScroll(left, top, true);
     this.draw();
   }
@@ -295,7 +314,12 @@ export class Spreadsheet {
         { row: rowIndex, col: colIndex, error: flashError },
       ]);
     }
-    if (redrawNeeded) this.draw();
+    if (redrawNeeded) {
+      if (this.options.autoResizeRowHeight) {
+        this.reCalculate();
+      }
+      this.draw();
+    }
   }
   /**
    * Update multiple cells at once
@@ -343,7 +367,12 @@ export class Spreadsheet {
     if (cellsToFlashError.length) {
       this.renderer.setTemporaryErrors(cellsToFlashError);
     }
-    if (redrawNeeded) this.draw();
+    if (redrawNeeded) {
+      if (this.options.autoResizeRowHeight) {
+        this.reCalculate();
+      }
+      this.draw();
+    }
     return Array.from(updatedRows);
   }
 
@@ -402,6 +431,9 @@ export class Spreadsheet {
 
   // --- Helper to expose redrawing ---
   public redraw(): void {
+    if (this.options.autoResizeRowHeight) {
+      this.reCalculate();
+    }
     this.draw();
   }
 }

@@ -456,7 +456,11 @@ export class EditingManager {
     }
     // If the value changed or editor/dropdown was hidden, redraw the sheet
     if (valueChanged || redrawRequired) {
-      this.renderer.draw();
+      if (this.options.autoResizeRowHeight) {
+        this.interactionManager.resizeRowsForColumn(col); // draws automatically
+      } else {
+        this.renderer.draw();
+      }
     }
   }
 
