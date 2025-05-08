@@ -16,7 +16,6 @@ export class DomManager {
   private dropdownFooter: HTMLDivElement;
   private dropdownDoneButton: HTMLButtonElement;
   private dropdownClearButton: HTMLButtonElement;
-  private resizeObserver: ResizeObserver;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -199,12 +198,6 @@ export class DomManager {
     this.dropdown.appendChild(listWrapper); // List wrapper contains both list and loader
     this.dropdown.appendChild(this.dropdownFooter);
     this.dropdownWrapper.appendChild(this.dropdown);
-
-    // Create resize observer to maintain layout when dropdown is resized
-    this.resizeObserver = new ResizeObserver(() => {
-      this.dropdown.dispatchEvent(new CustomEvent("dropdown-resized"));
-    });
-    this.resizeObserver.observe(this.dropdown);
   }
 
   public toggleDropdownLoader(show: boolean): void {

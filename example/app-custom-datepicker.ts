@@ -55,7 +55,9 @@ const schema: SpreadsheetSchema = {
     ],
     // custom cell disabling logic
     disabled: (rowData: DataRow) => {
-      return rowData.isRestricted && rowData.locationId === 1;
+      return (
+        rowData.isRestricted && (rowData.locationId as number[])?.includes(1)
+      );
     },
   },
   isRestricted: { type: "boolean", label: "Restricted" },

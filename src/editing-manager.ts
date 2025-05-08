@@ -87,10 +87,6 @@ export class EditingManager {
 
     // Dropdown Events
     this.dropdown.addEventListener("mousedown", (e) => e.stopPropagation()); // Prevent closing dropdown when clicking inside
-    this.dropdown.addEventListener(
-      "dropdown-resized",
-      this._adjustDropdown.bind(this)
-    ); // Adjust when resized
     this.dropdownSearchInput.addEventListener(
       "input",
       this._handleDropdownSearch.bind(this)
@@ -626,10 +622,11 @@ export class EditingManager {
     });
   }
 
-  private _adjustDropdown() {
+  private _adjustDropdown(wasSameColumn = false) {
     // Use requestAnimationFrame to measure after display:block takes effect
     requestAnimationFrame(() => {
       const dropdownBounds = this.dropdown.getBoundingClientRect();
+      let dropdownHeight = dropdownBounds.height;
 
       const rightX = +(this.dropdown.getAttribute("data-right-x") || 0);
       const absoluteY = +(this.dropdown.getAttribute("data-absolute-y") || 0);
@@ -645,13 +642,48 @@ export class EditingManager {
         this.dropdown.style.left = `${rightX - dropdownBounds.width}px`;
       }
 
+      if (!wasSameColumn) {
+        // Calculate content height based on the number of items
+        const listItems = this.dropdownList.querySelectorAll("li");
+        let contentHeight = 0;
+
+        if (listItems.length > 0) {
+          // Get the height of a single item and multiply by the number of items
+          const singleItemHeight = listItems[0].offsetHeight || 30; // Default to 30px if can't measure
+
+          // Calculate the content height based on items
+          contentHeight = listItems.length * singleItemHeight;
+
+          // Add height for the search input (approximately 40px)
+          contentHeight += this.dropdownSearchInput.offsetHeight;
+
+          // Add height for footer if visible (approximately 40px)
+          if (this.dropdownFooter.style.display !== "none") {
+            contentHeight += this.dropdownFooter.offsetHeight;
+          }
+
+          // Add some padding
+          contentHeight += 20;
+
+          // Constrain to a reasonable range (min 100px, max 300px)
+          contentHeight = Math.max(100, Math.min(contentHeight, 300));
+        } else {
+          // Default height if no items
+          contentHeight = 100;
+        }
+
+        // Apply the calculated height
+        this.dropdown.style.height = `${contentHeight}px`;
+        dropdownHeight = contentHeight;
+      }
+
       const maxHeightToCheck =
         Math.max(window.innerHeight, document.body.scrollHeight) -
         this.DEFAULT_SAFE_MARGIN;
       // move the dropdown up if it extends beyond the bottom of the window
-      if (dropdownBounds.y + dropdownBounds.height > maxHeightToCheck) {
+      if (dropdownBounds.y + dropdownHeight > maxHeightToCheck) {
         this.dropdown.style.top = `${
-          absoluteY - boundsHeight - dropdownBounds.height
+          absoluteY - boundsHeight - dropdownHeight
         }px`;
       }
 
@@ -800,25 +832,29 @@ export class EditingManager {
     const absoluteY = boundsY + offsetTop + boundsHeight;
     const rightX = absoluteX + boundsWidth;
 
+    const wasSameColumn = this.dropdown.getAttribute("data-column") === colKey;
     // Position and display the dropdown
     this.dropdown.style.display = "flex"; // Use flex display
     this.dropdown.style.left = `${absoluteX}px`;
     this.dropdown.style.top = `${absoluteY}px`; // Position below cell initially
-    this.dropdown.style.minWidth = `${boundsWidth}px`;
-    this.dropdown.style.minHeight = "200px"; // Minimum height
-    this.dropdown.style.maxHeight = "400px"; // Maximum height
-    this.dropdown.style.height = "300px"; // Default height
-    this.dropdown.style.width = `${Math.max(boundsWidth, 200)}px`; // Min width of 200px
-    this.dropdown.style.resize = "both"; // Allow resizing
-    this.dropdown.style.overflow = "hidden"; // Hide overflow for the container
     this.dropdown.setAttribute("data-right-x", `${rightX}`);
     this.dropdown.setAttribute("data-absolute-y", `${absoluteY}`);
     this.dropdown.setAttribute("data-bounds-height", `${boundsHeight}`);
 
-    this.dropdownSearchInput.placeholder =
-      schemaCol?.placeholder || "Search...";
+    if (!wasSameColumn) {
+      this.dropdown.style.minWidth = `${boundsWidth}px`;
+      // this.dropdown.style.minHeight = "200px"; // Minimum height
+      this.dropdown.style.maxHeight = "400px"; // Maximum height
+      this.dropdown.style.height = "300px"; // Default height
+      this.dropdown.style.width = `${Math.max(boundsWidth, 200)}px`; // Min width of 200px
+      this.dropdown.style.resize = "both"; // Allow resizing
+      this.dropdown.style.overflow = "hidden"; // Hide overflow for the container
+      this.dropdown.setAttribute("data-column", `${colKey}`);
+      this.dropdownSearchInput.placeholder =
+        schemaCol?.placeholder || "Search...";
+    }
 
-    this._adjustDropdown();
+    this._adjustDropdown(wasSameColumn);
 
     // Reset search and focus
     this.dropdownSearchInput.value = "";

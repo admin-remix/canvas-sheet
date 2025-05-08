@@ -554,7 +554,12 @@ export class EventManager {
   }
 
   private _handleDocumentKeyDown(event: KeyboardEvent): void {
-    if (event.repeat) {
+    if (
+      event.repeat &&
+      ["ArrowUp", "ArrowDown", "Enter", "Tab", "Escape", "Delete"].includes(
+        event.key
+      )
+    ) {
       event.preventDefault();
       return;
     }
@@ -636,7 +641,7 @@ export class EventManager {
       isActiveCellValid &&
       this.stateManager.isCellDisabled(activeCell.row!, activeCell.col!);
 
-    if (event.key === "Delete" || event.key === "Backspace") {
+    if (event.key === "Delete") {
       const selectedColumn = this.stateManager.getSelectedColumn();
       if (this.stateManager.getSelectedRows().size > 0) {
         redrawNeeded = this.interactionManager.deleteSelectedRows();
@@ -750,7 +755,7 @@ export class EventManager {
       }
     }
 
-    // Redraw if Delete/Backspace on rows caused a state change
+    // Redraw if Delete on rows caused a state change
     if (resizeNeeded) {
       this.interactionManager.triggerCustomEvent("resize");
       // no need to redraw here, resize will trigger a redraw
