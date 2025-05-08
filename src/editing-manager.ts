@@ -32,7 +32,7 @@ export class EditingManager {
   private dropdownList: HTMLUListElement;
   private dropdownFooter: HTMLDivElement;
   private dropdownDoneButton: HTMLButtonElement;
-
+  private dropdownClearButton: HTMLButtonElement;
   // Dropdown state
   private dropdownItems: DropdownItem[] = [];
   private highlightedDropdownIndex: number = -1;
@@ -64,7 +64,7 @@ export class EditingManager {
     this.dropdownList = dropdownElements.list;
     this.dropdownFooter = dropdownElements.footer;
     this.dropdownDoneButton = dropdownElements.doneButton;
-
+    this.dropdownClearButton = dropdownElements.clearButton;
     // Initialize debounced search with 300ms delay
     this.debouncedLazySearch = debounce(
       this._handleLazySearch.bind(this),
@@ -107,6 +107,10 @@ export class EditingManager {
       "click",
       this._handleDropdownDoneButtonClick.bind(this)
     );
+    this.dropdownClearButton.addEventListener(
+      "click",
+      this._handleDropdownClearButtonClick.bind(this)
+    );
   }
 
   public isEditorActive(nonCustomEditor = false): boolean {
@@ -120,23 +124,17 @@ export class EditingManager {
     return this.dropdown.style.display !== "none";
   }
 
-  private _handleDropdownDoneButtonClick(): void {
-    // Apply selections and close dropdown
-    // const activeEditor = this.stateManager.getActiveEditor();
-    // if (!activeEditor) {
-    //   return;
-    // }
-    // const { row, col } = activeEditor;
-    // const colKey = this.stateManager.getColumnKey(col);
-    // const valueToSet = Array.from(this.selectedDropdownItems);
+  private _handleDropdownClearButtonClick(): void {
+    this.selectedDropdownItems.clear();
+    this.dropdownList
+      .querySelectorAll("li input[type='checkbox']")
+      .forEach((input) => {
+        (input as HTMLInputElement).checked = false;
+      });
+  }
 
-    // const oldValue = this.stateManager.updateCellInternal(row, col, valueToSet);
-    // this.interactionManager._batchUpdateCellsAndNotify(
-    //   [row],
-    //   [colKey],
-    //   [{ [colKey]: oldValue }]
-    // );
-    this.deactivateEditor(true);
+  private _handleDropdownDoneButtonClick(): void {
+    this.deactivateEditor(true, true);
     this.domManager.focusContainer();
   }
 
@@ -600,9 +598,6 @@ export class EditingManager {
         checkbox.type = "checkbox";
         checkbox.style.marginRight = "4px";
         checkbox.checked = this.selectedDropdownItems.has(item.id);
-        // checkbox.addEventListener("click", (e) => {
-        //   e.stopPropagation(); // Prevent triggering the li click event
-        // });
 
         const label = document.createElement("span");
         label.textContent = item.name;

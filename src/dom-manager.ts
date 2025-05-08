@@ -15,6 +15,7 @@ export class DomManager {
   private dropdownMultiSelect: boolean = false;
   private dropdownFooter: HTMLDivElement;
   private dropdownDoneButton: HTMLButtonElement;
+  private dropdownClearButton: HTMLButtonElement;
   private resizeObserver: ResizeObserver;
 
   constructor(container: HTMLElement) {
@@ -146,11 +147,15 @@ export class DomManager {
     this.dropdownFooter = document.createElement("div");
     this.dropdownFooter.className = "spreadsheet-dropdown-footer";
     this.dropdownFooter.style.padding = "8px";
-    this.dropdownFooter.style.textAlign = "right";
     this.dropdownFooter.style.borderTop = "1px solid #eee";
     this.dropdownFooter.style.display = "block"; // Make it visible by default
     this.dropdownFooter.style.flexShrink = "0"; // Don't shrink
     this.dropdownFooter.style.backgroundColor = "#f9f9f9"; // Light gray background
+
+    const buttonWrapper = document.createElement("div");
+    buttonWrapper.className = "spreadsheet-dropdown-button-wrapper";
+    buttonWrapper.style.display = "flex";
+    buttonWrapper.style.justifyContent = "space-between";
 
     this.dropdownDoneButton = document.createElement("button");
     this.dropdownDoneButton.textContent = "Done";
@@ -160,7 +165,6 @@ export class DomManager {
     this.dropdownDoneButton.style.border = "none";
     this.dropdownDoneButton.style.borderRadius = "4px";
     this.dropdownDoneButton.style.cursor = "pointer";
-    this.dropdownDoneButton.style.fontWeight = "bold";
     this.dropdownDoneButton.style.fontSize = "14px";
 
     // Add hover effects
@@ -171,7 +175,19 @@ export class DomManager {
       this.dropdownDoneButton.style.backgroundColor = "#2563eb"; // Back to original color
     });
 
-    this.dropdownFooter.appendChild(this.dropdownDoneButton);
+    this.dropdownClearButton = document.createElement("button");
+    this.dropdownClearButton.textContent = "Clear";
+    this.dropdownClearButton.style.padding = "6px 12px";
+    this.dropdownClearButton.style.backgroundColor = "#dbdbdb";
+    this.dropdownClearButton.style.color = "#020202b3";
+    this.dropdownClearButton.style.border = "none";
+    this.dropdownClearButton.style.borderRadius = "4px";
+    this.dropdownClearButton.style.cursor = "pointer";
+    this.dropdownClearButton.style.fontSize = "14px";
+
+    buttonWrapper.appendChild(this.dropdownClearButton);
+    buttonWrapper.appendChild(this.dropdownDoneButton);
+    this.dropdownFooter.appendChild(buttonWrapper);
 
     // This element will be placed in the body for global positioning
     this.dropdownWrapper = document.createElement("div");
@@ -331,6 +347,7 @@ export class DomManager {
     list: HTMLUListElement;
     footer: HTMLDivElement;
     doneButton: HTMLButtonElement;
+    clearButton: HTMLButtonElement;
   } {
     return {
       dropdown: this.dropdown,
@@ -339,6 +356,7 @@ export class DomManager {
       list: this.dropdownList,
       footer: this.dropdownFooter,
       doneButton: this.dropdownDoneButton,
+      clearButton: this.dropdownClearButton,
     };
   }
 
