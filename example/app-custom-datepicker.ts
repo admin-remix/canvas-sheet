@@ -23,6 +23,7 @@ const schema: SpreadsheetSchema = {
     required: true,
     placeholder: "Enter email",
     label: "Email Address",
+    autoTrim: true,
   },
   dob: {
     type: "date",

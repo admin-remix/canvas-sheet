@@ -1218,6 +1218,9 @@ export class InteractionManager {
 
     // Convert any value to string for display/text fields
     if (targetType === "text" || targetType === "email") {
+      if (schema?.autoTrim) {
+        return String(value).trim();
+      }
       return String(value);
     }
 

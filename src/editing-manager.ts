@@ -382,12 +382,16 @@ export class EditingManager {
 
       if (isTextareaActive || isInputActive) {
         if (saveChanges) {
-          const newValueRaw = isTextareaActive
+          let newValueRaw = isTextareaActive
             ? this.editorTextarea.value
             : this.editorInput.value;
 
           const schemaCol = this.stateManager.getSchemaForColumn(col);
           const colKey = this.stateManager.getColumnKey(col);
+          // if the column has autoTrim, trim the value
+          if (schemaCol?.autoTrim) {
+            newValueRaw = newValueRaw?.trim();
+          }
           const newValue = parseValueFromInput(newValueRaw, schemaCol?.type);
           const validationResult = validateInput(
             newValue,

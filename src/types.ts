@@ -15,10 +15,12 @@ export interface SelectOption {
 export interface ColumnSchema {
   type: DataType;
   label: string;
-  required?: boolean;
   values?: SelectOption[]; // For 'select' type
   decimal?: boolean; // For 'number' type (false means integer)
+  // validations: TODO: more validations or zod schema support
+  required?: boolean;
   maxlength?: number; // For 'text' type
+  ///////////
   multiline?: boolean; // For 'text' type, as textarea
   multiple?: boolean; // For 'select' type, allows multiple selections
   disabled?: (rowData: DataRow, rowIndex: number) => boolean; // Optional dynamic disabling
@@ -35,7 +37,9 @@ export interface ColumnSchema {
   formatter?: (value: any) => string | null;
   lazySearch?: boolean;
   defaultValue?: any;
+  // styling
   wordWrap?: boolean;
+  autoTrim?: boolean; // for text input, trims the value
 }
 
 export interface SpreadsheetSchema {
