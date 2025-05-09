@@ -398,12 +398,14 @@ export class EditingManager {
             schemaCol,
             colKey,
             this.stateManager.cachedDropdownOptionsByColumn.get(colKey),
-            this.options.verbose
+            this.options.verbose,
+            this.stateManager.getData(true),
+            row
           );
           if ("error" in validationResult) {
             log("log", this.options.verbose, validationResult.error);
             // Potentially show an error message to the user here
-            if (validationResult.errorType === "required") {
+            if (validationResult.errorType === "required" && !originalValue) {
               this.stateManager.updateCell(
                 row,
                 `${ERROR_FIELD_PREFIX}${colKey}`,

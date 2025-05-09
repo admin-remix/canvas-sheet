@@ -1065,7 +1065,9 @@ export class InteractionManager {
       targetSchema,
       targetColKey,
       this.stateManager.cachedDropdownOptionsByColumn.get(targetColKey),
-      this.options.verbose
+      this.options.verbose,
+      this.stateManager.getData(true),
+      targetRow
     );
     if ("error" in validationResult) {
       log("log", this.options.verbose, validationResult.error);
@@ -1148,7 +1150,9 @@ export class InteractionManager {
           targetSchema,
           targetColKey,
           this.stateManager.cachedDropdownOptionsByColumn.get(targetColKey),
-          this.options.verbose
+          this.options.verbose,
+          this.stateManager.getData(true),
+          row
         );
         if ("error" in validationResult) {
           log("warn", this.options.verbose, validationResult.error);
@@ -1332,7 +1336,9 @@ export class InteractionManager {
           targetSchema,
           targetColKey,
           this.stateManager.cachedDropdownOptionsByColumn.get(targetColKey),
-          this.options.verbose
+          this.options.verbose,
+          this.stateManager.getData(true),
+          targetRow
         );
         if ("error" in validationResult) {
           log("warn", this.options.verbose, validationResult.error);
@@ -1445,7 +1451,9 @@ export class InteractionManager {
           targetSchema,
           targetColKey,
           this.stateManager.cachedDropdownOptionsByColumn.get(targetColKey),
-          this.options.verbose
+          this.options.verbose,
+          this.stateManager.getData(true),
+          row
         );
         if ("error" in validationResult) {
           log("warn", this.options.verbose, validationResult.error);
@@ -1818,7 +1826,9 @@ export class InteractionManager {
           targetSchema,
           targetColKey,
           this.stateManager.cachedDropdownOptionsByColumn.get(targetColKey),
-          this.options.verbose
+          this.options.verbose,
+          this.stateManager.getData(true),
+          targetRow
         );
         if ("error" in validationResult) {
           log("warn", this.options.verbose, validationResult.error);
@@ -1920,7 +1930,9 @@ export class InteractionManager {
           targetSchema,
           targetColKey,
           this.stateManager.cachedDropdownOptionsByColumn.get(targetColKey),
-          this.options.verbose
+          this.options.verbose,
+          this.stateManager.getData(true),
+          row
         );
         if ("error" in validationResult) {
           log("warn", this.options.verbose, validationResult.error);

@@ -132,7 +132,10 @@ export class StateManager {
   public get dataLength(): number {
     return this.data.length;
   }
-  public getData(): DataRow[] {
+  public getData(raw = false): DataRow[] {
+    if (raw) {
+      return this.data;
+    }
     // Return a deep copy to prevent direct modification of internal state
     // Exclude internal disabled fields
     return JSON.parse(
@@ -244,7 +247,9 @@ export class StateManager {
       schemaCol,
       colKey,
       this.cachedDropdownOptionsByColumn.get(colKey),
-      this.options.verbose
+      this.options.verbose,
+      this.data,
+      rowIndex
     );
     if ("error" in validationResult) {
       log(

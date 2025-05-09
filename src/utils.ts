@@ -119,13 +119,31 @@ export function parseValueFromInput(value: string, type?: DataType): any {
   }
 }
 
+// Helper function to get comparable value
+function getComparableValue(val: any): string {
+  if (val === null || val === undefined) return "";
+
+  // For string values, use lowercase for case-insensitive comparison
+  if (typeof val === "string") return val.toLowerCase();
+
+  // Handle array values (e.g., for multi-select)
+  if (Array.isArray(val)) {
+    return [...val].sort().join("|");
+  }
+
+  // For other types, convert to string
+  return String(val);
+}
+
 /** Validate input value against column schema */
 export function validateInput(
   value: any,
   schemaCol: ColumnSchema | undefined,
   colKey: string,
   dropdownOptions: Map<string | number, string> | undefined,
-  verbose: boolean
+  verbose: boolean,
+  data: any[], // Data array for uniqueness validation
+  rowIndex: number // Row index to exclude current row from uniqueness check
 ):
   | {
       success: boolean;
@@ -158,6 +176,42 @@ export function validateInput(
     (Array.isArray(value) && value.length === 0)
   )
     return { success: true };
+
+  // Check uniqueness constraint if enabled
+  if (
+    schemaCol.unique &&
+    data &&
+    data.length > 0 &&
+    value !== null &&
+    value !== undefined
+  ) {
+    // Prepare the value we're checking for uniqueness
+    const comparableValue = getComparableValue(value);
+
+    // Check if this value already exists in other rows
+    let isDuplicate = false;
+
+    // First pass: populate the map with all values except current row
+    for (let idx = 0; idx < data.length; idx++) {
+      // Skip current row when building the map
+      if (idx === rowIndex) continue;
+
+      const rowValue = data[idx][colKey];
+      const comparableRowValue = getComparableValue(rowValue);
+
+      // For checking uniqueness, we only need to know if the value exists
+      if (comparableRowValue === comparableValue) {
+        isDuplicate = true;
+        break;
+      }
+    }
+
+    if (isDuplicate) {
+      const error = `Value must be unique in column "${colLabel}".`;
+      log("warn", verbose, `Validation failed: ${error}.`);
+      return { success: false, error, errorType: "unique" };
+    }
+  }
 
   // Check type-specific constraints
   switch (schemaCol.type) {

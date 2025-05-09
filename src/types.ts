@@ -20,6 +20,7 @@ export interface ColumnSchema {
   // validations: TODO: more validations or zod schema support
   required?: boolean;
   maxlength?: number; // For 'text' type
+  unique?: boolean; // ensures the value is unique across the column
   ///////////
   multiline?: boolean; // For 'text' type, as textarea
   multiple?: boolean; // For 'select' type, allows multiple selections
@@ -198,7 +199,7 @@ export interface DropdownItem {
   name: string;
 }
 
-export type ValidationErrorType = "required" | "maxlength" | "value";
+export type ValidationErrorType = "required" | "maxlength" | "value" | "unique";
 
 export class ValidationError extends Error {
   rowIndex: number;
