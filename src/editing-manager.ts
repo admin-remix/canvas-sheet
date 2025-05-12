@@ -583,6 +583,13 @@ export class EditingManager {
   private _populateDropdown(clear = false): void {
     if (clear) {
       this.dropdownList.innerHTML = "";
+
+      // sort to keep the selected items at the top
+      this.dropdownItems.sort((a, b) => {
+        const aSelected = this.selectedDropdownItems.has(a.id);
+        const bSelected = this.selectedDropdownItems.has(b.id);
+        return aSelected === bSelected ? 0 : aSelected ? -1 : 1;
+      });
     }
 
     const isMultiSelect = this.domManager.isDropdownMultiSelect();
