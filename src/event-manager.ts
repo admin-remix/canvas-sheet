@@ -146,6 +146,14 @@ export class EventManager {
     });
   }
 
+  private redraw(shouldAutoResize = false) {
+    if (shouldAutoResize && this.options.autoResizeRowHeight) {
+      this.interactionManager.resizeRowsForColumn();
+    } else {
+      this.renderer.draw();
+    }
+  }
+
   // --- Event Handlers ---
   private _handleScroll() {
     this.interactionManager.onScroll();
@@ -631,7 +639,7 @@ export class EventManager {
     if (isCtrl && event.key === "v") {
       redrawNeeded = this.interactionManager.paste();
       event.preventDefault();
-      if (redrawNeeded) this.renderer.draw();
+      if (redrawNeeded) this.redraw(true); // content changed, so we need to resize rows
       return;
     }
     const activeCell = this.stateManager.getActiveCell();
@@ -775,7 +783,7 @@ export class EventManager {
 
     if (this.interactionManager.paste()) {
       event.preventDefault();
-      this.renderer.draw();
+      this.redraw(true); // content changed, so we need to resize rows
       return;
     }
 
@@ -801,7 +809,7 @@ export class EventManager {
           value
         );
         if (changed) {
-          this.renderer.draw();
+          this.redraw(true); // content changed, so we need to resize rows
         }
       }
       return;
@@ -858,7 +866,7 @@ export class EventManager {
     }
 
     if (changed) {
-      this.renderer.draw();
+      this.redraw(true); // content changed, so we need to resize rows
     }
   }
 

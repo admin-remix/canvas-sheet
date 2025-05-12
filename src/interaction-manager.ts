@@ -1303,6 +1303,27 @@ export class InteractionManager {
       return null;
     }
 
+    // Handle array input
+    if (Array.isArray(value)) {
+      // If the target is an array type (e.g., multiple)
+      if (schema?.multiple) {
+        // For multiple select, try to convert each item in the array
+        return value
+          .map((item) =>
+            this._convertValueForTargetType(item, colKey, {
+              ...schema,
+              multiple: false, // Treat each item as single value conversion
+            })
+          )
+          .filter((item) => item !== null);
+      }
+
+      // For non-array target types, use the first value from the array if available
+      return value.length > 0
+        ? this._convertValueForTargetType(value[0], colKey, schema)
+        : null;
+    }
+
     // Convert any value to string for display/text fields
     if (targetType === "text" || targetType === "email") {
       if (schema?.autoTrim) {
@@ -1343,15 +1364,24 @@ export class InteractionManager {
         const cachedOptions =
           this.stateManager.cachedDropdownOptionsByColumn.get(colKey);
         if (!cachedOptions) return null;
+
         // Try to match by raw id
         if (cachedOptions.has(value)) return value;
+
         // Try to match by string value id if the original value is not a string
         if (typeof value !== "string" && cachedOptions.has(stringValue))
           return stringValue;
+
         // If not found by id, try to match by name
         const option = Array.from(cachedOptions.entries()).find(
           ([_key, option]) => option.toLowerCase() === stringValue.toLowerCase()
         );
+
+        // If schema allows multiple values, wrap the result in an array
+        if (schema?.multiple && option) {
+          return [option[0]];
+        }
+
         return option ? option[0] : null;
       default:
         return null;
