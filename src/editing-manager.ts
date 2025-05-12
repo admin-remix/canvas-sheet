@@ -363,8 +363,16 @@ export class EditingManager {
           if (different) {
             this.stateManager.updateCellInternal(row, col, valueToSet);
             valueChanged = true;
+            const colKey = this.stateManager.getColumnKey(col);
+            // Update disabled states for the row after the change
+            this.interactionManager._batchUpdateCellsAndNotify(
+              [row],
+              [colKey],
+              [{ [colKey]: originalValue }]
+            );
           }
         }
+        // for single select, its handled by the click event, so nothing to do here
 
         this.hideDropdown(); // Ensure dropdown is hidden even if no selection made
         redrawRequired = true; // Hiding dropdown requires redraw
