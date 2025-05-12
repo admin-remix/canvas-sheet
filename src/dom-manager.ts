@@ -12,6 +12,10 @@ export class DomManager {
   private systemScrollbarWidth: number = 0;
   private hScrollbar: HTMLDivElement;
   private vScrollbar: HTMLDivElement;
+  private dropdownMultiSelect: boolean = false;
+  private dropdownFooter: HTMLDivElement;
+  private dropdownDoneButton: HTMLButtonElement;
+  private dropdownClearButton: HTMLButtonElement;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -73,11 +77,14 @@ export class DomManager {
     this.dropdown.style.boxShadow = "0 2px 5px rgba(0,0,0,0.15)";
     this.dropdown.style.minHeight = "100px";
     this.dropdown.style.height = "200px"; // default height
+    this.dropdown.style.display = "flex";
+    this.dropdown.style.flexDirection = "column";
 
     const searchContainer = document.createElement("div");
     searchContainer.className = "spreadsheet-dropdown-search";
     searchContainer.style.padding = "5px";
     searchContainer.style.borderBottom = "1px solid #eee";
+    searchContainer.style.flexShrink = "0"; // Don't shrink
 
     this.dropdownSearchInput = document.createElement("input");
     this.dropdownSearchInput.type = "text";
@@ -88,17 +95,31 @@ export class DomManager {
 
     searchContainer.appendChild(this.dropdownSearchInput);
 
-    // Create loading spinner
+    // Create a list wrapper that will be scrollable
+    const listWrapper = document.createElement("div");
+    listWrapper.className = "spreadsheet-dropdown-list-wrapper";
+    listWrapper.style.flex = "1"; // Take remaining space
+    listWrapper.style.overflow = "auto"; // Make this scrollable
+    listWrapper.style.position = "relative"; // For proper scrolling
+
+    // Create loading spinner that will overlay on top of list
     this.dropdownLoader = document.createElement("div");
     this.dropdownLoader.className = "spreadsheet-dropdown-loader";
-    this.dropdownLoader.style.display = "none";
-    this.dropdownLoader.style.textAlign = "center";
-    this.dropdownLoader.style.padding = "8px 0";
-    this.dropdownLoader.style.borderBottom = "1px solid #eee";
+    this.dropdownLoader.style.display = "flex";
+    this.dropdownLoader.style.justifyContent = "center";
+    this.dropdownLoader.style.alignItems = "center";
+    this.dropdownLoader.style.position = "absolute";
+    this.dropdownLoader.style.top = "0";
+    this.dropdownLoader.style.left = "0";
+    this.dropdownLoader.style.right = "0";
+    this.dropdownLoader.style.bottom = "0";
+    this.dropdownLoader.style.backgroundColor = "rgba(255, 255, 255, 0.85)"; // Semi-transparent background
+    this.dropdownLoader.style.zIndex = "10"; // Ensure it's above the list content
+    this.dropdownLoader.style.visibility = "hidden"; // Hidden by default
 
     // SVG spinner
     this.dropdownLoader.innerHTML = `
-            <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <svg width="32" height="32" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                 <style>
                     @keyframes spin {
                         0% { transform: rotate(0deg); }
@@ -118,7 +139,54 @@ export class DomManager {
     this.dropdownList.style.listStyle = "none";
     this.dropdownList.style.margin = "0";
     this.dropdownList.style.padding = "0";
-    this.dropdownList.style.overflowY = "auto";
+
+    listWrapper.appendChild(this.dropdownList);
+    listWrapper.appendChild(this.dropdownLoader); // Add loader as overlay to the list wrapper
+
+    this.dropdownFooter = document.createElement("div");
+    this.dropdownFooter.className = "spreadsheet-dropdown-footer";
+    this.dropdownFooter.style.padding = "8px";
+    this.dropdownFooter.style.borderTop = "1px solid #eee";
+    this.dropdownFooter.style.display = "block"; // Make it visible by default
+    this.dropdownFooter.style.flexShrink = "0"; // Don't shrink
+    this.dropdownFooter.style.backgroundColor = "#f9f9f9"; // Light gray background
+
+    const buttonWrapper = document.createElement("div");
+    buttonWrapper.className = "spreadsheet-dropdown-button-wrapper";
+    buttonWrapper.style.display = "flex";
+    buttonWrapper.style.justifyContent = "space-between";
+
+    this.dropdownDoneButton = document.createElement("button");
+    this.dropdownDoneButton.textContent = "Done";
+    this.dropdownDoneButton.style.padding = "6px 12px";
+    this.dropdownDoneButton.style.backgroundColor = "#2563eb";
+    this.dropdownDoneButton.style.color = "white";
+    this.dropdownDoneButton.style.border = "none";
+    this.dropdownDoneButton.style.borderRadius = "4px";
+    this.dropdownDoneButton.style.cursor = "pointer";
+    this.dropdownDoneButton.style.fontSize = "14px";
+
+    // Add hover effects
+    this.dropdownDoneButton.addEventListener("mouseover", () => {
+      this.dropdownDoneButton.style.backgroundColor = "#1d4ed8"; // Darker blue on hover
+    });
+    this.dropdownDoneButton.addEventListener("mouseout", () => {
+      this.dropdownDoneButton.style.backgroundColor = "#2563eb"; // Back to original color
+    });
+
+    this.dropdownClearButton = document.createElement("button");
+    this.dropdownClearButton.textContent = "Clear";
+    this.dropdownClearButton.style.padding = "6px 12px";
+    this.dropdownClearButton.style.backgroundColor = "#dbdbdb";
+    this.dropdownClearButton.style.color = "#020202b3";
+    this.dropdownClearButton.style.border = "none";
+    this.dropdownClearButton.style.borderRadius = "4px";
+    this.dropdownClearButton.style.cursor = "pointer";
+    this.dropdownClearButton.style.fontSize = "14px";
+
+    buttonWrapper.appendChild(this.dropdownClearButton);
+    buttonWrapper.appendChild(this.dropdownDoneButton);
+    this.dropdownFooter.appendChild(buttonWrapper);
 
     // This element will be placed in the body for global positioning
     this.dropdownWrapper = document.createElement("div");
@@ -127,17 +195,13 @@ export class DomManager {
     // append to the appropriate parents
     document.body.appendChild(this.dropdownWrapper);
     this.dropdown.appendChild(searchContainer);
-    this.dropdown.appendChild(this.dropdownLoader);
-    this.dropdown.appendChild(this.dropdownList);
+    this.dropdown.appendChild(listWrapper); // List wrapper contains both list and loader
+    this.dropdown.appendChild(this.dropdownFooter);
     this.dropdownWrapper.appendChild(this.dropdown);
   }
+
   public toggleDropdownLoader(show: boolean): void {
-    if (show) {
-      this.dropdownLoader.style.display = "flex";
-      this.dropdownLoader.style.justifyContent = "center";
-    } else {
-      this.dropdownLoader.style.display = "none";
-    }
+    this.dropdownLoader.style.visibility = show ? "visible" : "hidden";
   }
 
   public checkEventBoundInDropdown(event: MouseEvent): boolean {
@@ -200,6 +264,15 @@ export class DomManager {
     this.canvas.height = canvasHeight;
     this.canvas.style.width = `${canvasWidth}px`;
     this.canvas.style.height = `${canvasHeight}px`;
+  }
+
+  // Multi-select dropdown methods
+  public isDropdownMultiSelect(): boolean {
+    return this.dropdownMultiSelect;
+  }
+
+  public setDropdownMultiSelect(isMultiSelect: boolean): void {
+    this.dropdownMultiSelect = isMultiSelect;
   }
 
   public getHScrollbar(): HTMLDivElement {
@@ -265,12 +338,18 @@ export class DomManager {
     searchInput: HTMLInputElement;
     loader: HTMLDivElement;
     list: HTMLUListElement;
+    footer: HTMLDivElement;
+    doneButton: HTMLButtonElement;
+    clearButton: HTMLButtonElement;
   } {
     return {
       dropdown: this.dropdown,
       searchInput: this.dropdownSearchInput,
       loader: this.dropdownLoader,
       list: this.dropdownList,
+      footer: this.dropdownFooter,
+      doneButton: this.dropdownDoneButton,
+      clearButton: this.dropdownClearButton,
     };
   }
 

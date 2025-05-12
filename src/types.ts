@@ -15,11 +15,15 @@ export interface SelectOption {
 export interface ColumnSchema {
   type: DataType;
   label: string;
-  required?: boolean;
   values?: SelectOption[]; // For 'select' type
   decimal?: boolean; // For 'number' type (false means integer)
+  // validations: TODO: more validations or zod schema support
+  required?: boolean;
   maxlength?: number; // For 'text' type
+  unique?: boolean; // ensures the value is unique across the column
+  ///////////
   multiline?: boolean; // For 'text' type, as textarea
+  multiple?: boolean; // For 'select' type, allows multiple selections
   disabled?: (rowData: DataRow, rowIndex: number) => boolean; // Optional dynamic disabling
   filterValues?: (
     rowData: DataRow,
@@ -34,6 +38,9 @@ export interface ColumnSchema {
   formatter?: (value: any) => string | null;
   lazySearch?: boolean;
   defaultValue?: any;
+  // styling
+  wordWrap?: boolean;
+  autoTrim?: boolean; // for text input, trims the value
 }
 
 export interface SpreadsheetSchema {
@@ -78,12 +85,16 @@ export interface ResizeColumnState {
   isResizing: boolean;
   columnIndex: number | null;
   startX: number | null;
+  canvasSnapshot?: HTMLCanvasElement;
+  originalWidth?: number;
 }
 
 export interface ResizeRowState {
   isResizing: boolean;
   rowIndex: number | null;
   startY: number | null;
+  canvasSnapshot?: HTMLCanvasElement;
+  originalHeight?: number;
 }
 
 export interface VisibleCell {
@@ -129,11 +140,16 @@ export interface SpreadsheetOptions {
   customHeaderBgColor?: string;
   headerBgColor?: string;
   selectedHeaderBgColor?: string;
+  resizeHeaderBgColor?: string;
+  resizeHeaderBgAlphaBlend?: GlobalCompositeOperation; // allow customizing the alpha blend mode
+  resizeRowBgColor?: string;
+  resizeRowBgAlphaBlend?: GlobalCompositeOperation; // allow customizing the alpha blend mode
   readonlyHeaderBgColor?: string;
   readonlyHeaderTextColor?: string;
   headerClipText?: boolean; // Clip text or adjust(squish) text width to fit the header
   headerTextAlign?: "left" | "center" | "right";
   gridLineColor?: string;
+  resizeDividerColor?: string; // Color for resize divider lines
   rowNumberBgColor?: string;
   selectedRowNumberBgColor?: string;
   disabledCellBgColor?: string;
@@ -150,6 +166,7 @@ export interface SpreadsheetOptions {
   temporaryErrorTimeout?: number;
   customDatePicker?: boolean;
   autoAddNewRow?: boolean;
+  autoResizeRowHeight?: boolean; // Whether to automatically resize row heights based on content
   lazySearchDebounceTime?: number;
   blankDropdownItemLabel?: string;
   allowTabInTextarea?: boolean;
@@ -191,7 +208,7 @@ export interface DropdownItem {
   name: string;
 }
 
-export type ValidationErrorType = "required" | "maxlength" | "value";
+export type ValidationErrorType = "required" | "maxlength" | "value" | "unique";
 
 export class ValidationError extends Error {
   rowIndex: number;

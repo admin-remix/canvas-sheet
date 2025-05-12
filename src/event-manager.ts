@@ -146,6 +146,14 @@ export class EventManager {
     });
   }
 
+  private redraw(shouldAutoResize = false) {
+    if (shouldAutoResize && this.options.autoResizeRowHeight) {
+      this.interactionManager.resizeRowsForColumn();
+    } else {
+      this.renderer.draw();
+    }
+  }
+
   // --- Event Handlers ---
   private _handleScroll() {
     this.interactionManager.onScroll();
@@ -554,7 +562,12 @@ export class EventManager {
   }
 
   private _handleDocumentKeyDown(event: KeyboardEvent): void {
-    if (event.repeat) {
+    if (
+      event.repeat &&
+      ["ArrowUp", "ArrowDown", "Enter", "Tab", "Escape", "Delete"].includes(
+        event.key
+      )
+    ) {
       event.preventDefault();
       return;
     }
@@ -626,7 +639,7 @@ export class EventManager {
     if (isCtrl && event.key === "v") {
       redrawNeeded = this.interactionManager.paste();
       event.preventDefault();
-      if (redrawNeeded) this.renderer.draw();
+      if (redrawNeeded) this.redraw(true); // content changed, so we need to resize rows
       return;
     }
     const activeCell = this.stateManager.getActiveCell();
@@ -636,7 +649,7 @@ export class EventManager {
       isActiveCellValid &&
       this.stateManager.isCellDisabled(activeCell.row!, activeCell.col!);
 
-    if (event.key === "Delete" || event.key === "Backspace") {
+    if (event.key === "Delete") {
       const selectedColumn = this.stateManager.getSelectedColumn();
       if (this.stateManager.getSelectedRows().size > 0) {
         redrawNeeded = this.interactionManager.deleteSelectedRows();
@@ -750,7 +763,7 @@ export class EventManager {
       }
     }
 
-    // Redraw if Delete/Backspace on rows caused a state change
+    // Redraw if Delete on rows caused a state change
     if (resizeNeeded) {
       this.interactionManager.triggerCustomEvent("resize");
       // no need to redraw here, resize will trigger a redraw
@@ -770,7 +783,7 @@ export class EventManager {
 
     if (this.interactionManager.paste()) {
       event.preventDefault();
-      this.renderer.draw();
+      this.redraw(true); // content changed, so we need to resize rows
       return;
     }
 
@@ -796,7 +809,7 @@ export class EventManager {
           value
         );
         if (changed) {
-          this.renderer.draw();
+          this.redraw(true); // content changed, so we need to resize rows
         }
       }
       return;
@@ -853,7 +866,7 @@ export class EventManager {
     }
 
     if (changed) {
-      this.renderer.draw();
+      this.redraw(true); // content changed, so we need to resize rows
     }
   }
 

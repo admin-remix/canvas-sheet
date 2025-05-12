@@ -27,6 +27,8 @@ export const DEFAULT_OPTIONS: RequiredSpreadsheetOptions = {
   headerBgColor: "#4b5563", // gray-600
   customHeaderBgColor: "#9ca3af", // gray-300
   selectedHeaderBgColor: "#dbeafe", // gray-600
+  resizeHeaderBgColor: "#d3e6ff9e", // alpha blend lighter
+  resizeHeaderBgAlphaBlend: "lighter",
   readonlyHeaderBgColor: "#f3f4f6", // gray-100
   readonlyHeaderTextColor: "#9ca3af", // gray-400
   headerClipText: true,
@@ -34,6 +36,8 @@ export const DEFAULT_OPTIONS: RequiredSpreadsheetOptions = {
   gridLineColor: "#d1d5db", // gray-300
   rowNumberBgColor: "#f3f4f6", // gray-100
   selectedRowNumberBgColor: "#dbeafe", // blue-100
+  resizeRowBgColor: "#dbeafe9e", // alpha blend lighter
+  resizeRowBgAlphaBlend: "multiply",
   disabledCellBgColor: "#e5e7eb", // gray-200
   disabledCellTextColor: "#9ca3af", // gray-400 (Corrected property name)
   highlightBorderColor: "#3b82f6", // blue-500
@@ -43,9 +47,11 @@ export const DEFAULT_OPTIONS: RequiredSpreadsheetOptions = {
   copyHighlightBorderColor: "#1f2937", // gray-800
   copyHighlightBorderDash: [4, 3], // Dash pattern (e.g., [dashLength, gapLength])
   resizeHandleSize: 5,
+  resizeDividerColor: "#3b82f6", // blue-500 - Color for resize divider lines
   temporaryErrorTimeout: 2000,
   customDatePicker: false,
   autoAddNewRow: true,
+  autoResizeRowHeight: false, // Whether to automatically resize row heights based on content
   lazySearchDebounceTime: 300,
   blankDropdownItemLabel: "(Blank)",
   allowTabInTextarea: false,

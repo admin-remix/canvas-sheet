@@ -19,7 +19,7 @@ const schema: SpreadsheetSchema = {
   email: {
     type: "email",
     required: true,
-    // placeholder: "Enter email",
+    unique: true,
     label: "Email Address",
   },
   dob: { type: "date", label: "Date of Birth" },

@@ -210,6 +210,9 @@ const options = {
   maxRowHeight: 100,
   headerHeight: 36,
   rowNumberWidth: 50,
+  autoResizeRowHeight: false,
+  lineHeight: 16,
+  wordWrap: false,
 
   // Styling
   font: '14px Arial',
@@ -262,6 +265,7 @@ const schema = {
     required: true,
     maxlength: 50,
     label: "Name",
+    wordWrap: true,
   },
 
   // Number field with options
@@ -297,6 +301,13 @@ const schema = {
     disabled: (data) => {
       return data.status === 3 && !data.isActive;
     },
+  },
+
+  description: {
+    type: "text",
+    label: "Description",
+    multiline: true,
+    wordWrap: true,
   },
 };
 ```

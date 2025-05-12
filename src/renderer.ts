@@ -22,6 +22,8 @@ export class Renderer {
     this.options = options;
     this.stateManager = stateManager;
     this.dimensionCalculator = dimensionCalculator;
+    // Set the canvas context for dimension calculator to use for text measurements
+    this.dimensionCalculator.setCanvasContext(ctx);
   }
 
   /**
@@ -176,14 +178,14 @@ export class Renderer {
     const selectedColumn = this.stateManager.getSelectedColumn();
     // Get scroll position for header horizontal scrolling
     const scrollLeft = this.stateManager.getScrollLeft();
-
+    const totalContentWidth = this.stateManager.getTotalContentWidth();
+    const viewportWidth = this.stateManager.getViewportWidth();
     this.ctx.save();
 
     // Clip drawing to the visible header area (fixed vertical position)
     const headerVisibleX = rowNumberWidth; // Start after row numbers
     const headerVisibleY = 0;
-    const headerVisibleWidth =
-      this.stateManager.getViewportWidth() - rowNumberWidth;
+    const headerVisibleWidth = viewportWidth - rowNumberWidth;
     const headerVisibleHeight = headerHeight;
 
     this.ctx.beginPath();
@@ -200,12 +202,7 @@ export class Renderer {
 
     // Background for the entire logical header width
     this.ctx.fillStyle = headerBgColor;
-    this.ctx.fillRect(
-      rowNumberWidth,
-      0,
-      this.stateManager.getTotalContentWidth(),
-      headerHeight
-    );
+    this.ctx.fillRect(rowNumberWidth, 0, totalContentWidth, headerHeight);
 
     // Draw Header Text and Vertical Lines
     this.ctx.font = headerFont;
@@ -225,7 +222,7 @@ export class Renderer {
       }
 
       // Break if column is beyond right edge of viewport
-      if (currentX > scrollLeft + this.stateManager.getViewportWidth()) {
+      if (currentX > scrollLeft + viewportWidth) {
         break;
       }
 
@@ -300,10 +297,7 @@ export class Renderer {
     this.ctx.beginPath();
     const lineY = headerHeight - 0.5;
     this.ctx.moveTo(rowNumberWidth, lineY);
-    this.ctx.lineTo(
-      Math.max(currentX, this.stateManager.getViewportWidth() + scrollLeft),
-      lineY
-    );
+    this.ctx.lineTo(Math.max(currentX, totalContentWidth + scrollLeft), lineY);
     this.ctx.stroke();
 
     this.ctx.restore(); // Restore clipping context
@@ -325,7 +319,7 @@ export class Renderer {
     const totalContentHeight = this.stateManager.getTotalContentHeight();
     // Get scroll position for row numbers vertical scrolling
     const scrollTop = this.stateManager.getScrollTop();
-
+    const viewportHeight = this.stateManager.getViewportHeight();
     if (dataLength) {
       const rowHeights = this.stateManager.getRowHeights();
       const selectedRows = this.stateManager.getSelectedRows();
@@ -336,8 +330,7 @@ export class Renderer {
       const rowNumVisibleX = 0;
       const rowNumVisibleY = headerHeight;
       const rowNumVisibleWidth = rowNumberWidth;
-      const rowNumVisibleHeight =
-        this.stateManager.getViewportHeight() - headerHeight;
+      const rowNumVisibleHeight = viewportHeight - headerHeight;
 
       this.ctx.beginPath();
       this.ctx.rect(
@@ -373,7 +366,7 @@ export class Renderer {
         }
 
         // Break if row is beyond bottom edge of viewport
-        if (currentY > scrollTop + this.stateManager.getViewportHeight()) {
+        if (currentY > scrollTop + viewportHeight) {
           break;
         }
         const isSelected = selectedRows.has(row);
@@ -418,7 +411,7 @@ export class Renderer {
       this.ctx.moveTo(lineX, headerHeight);
       this.ctx.lineTo(
         lineX,
-        Math.max(currentY, this.stateManager.getViewportHeight() + scrollTop)
+        Math.max(currentY, totalContentHeight + scrollTop)
       );
       this.ctx.stroke();
 
@@ -613,19 +606,20 @@ export class Renderer {
                 textX = currentX + colWidth - padding;
               }
               // do not apply maxWidth to fillText
-              if (!schemaCol.multiline && !wrapText) {
-                // optimize basic text rendering
-                this.ctx.fillText(formattedValue, textX, textY);
-              } else {
+              if (schemaCol.wordWrap || wrapText) {
                 this.wrapText(
                   formattedValue,
                   textX,
                   currentY,
                   colWidth - padding * 2,
                   rowHeight,
-                  wrapText,
+                  // allow wrapping for multiline non-text types
+                  wrapText || !!schemaCol.wordWrap,
                   lineHeight
                 );
+              } else {
+                // optimize basic text rendering
+                this.ctx.fillText(formattedValue, textX, textY);
               }
             }
           }
@@ -1015,50 +1009,79 @@ export class Renderer {
     this.ctx.textBaseline = "middle";
     let lines: string[] = [];
 
-    if (wrap) {
-      // --- Logic for when wrap is TRUE (existing logic) ---
-      let words = text.split(/[ \n]/); // Split by space OR newline
+    // If multiline input, handle explicit newlines first
+    if (text.includes("\n")) {
+      const textLines = text.split("\n");
+
+      // For each explicit line, check if it needs further wrapping
+      for (const line of textLines) {
+        if (!line) {
+          // Empty line
+          lines.push("");
+          continue;
+        }
+
+        // Process each explicit line for word wrapping if needed
+        if (wrap) {
+          const lineWords = line.split(" ");
+          let currentLine = "";
+
+          for (const word of lineWords) {
+            const testLine = currentLine ? `${currentLine} ${word}` : word;
+            const metrics = this.ctx.measureText(testLine);
+
+            if (metrics.width <= maxWidth) {
+              currentLine = testLine;
+            } else {
+              // Word doesn't fit, push current line and start a new one
+              if (currentLine) {
+                lines.push(currentLine);
+              }
+              // If single word is too long for the line, it gets its own line
+              currentLine = word;
+            }
+          }
+
+          // Add the last line from this explicit line
+          if (currentLine) {
+            lines.push(currentLine);
+          }
+        } else {
+          // No word wrap, just add the explicit line as is
+          lines.push(line);
+        }
+      }
+    } else if (wrap) {
+      // No explicit newlines, just word wrapping
+      const words = text.split(" ");
       let currentLine = "";
-      for (let i = 0; i < words.length; i++) {
-        let word = words[i];
-        if (!word) continue; // Skip empty strings resulting from multiple spaces/newlines
 
-        let testLine = currentLine ? currentLine + " " + word : word;
-        let metrics = this.ctx.measureText(testLine);
+      for (const word of words) {
+        const testLine = currentLine ? `${currentLine} ${word}` : word;
+        const metrics = this.ctx.measureText(testLine);
 
-        if (metrics.width <= maxWidth || !currentLine) {
-          // Word fits or it's the first word on the line
+        if (metrics.width <= maxWidth) {
           currentLine = testLine;
         } else {
-          // Word doesn't fit, push the current line and start a new one with the word
-          // Check if the single word itself is too long (optional, but good practice)
-          const wordWidth = this.ctx.measureText(word).width;
-          if (!currentLine && wordWidth > maxWidth) {
-            // Handle very long word that exceeds maxWidth on its own
-            lines.push(word); // Add the long word as its own line (will be clipped)
-            currentLine = ""; // Reset current line
-          } else {
-            // Push the completed line
+          // If not the first word on the line, push current line and start new with this word
+          if (currentLine) {
             lines.push(currentLine);
-            // Start new line with the current word
             currentLine = word;
-            // Check again if this new word *alone* exceeds width (edge case for next iteration)
-            if (this.ctx.measureText(currentLine).width > maxWidth) {
-              lines.push(currentLine);
-              currentLine = "";
-            }
+          } else {
+            // This is a single word too long for the line
+            lines.push(word);
+            currentLine = "";
           }
         }
       }
-      // Add the last remaining line
+
+      // Add the last line
       if (currentLine) {
         lines.push(currentLine);
       }
     } else {
-      // --- Logic for when wrap is FALSE ---
-      // Split *only* by explicit newline characters
-      lines = text.split("\n");
-      // No further width-based wrapping needed. Each element in 'lines' is a line.
+      // No newlines and no wrap - just use the text as a single line
+      lines.push(text);
     }
 
     // --- 2. Determine Vertical Alignment & Starting Y ---
@@ -1094,7 +1117,7 @@ export class Renderer {
 
       // If we passed the checks, the line is at least partially visible.
       // Draw the text - the clipping region handles exact boundaries.
-      this.ctx.fillText(lines[i], x, lineY); // Draw the line (might exceed maxWidth if wrap=false)
+      this.ctx.fillText(lines[i], x, lineY, maxWidth); // Add maxWidth for clipping
     }
 
     // Restore original baseline if necessary
@@ -1169,5 +1192,103 @@ export class Renderer {
       width: fillHandleSize,
       height: fillHandleSize,
     };
+  }
+
+  /**
+   * Renders a resize divider overlay for column or row resizing operations
+   * @param canvasSnapshot Canvas snapshot to use as background
+   * @param type Type of resize ('column' or 'row')
+   * @param index Index of the column or row being resized
+   * @param newSize New width or height of the column or row
+   */
+  public renderResizeDivider(
+    canvasSnapshot: HTMLCanvasElement,
+    type: "column" | "row",
+    index: number,
+    newSize: number
+  ): void {
+    const {
+      headerHeight,
+      rowNumberWidth,
+      highlightBorderColor,
+      resizeHeaderBgColor,
+      resizeHeaderBgAlphaBlend,
+      resizeRowBgColor,
+      resizeRowBgAlphaBlend,
+    } = this.options;
+
+    // Get scroll positions
+    const scrollLeft = this.stateManager.getScrollLeft();
+    const scrollTop = this.stateManager.getScrollTop();
+
+    // Clear the canvas
+    this.ctx.clearRect(0, 0, this.ctx.canvas.width, this.ctx.canvas.height);
+
+    // Draw the snapshot
+    this.ctx.drawImage(canvasSnapshot, 0, 0);
+
+    // Save context
+    this.ctx.save();
+
+    // Set styles for divider
+    this.ctx.strokeStyle = highlightBorderColor;
+    this.ctx.lineWidth = 2;
+
+    if (type === "column") {
+      // resize column
+      // Calculate column position
+      const columnLeft = this.dimensionCalculator.getColumnLeft(index);
+
+      // Convert to viewport coordinates
+      const dividerX = columnLeft + newSize - scrollLeft - 0.5;
+
+      // Draw the vertical divider line
+      this.ctx.beginPath();
+      this.ctx.moveTo(dividerX, 0);
+      this.ctx.lineTo(dividerX, this.ctx.canvas.height);
+      this.ctx.stroke();
+
+      if (resizeHeaderBgColor) {
+        if (resizeHeaderBgAlphaBlend) {
+          this.ctx.save();
+          this.ctx.globalCompositeOperation = resizeHeaderBgAlphaBlend;
+        }
+        // Add visual feedback in the header area
+        this.ctx.fillStyle = resizeHeaderBgColor; // Light blue with opacity
+        this.ctx.fillRect(columnLeft - scrollLeft, 0, newSize, headerHeight);
+        if (resizeHeaderBgAlphaBlend) {
+          this.ctx.restore();
+        }
+      }
+    } else {
+      // resize row
+      // Calculate row position
+      const rowTop = this.dimensionCalculator.getRowTop(index);
+
+      // Convert to viewport coordinates
+      const dividerY = rowTop + newSize - scrollTop - 0.5;
+
+      // Draw the horizontal divider line
+      this.ctx.beginPath();
+      this.ctx.moveTo(0, dividerY);
+      this.ctx.lineTo(this.ctx.canvas.width, dividerY);
+      this.ctx.stroke();
+
+      if (resizeRowBgColor) {
+        if (resizeRowBgAlphaBlend) {
+          this.ctx.save();
+          this.ctx.globalCompositeOperation = resizeRowBgAlphaBlend;
+        }
+        // Add visual feedback in the row number area
+        this.ctx.fillStyle = resizeRowBgColor;
+        this.ctx.fillRect(0, rowTop - scrollTop, rowNumberWidth, newSize);
+        if (resizeRowBgAlphaBlend) {
+          this.ctx.restore();
+        }
+      }
+    }
+
+    // Restore context
+    this.ctx.restore();
   }
 }

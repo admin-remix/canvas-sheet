@@ -30,10 +30,13 @@ export class EditingManager {
   private dropdown: HTMLDivElement;
   private dropdownSearchInput: HTMLInputElement;
   private dropdownList: HTMLUListElement;
-
+  private dropdownFooter: HTMLDivElement;
+  private dropdownDoneButton: HTMLButtonElement;
+  private dropdownClearButton: HTMLButtonElement;
   // Dropdown state
   private dropdownItems: DropdownItem[] = [];
   private highlightedDropdownIndex: number = -1;
+  private selectedDropdownItems: Set<any> = new Set(); // Track multi-selected items
   private DEFAULT_SAFE_MARGIN = 50;
   private debouncedLazySearch: (searchTerm: string) => void;
 
@@ -59,7 +62,9 @@ export class EditingManager {
     this.dropdown = dropdownElements.dropdown;
     this.dropdownSearchInput = dropdownElements.searchInput;
     this.dropdownList = dropdownElements.list;
-
+    this.dropdownFooter = dropdownElements.footer;
+    this.dropdownDoneButton = dropdownElements.doneButton;
+    this.dropdownClearButton = dropdownElements.clearButton;
     // Initialize debounced search with 300ms delay
     this.debouncedLazySearch = debounce(
       this._handleLazySearch.bind(this),
@@ -94,6 +99,14 @@ export class EditingManager {
       "click",
       this._handleDropdownItemClick.bind(this)
     );
+    this.dropdownDoneButton.addEventListener(
+      "click",
+      this._handleDropdownDoneButtonClick.bind(this)
+    );
+    this.dropdownClearButton.addEventListener(
+      "click",
+      this._handleDropdownClearButtonClick.bind(this)
+    );
   }
 
   public isEditorActive(nonCustomEditor = false): boolean {
@@ -105,6 +118,20 @@ export class EditingManager {
 
   public isDropdownVisible(): boolean {
     return this.dropdown.style.display !== "none";
+  }
+
+  private _handleDropdownClearButtonClick(): void {
+    this.selectedDropdownItems.clear();
+    this.dropdownList
+      .querySelectorAll("li input[type='checkbox']")
+      .forEach((input) => {
+        (input as HTMLInputElement).checked = false;
+      });
+  }
+
+  private _handleDropdownDoneButtonClick(): void {
+    this.deactivateEditor(true, true);
+    this.domManager.focusContainer();
   }
 
   public activateEditor(
@@ -317,12 +344,37 @@ export class EditingManager {
 
     if (type === "select" || type === "boolean") {
       // For dropdowns, the value is updated on click, just need to check if it changed
+      const isMultiSelect = this.domManager.isDropdownMultiSelect();
+
       if (this.isDropdownVisible()) {
+        // For multi-select, ensure the selected values are applied on deactivate
+        if (isMultiSelect && saveChanges) {
+          const valueToSet = Array.from(this.selectedDropdownItems);
+          // Check if array values are different
+          let different = false;
+          if (Array.isArray(originalValue)) {
+            different =
+              JSON.stringify(valueToSet.sort()) !==
+              JSON.stringify([...originalValue].sort());
+          } else {
+            different = true; // Different types, so they're different
+          }
+
+          if (different) {
+            this.stateManager.updateCellInternal(row, col, valueToSet);
+            valueChanged = true;
+          }
+        }
+
         this.hideDropdown(); // Ensure dropdown is hidden even if no selection made
         redrawRequired = true; // Hiding dropdown requires redraw
       }
-      const currentValue = this.stateManager.getCellData(row, col);
-      valueChanged = currentValue !== originalValue;
+
+      // For single-select, check if the value changed (already handled by click in multi-select)
+      if (!isMultiSelect && !valueChanged) {
+        const currentValue = this.stateManager.getCellData(row, col);
+        valueChanged = currentValue !== originalValue;
+      }
     } else {
       // For text input editor and textarea
       const isTextareaActive = this.editorTextarea.style.display !== "none";
@@ -330,24 +382,30 @@ export class EditingManager {
 
       if (isTextareaActive || isInputActive) {
         if (saveChanges) {
-          const newValueRaw = isTextareaActive
+          let newValueRaw = isTextareaActive
             ? this.editorTextarea.value
             : this.editorInput.value;
 
           const schemaCol = this.stateManager.getSchemaForColumn(col);
           const colKey = this.stateManager.getColumnKey(col);
+          // if the column has autoTrim, trim the value
+          if (schemaCol?.autoTrim) {
+            newValueRaw = newValueRaw?.trim();
+          }
           const newValue = parseValueFromInput(newValueRaw, schemaCol?.type);
           const validationResult = validateInput(
             newValue,
             schemaCol,
             colKey,
             this.stateManager.cachedDropdownOptionsByColumn.get(colKey),
-            this.options.verbose
+            this.options.verbose,
+            this.stateManager.getData(true),
+            row
           );
           if ("error" in validationResult) {
             log("log", this.options.verbose, validationResult.error);
             // Potentially show an error message to the user here
-            if (validationResult.errorType === "required") {
+            if (validationResult.errorType === "required" && !originalValue) {
               this.stateManager.updateCell(
                 row,
                 `${ERROR_FIELD_PREFIX}${colKey}`,
@@ -400,7 +458,11 @@ export class EditingManager {
     }
     // If the value changed or editor/dropdown was hidden, redraw the sheet
     if (valueChanged || redrawRequired) {
-      this.renderer.draw();
+      if (this.options.autoResizeRowHeight) {
+        this.interactionManager.resizeRowsForColumn(); // draws automatically
+      } else {
+        this.renderer.draw();
+      }
     }
   }
 
@@ -521,14 +583,48 @@ export class EditingManager {
   private _populateDropdown(clear = false): void {
     if (clear) {
       this.dropdownList.innerHTML = "";
+
+      // sort to keep the selected items at the top
+      this.dropdownItems.sort((a, b) => {
+        const aSelected = this.selectedDropdownItems.has(a.id);
+        const bSelected = this.selectedDropdownItems.has(b.id);
+        return aSelected === bSelected ? 0 : aSelected ? -1 : 1;
+      });
     }
+
+    const isMultiSelect = this.domManager.isDropdownMultiSelect();
+
     this.dropdownItems.forEach((item, index) => {
       const li = document.createElement("li");
       li.className = `spreadsheet-dropdown-item${
         item.id === null ? " spreadsheet-dropdown-item-blank" : ""
       }`;
-      li.textContent = item.name;
-      li.title = item.name;
+
+      // For multi-select, add checkboxes
+      if (isMultiSelect) {
+        const wrapper = document.createElement("div");
+        wrapper.style.display = "flex";
+        wrapper.style.alignItems = "center";
+        wrapper.style.padding = "2px 4px";
+
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.style.marginRight = "4px";
+        checkbox.checked = this.selectedDropdownItems.has(item.id);
+
+        const label = document.createElement("span");
+        label.textContent = item.name;
+        label.title = item.name;
+
+        wrapper.appendChild(checkbox);
+        wrapper.appendChild(label);
+        li.appendChild(wrapper);
+      } else {
+        // Single-select (original behavior)
+        li.textContent = item.name;
+        li.title = item.name;
+      }
+
       li.dataset.index = String(index);
       // Store the actual ID value (could be boolean, number, string, null)
       li.dataset.value = String(
@@ -539,25 +635,11 @@ export class EditingManager {
     });
   }
 
-  private _adjustDropdown() {
+  private _adjustDropdown(wasSameColumn = false) {
     // Use requestAnimationFrame to measure after display:block takes effect
     requestAnimationFrame(() => {
-      const scrollHeight = this.dropdown.scrollHeight;
-      const clientHeight = this.dropdown.clientHeight;
-
-      if (clientHeight >= scrollHeight) {
-        // no scrollbar
-        const totalContentHeight = [...this.dropdown.children].reduce(
-          (a, m) => a + (m as HTMLElement).getBoundingClientRect().height,
-          0
-        );
-        this.dropdown.style.height = `${Math.min(
-          totalContentHeight + 5,
-          window.innerHeight - this.DEFAULT_SAFE_MARGIN
-        )}px`; // extra height to not show scrollbar
-      }
-
       const dropdownBounds = this.dropdown.getBoundingClientRect();
+      let dropdownHeight = dropdownBounds.height;
 
       const rightX = +(this.dropdown.getAttribute("data-right-x") || 0);
       const absoluteY = +(this.dropdown.getAttribute("data-absolute-y") || 0);
@@ -571,18 +653,58 @@ export class EditingManager {
         window.innerWidth - this.DEFAULT_SAFE_MARGIN
       ) {
         this.dropdown.style.left = `${rightX - dropdownBounds.width}px`;
-        this.dropdown.style.resize = "vertical"; // prevent horizontal resizing
+      }
+
+      if (!wasSameColumn) {
+        // Calculate content height based on the number of items
+        const listItems = this.dropdownList.querySelectorAll("li");
+        let contentHeight = 0;
+
+        if (listItems.length > 0) {
+          // Get the height of a single item and multiply by the number of items
+          const singleItemHeight = listItems[0].offsetHeight || 30; // Default to 30px if can't measure
+
+          // Calculate the content height based on items
+          contentHeight = listItems.length * singleItemHeight;
+
+          // Add height for the search input (approximately 40px)
+          contentHeight += this.dropdownSearchInput.offsetHeight;
+
+          // Add height for footer if visible (approximately 40px)
+          if (this.dropdownFooter.style.display !== "none") {
+            contentHeight += this.dropdownFooter.offsetHeight;
+          }
+
+          // Add some padding
+          contentHeight += 20;
+
+          // Constrain to a reasonable range (min 100px, max 300px)
+          contentHeight = Math.max(100, Math.min(contentHeight, 300));
+        } else {
+          // Default height if no items
+          contentHeight = 100;
+        }
+
+        // Apply the calculated height
+        this.dropdown.style.height = `${contentHeight}px`;
+        dropdownHeight = contentHeight;
       }
 
       const maxHeightToCheck =
         Math.max(window.innerHeight, document.body.scrollHeight) -
         this.DEFAULT_SAFE_MARGIN;
       // move the dropdown up if it extends beyond the bottom of the window
-      if (dropdownBounds.y + dropdownBounds.height > maxHeightToCheck) {
+      if (dropdownBounds.y + dropdownHeight > maxHeightToCheck) {
         this.dropdown.style.top = `${
-          absoluteY - boundsHeight - dropdownBounds.height
+          absoluteY - boundsHeight - dropdownHeight
         }px`;
       }
+
+      // Show/hide the Done button based on multi-select mode
+      const isMultiSelect = this.domManager.isDropdownMultiSelect();
+      this.dropdownDoneButton.style.display = isMultiSelect
+        ? "inline-block"
+        : "none";
     });
   }
 
@@ -598,7 +720,30 @@ export class EditingManager {
   ): Promise<void> {
     const { blankDropdownItemLabel, onLazySearch, verbose } = this.options;
     this.dropdownItems = [];
-    this.domManager.toggleDropdownLoader(false); // Hide loading indicator initially
+
+    // Hide the loader initially
+    this.domManager.toggleDropdownLoader(false);
+
+    // Determine if this is a multi-select dropdown
+    const isMultiSelect = schemaCol?.multiple === true;
+    this.domManager.setDropdownMultiSelect(isMultiSelect);
+
+    // Initialize selected items from current cell value
+    this.selectedDropdownItems.clear();
+    const colIndex = this.stateManager.getColumns().indexOf(colKey);
+    const currentValue = this.stateManager.getCellData(rowIndex, colIndex);
+
+    if (isMultiSelect && Array.isArray(currentValue)) {
+      // Add all selected values to the Set
+      currentValue.forEach((value) => {
+        if (value !== null && value !== undefined) {
+          this.selectedDropdownItems.add(value);
+        }
+      });
+    } else if (currentValue !== null && currentValue !== undefined) {
+      // Single-select case (for backward compatibility)
+      this.selectedDropdownItems.add(currentValue);
+    }
 
     const defaultValues = schemaCol?.nullable
       ? [{ id: null, name: blankDropdownItemLabel }]
@@ -689,6 +834,9 @@ export class EditingManager {
       this._populateDropdown(true);
     }
 
+    // Display the Done button based on the multiSelect setting
+    this.dropdownFooter.style.display = isMultiSelect ? "block" : "none";
+
     // convert bounds into absolute position
     const offsetLeft = this.container.offsetLeft;
     const offsetTop = this.container.offsetTop;
@@ -696,22 +844,30 @@ export class EditingManager {
     const absoluteX = boundsX + offsetLeft;
     const absoluteY = boundsY + offsetTop + boundsHeight;
     const rightX = absoluteX + boundsWidth;
+
+    const wasSameColumn = this.dropdown.getAttribute("data-column") === colKey;
     // Position and display the dropdown
-    this.dropdown.style.display = "block";
+    this.dropdown.style.display = "flex"; // Use flex display
     this.dropdown.style.left = `${absoluteX}px`;
     this.dropdown.style.top = `${absoluteY}px`; // Position below cell initially
-    this.dropdown.style.minWidth = `${boundsWidth}px`;
-    this.dropdown.style.minHeight = "100px"; // Limit height
-    this.dropdown.style.resize = "both";
-    this.dropdown.style.overflow = "auto";
     this.dropdown.setAttribute("data-right-x", `${rightX}`);
     this.dropdown.setAttribute("data-absolute-y", `${absoluteY}`);
     this.dropdown.setAttribute("data-bounds-height", `${boundsHeight}`);
 
-    this.dropdownSearchInput.placeholder =
-      schemaCol?.placeholder || "Search...";
+    if (!wasSameColumn) {
+      this.dropdown.style.minWidth = `${boundsWidth}px`;
+      // this.dropdown.style.minHeight = "200px"; // Minimum height
+      this.dropdown.style.maxHeight = "400px"; // Maximum height
+      this.dropdown.style.height = "300px"; // Default height
+      this.dropdown.style.width = `${Math.max(boundsWidth, 200)}px`; // Min width of 200px
+      this.dropdown.style.resize = "both"; // Allow resizing
+      this.dropdown.style.overflow = "hidden"; // Hide overflow for the container
+      this.dropdown.setAttribute("data-column", `${colKey}`);
+      this.dropdownSearchInput.placeholder =
+        schemaCol?.placeholder || "Search...";
+    }
 
-    this._adjustDropdown();
+    this._adjustDropdown(wasSameColumn);
 
     // Reset search and focus
     this.dropdownSearchInput.value = "";
@@ -796,6 +952,9 @@ export class EditingManager {
       : [];
 
     try {
+      // Show the loading indicator as an overlay on the list
+      this.domManager.toggleDropdownLoader(true);
+
       const jobId = this.stateManager.getActiveEditor()?.asyncJobId;
       const items = await lazySearch({
         searchTerm,
@@ -803,10 +962,13 @@ export class EditingManager {
         colKey,
         rowData,
       });
+      // Check if we're still in the same async job
       if (jobId !== this.stateManager.currentAsyncJobId) {
         log("log", this.options.verbose, `Async operation aborted: ${colKey}`);
+        this.domManager.toggleDropdownLoader(false);
         return;
       }
+
       const latestActiveEditor = this.stateManager.getActiveEditor();
       // Make sure we're still editing the same cell after the async operation
       if (
@@ -823,12 +985,6 @@ export class EditingManager {
       // Rebuild dropdown list
       this._populateDropdown(true);
 
-      this.dropdown.style.height = `${Math.min(
-        this.dropdown.scrollHeight,
-        200
-      )}px`;
-      this._adjustDropdown();
-
       // Update highlight
       const visibleItems = Array.from(
         this.dropdownList.querySelectorAll("li:not(.hidden)")
@@ -842,7 +998,7 @@ export class EditingManager {
         `Error calling onLazySearch: ${error}`
       );
     } finally {
-      // Hide loading indicator
+      // Always hide loading indicator when done
       this.domManager.toggleDropdownLoader(false);
     }
   }
@@ -857,6 +1013,7 @@ export class EditingManager {
     if (!visibleItems.length && event.key !== "Escape") return;
 
     let currentHighlight = this.highlightedDropdownIndex;
+    const isMultiSelect = this.domManager.isDropdownMultiSelect();
 
     switch (event.key) {
       case "ArrowDown":
@@ -867,6 +1024,58 @@ export class EditingManager {
         event.preventDefault();
         currentHighlight =
           (currentHighlight - 1 + visibleItems.length) % visibleItems.length;
+        break;
+      case " ": // Space key
+        // In multi-select mode, toggle the highlighted item's selection state
+        if (
+          isMultiSelect &&
+          currentHighlight >= 0 &&
+          currentHighlight < visibleItems.length
+        ) {
+          event.preventDefault();
+          const item = visibleItems[currentHighlight];
+          const itemIndex = parseInt(item.dataset.index || "-1", 10);
+
+          if (itemIndex >= 0 && itemIndex < this.dropdownItems.length) {
+            const selectedData = this.dropdownItems[itemIndex];
+            const itemValue = selectedData.id;
+
+            // Toggle selection
+            if (this.selectedDropdownItems.has(itemValue)) {
+              this.selectedDropdownItems.delete(itemValue);
+            } else {
+              this.selectedDropdownItems.add(itemValue);
+            }
+
+            // Update checkbox state
+            const checkbox = item.querySelector(
+              'input[type="checkbox"]'
+            ) as HTMLInputElement;
+            if (checkbox) {
+              checkbox.checked = this.selectedDropdownItems.has(itemValue);
+            }
+
+            // Update the cell value immediately
+            const activeEditor = this.stateManager.getActiveEditor();
+            if (activeEditor) {
+              const { row, col } = activeEditor;
+              const colKey = this.stateManager.getColumnKey(col);
+              const valueToSet = Array.from(this.selectedDropdownItems);
+
+              const oldValue = this.stateManager.updateCellInternal(
+                row,
+                col,
+                valueToSet
+              );
+              this.interactionManager._batchUpdateCellsAndNotify(
+                [row],
+                [colKey],
+                [{ [colKey]: oldValue }]
+              );
+            }
+            return;
+          }
+        }
         break;
       case "Enter":
         event.preventDefault();
@@ -919,24 +1128,59 @@ export class EditingManager {
   }
 
   private _handleDropdownItemClick(event: MouseEvent): void {
-    const target = event.target as HTMLLIElement;
-    if (
-      target.tagName === "LI" &&
-      target.classList.contains("spreadsheet-dropdown-item")
-    ) {
-      const activeEditor = this.stateManager.getActiveEditor();
-      if (!activeEditor) return;
+    const target = event.target as HTMLElement;
+    const isMultiSelect = this.domManager.isDropdownMultiSelect();
 
-      const itemIndex = parseInt(target.dataset.index || "-1", 10);
-      if (itemIndex < 0 || itemIndex >= this.dropdownItems.length) return;
+    // Find the actual li element (might be clicking on checkbox, span, or div inside the li)
+    let li: HTMLLIElement | null = null;
+    let node: HTMLElement | null = target;
 
-      const selectedData = this.dropdownItems[itemIndex];
-      const { row, col } = activeEditor;
-      const colKey = this.stateManager.getColumnKey(col);
-      this.stateManager.addCachedDropdownOptionForColumn(colKey, [
-        selectedData,
-      ]);
-      let valueToSet: any = selectedData.id;
+    while (node && node.tagName !== "LI") {
+      node = node.parentElement;
+    }
+
+    li = node as HTMLLIElement;
+
+    if (!li || !li.classList.contains("spreadsheet-dropdown-item")) {
+      return;
+    }
+
+    const activeEditor = this.stateManager.getActiveEditor();
+    if (!activeEditor) return;
+
+    const itemIndex = parseInt(li.dataset.index || "-1", 10);
+    if (itemIndex < 0 || itemIndex >= this.dropdownItems.length) return;
+
+    const selectedData = this.dropdownItems[itemIndex];
+    const { row, col } = activeEditor;
+    const colKey = this.stateManager.getColumnKey(col);
+    this.stateManager.addCachedDropdownOptionForColumn(colKey, [selectedData]);
+
+    let valueToSet: any;
+
+    if (isMultiSelect) {
+      // For multi-select, toggle the selected state
+      const itemValue = selectedData.id;
+
+      if (this.selectedDropdownItems.has(itemValue)) {
+        this.selectedDropdownItems.delete(itemValue);
+      } else {
+        this.selectedDropdownItems.add(itemValue);
+      }
+
+      // Update UI to show selection state
+      const checkbox = li.querySelector(
+        'input[type="checkbox"]'
+      ) as HTMLInputElement;
+      if (checkbox) {
+        checkbox.checked = this.selectedDropdownItems.has(itemValue);
+      }
+      // don't close the dropdown, user will click "Done" button to save
+      // otherwise, the changes will not be saved
+      return;
+    } else {
+      // Single-select behavior (original)
+      valueToSet = selectedData.id;
 
       // Handle boolean case explicitly as 'true'/'false' strings might cause issues
       if (typeof valueToSet === "string" && activeEditor.type === "boolean") {
@@ -944,27 +1188,23 @@ export class EditingManager {
         else if (valueToSet.toLowerCase() === "false") valueToSet = false;
         // Keep as null/undefined if it's the blank option
       }
-
-      // Update the data in the state manager
-      const oldValue = this.stateManager.updateCellInternal(
-        row,
-        col,
-        valueToSet
-      );
-
-      this.interactionManager._batchUpdateCellsAndNotify(
-        [row],
-        [colKey],
-        [{ [colKey]: oldValue }]
-      ); // Update disabled states after change
-
-      // delay the dropdown deactivation to stop the same keyup event from reopening the dropdown
-      setTimeout(() => {
-        this.deactivateEditor(false); // Deactivate editor (changes already saved)
-        // Optionally move to the next cell after selection
-        // this.interactionManager.moveActiveCell(1, 0);
-        this.domManager.focusContainer(); // Return focus to the main grid container
-      }, 200);
     }
+
+    // Update the data in the state manager
+    const oldValue = this.stateManager.updateCellInternal(row, col, valueToSet);
+
+    this.interactionManager._batchUpdateCellsAndNotify(
+      [row],
+      [colKey],
+      [{ [colKey]: oldValue }]
+    ); // Update disabled states after change
+
+    // delay the dropdown deactivation to stop the same keyup event from reopening the dropdown
+    setTimeout(() => {
+      this.deactivateEditor(false); // Deactivate editor (changes already saved)
+      // Optionally move to the next cell after selection
+      // this.interactionManager.moveActiveCell(1, 0);
+      this.domManager.focusContainer(); // Return focus to the main grid container
+    }, 200);
   }
 }

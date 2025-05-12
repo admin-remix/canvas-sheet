@@ -43,6 +43,17 @@ export function formatValue(
       return value === true ? "True" : value === false ? "False" : "";
     case "select":
       if (cachedDropdownOptions) {
+        // Handle multi-select (array of values)
+        if (Array.isArray(value)) {
+          if (value.length === 0) return "";
+
+          // Format each selected item and join with commas
+          return value
+            .map((v) => cachedDropdownOptions.get(v) || "")
+            .join(", ");
+        }
+
+        // Single-select (legacy support)
         const selectedOption = cachedDropdownOptions.get(value);
         return selectedOption ? selectedOption : "";
       }
@@ -108,13 +119,31 @@ export function parseValueFromInput(value: string, type?: DataType): any {
   }
 }
 
+// Helper function to get comparable value
+function getComparableValue(val: any): string {
+  if (val === null || val === undefined) return "";
+
+  // For string values, use lowercase for case-insensitive comparison
+  if (typeof val === "string") return val.toLowerCase();
+
+  // Handle array values (e.g., for multi-select)
+  if (Array.isArray(val)) {
+    return [...val].sort().join("|");
+  }
+
+  // For other types, convert to string
+  return String(val);
+}
+
 /** Validate input value against column schema */
 export function validateInput(
   value: any,
   schemaCol: ColumnSchema | undefined,
   colKey: string,
   dropdownOptions: Map<string | number, string> | undefined,
-  verbose: boolean
+  verbose: boolean,
+  data: any[], // Data array for uniqueness validation
+  rowIndex: number // Row index to exclude current row from uniqueness check
 ):
   | {
       success: boolean;
@@ -129,7 +158,10 @@ export function validateInput(
   // Check required
   if (
     schemaCol.required &&
-    (value === null || value === undefined || value === "")
+    (value === null ||
+      value === undefined ||
+      value === "" ||
+      (Array.isArray(value) && value.length === 0))
   ) {
     const error = `Column "${colLabel}" is required.`;
     log("warn", verbose, `Validation failed: ${error}.`);
@@ -137,8 +169,49 @@ export function validateInput(
   }
 
   // Skip further checks if value is null/empty and not required
-  if (value === null || value === undefined || value === "")
+  if (
+    value === null ||
+    value === undefined ||
+    value === "" ||
+    (Array.isArray(value) && value.length === 0)
+  )
     return { success: true };
+
+  // Check uniqueness constraint if enabled
+  if (
+    schemaCol.unique &&
+    data &&
+    data.length > 0 &&
+    value !== null &&
+    value !== undefined
+  ) {
+    // Prepare the value we're checking for uniqueness
+    const comparableValue = getComparableValue(value);
+
+    // Check if this value already exists in other rows
+    let isDuplicate = false;
+
+    // First pass: populate the map with all values except current row
+    for (let idx = 0; idx < data.length; idx++) {
+      // Skip current row when building the map
+      if (idx === rowIndex) continue;
+
+      const rowValue = data[idx][colKey];
+      const comparableRowValue = getComparableValue(rowValue);
+
+      // For checking uniqueness, we only need to know if the value exists
+      if (comparableRowValue === comparableValue) {
+        isDuplicate = true;
+        break;
+      }
+    }
+
+    if (isDuplicate) {
+      const error = `Value must be unique in column "${colLabel}".`;
+      log("warn", verbose, `Validation failed: ${error}.`);
+      return { success: false, error, errorType: "unique" };
+    }
+  }
 
   // Check type-specific constraints
   switch (schemaCol.type) {
@@ -197,16 +270,28 @@ export function validateInput(
       }
       break;
     case "select":
+      // For multi-select, check each value in the array
+      if (Array.isArray(value)) {
+        for (const item of value) {
+          if (item !== null && dropdownOptions && !dropdownOptions.has(item)) {
+            const error = `Invalid option "${item}" for column "${colLabel}".`;
+            log("warn", verbose, `Validation failed: ${error}.`);
+            return { success: false, error, errorType: "value" };
+          }
+        }
+        return { success: true };
+      }
+
       // Check if the value exists in the provided options (allow null for blank)
       if (value !== null && dropdownOptions && !dropdownOptions.has(value)) {
-        const error = `Invalid selection for column "${colLabel}".`;
+        const error = `Invalid option "${value}" for column "${colLabel}".`;
         log("warn", verbose, `Validation failed: ${error}.`);
         return { success: false, error, errorType: "value" };
       }
       break;
   }
 
-  return { success: true }; // All checks passed
+  return { success: true };
 }
 
 export function chunkArray<T>(array: T[], chunkSize: number): T[][] {
