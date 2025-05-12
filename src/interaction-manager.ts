@@ -332,6 +332,11 @@ export class InteractionManager {
     return null;
   }
 
+  /**
+   * Starts column resize operation
+   * @param colIndex Column index to resize
+   * @param startX Starting X position
+   */
   private _startColumnResize(colIndex: number, startX: number): void {
     log(
       "log",
@@ -343,14 +348,34 @@ export class InteractionManager {
     this.editingManager.deactivateEditor(false);
     this.editingManager.hideDropdown();
 
+    // Take a snapshot of the current canvas state for faster rendering during resize
+    const canvas = this.domManager.getCanvas();
+    const snapshotCanvas = document.createElement("canvas");
+    snapshotCanvas.width = canvas.width;
+    snapshotCanvas.height = canvas.height;
+    const snapshotCtx = snapshotCanvas.getContext("2d");
+    if (snapshotCtx) {
+      snapshotCtx.drawImage(canvas, 0, 0);
+    }
+
+    // Store the original width to calculate delta
+    const originalWidth = this.stateManager.getColumnWidth(colIndex);
+
     this.stateManager.setResizeColumnState({
       isResizing: true,
       columnIndex: colIndex,
       startX: startX,
+      canvasSnapshot: snapshotCanvas, // Store the canvas snapshot
+      originalWidth: originalWidth, // Store the original width
     });
     this.domManager.setCursor("col-resize");
   }
 
+  /**
+   * Starts row resize operation
+   * @param rowIndex Row index to resize
+   * @param startY Starting Y position
+   */
   private _startRowResize(rowIndex: number, startY: number): void {
     log(
       "log",
@@ -362,83 +387,104 @@ export class InteractionManager {
     this.editingManager.deactivateEditor(false);
     this.editingManager.hideDropdown();
 
+    // Take a snapshot of the current canvas state for faster rendering during resize
+    const canvas = this.domManager.getCanvas();
+    const snapshotCanvas = document.createElement("canvas");
+    snapshotCanvas.width = canvas.width;
+    snapshotCanvas.height = canvas.height;
+    const snapshotCtx = snapshotCanvas.getContext("2d");
+    if (snapshotCtx) {
+      snapshotCtx.drawImage(canvas, 0, 0);
+    }
+
+    // Store the original height to calculate delta
+    const originalHeight = this.stateManager.getRowHeight(rowIndex);
+
     this.stateManager.setResizeRowState({
       isResizing: true,
       rowIndex: rowIndex,
       startY: startY,
+      canvasSnapshot: snapshotCanvas, // Store the canvas snapshot
+      originalHeight: originalHeight, // Store the original height
     });
     this.domManager.setCursor("row-resize");
   }
 
   public handleResizeMouseMove(event: MouseEvent): void {
+    const { minColumnWidth, maxColumnWidth, minRowHeight, maxRowHeight } =
+      this.options;
     const columnResizeState = this.stateManager.getResizeColumnState();
     const rowResizeState = this.stateManager.getResizeRowState();
 
     if (
       columnResizeState.isResizing &&
       columnResizeState.columnIndex !== null &&
-      columnResizeState.startX !== null
+      columnResizeState.startX !== null &&
+      columnResizeState.canvasSnapshot
     ) {
-      const { minColumnWidth, maxColumnWidth } = this.options;
+      ///// RESIZE COLUMN /////
+      // Calculate delta based on original position to avoid accumulating rounding errors
       const deltaX = event.clientX - columnResizeState.startX;
       const colIndex = columnResizeState.columnIndex;
-      const originalWidth = this.stateManager.getColumnWidth(colIndex);
+
+      // Use the original width stored when resize started
+      const originalWidth =
+        columnResizeState.originalWidth ||
+        this.stateManager.getColumnWidth(colIndex);
       let newWidth = originalWidth + deltaX;
 
       newWidth = Math.max(minColumnWidth, Math.min(newWidth, maxColumnWidth));
 
-      if (newWidth !== originalWidth) {
-        this.stateManager.setColumnWidth(colIndex, newWidth);
-        this.stateManager.setResizeColumnState({
-          ...columnResizeState,
-          startX: event.clientX,
-        }); // Update startX
-        this.dimensionCalculator.calculateTotalSize(); // Recalculate total size
+      // Only update the width in StateManager, don't recalculate dimensions yet
+      this.stateManager.setColumnWidth(colIndex, newWidth);
 
-        // Auto-resize row heights if enabled
-        if (this.options.autoResizeRowHeight) {
-          this.dimensionCalculator.autoResizeRowHeights(colIndex);
-        }
+      // Use the renderer to draw the resize divider
+      this.renderer.renderResizeDivider(
+        columnResizeState.canvasSnapshot,
+        "column",
+        colIndex,
+        newWidth
+      );
 
-        this.dimensionCalculator.calculateVisibleRange(); // Visible range might change
-        this.domManager.updateCanvasSize(
-          this.stateManager.getTotalContentWidth(),
-          this.stateManager.getTotalContentHeight()
-        ); // Update canvas display size
-        this.renderer.draw(); // Redraw with new size
-      }
+      // Don't update the startX so we always compute the delta from the original position
+      // This prevents accumulation of rounding errors during resize
     } else if (
       rowResizeState.isResizing &&
       rowResizeState.rowIndex !== null &&
-      rowResizeState.startY !== null
+      rowResizeState.startY !== null &&
+      rowResizeState.canvasSnapshot
     ) {
-      const { minRowHeight, maxRowHeight } = this.options;
+      ///// RESIZE ROW /////
+      // Calculate delta based on original position to avoid accumulating rounding errors
       const deltaY = event.clientY - rowResizeState.startY;
       const rowIndex = rowResizeState.rowIndex;
-      const originalHeight = this.stateManager.getRowHeight(rowIndex);
+
+      // Use the original height stored when resize started
+      const originalHeight =
+        rowResizeState.originalHeight ||
+        this.stateManager.getRowHeight(rowIndex);
       let newHeight = originalHeight + deltaY;
 
       newHeight = Math.max(minRowHeight, Math.min(newHeight, maxRowHeight));
 
-      if (newHeight !== originalHeight) {
-        this.stateManager.setRowHeight(rowIndex, newHeight);
-        this.stateManager.setResizeRowState({
-          ...rowResizeState,
-          startY: event.clientY,
-        }); // Update startY
-        this.dimensionCalculator.calculateTotalSize();
-        this.dimensionCalculator.calculateVisibleRange();
-        this.domManager.updateCanvasSize(
-          this.stateManager.getTotalContentWidth(),
-          this.stateManager.getTotalContentHeight()
-        );
-        this.renderer.draw();
-      }
+      // Only update the height in StateManager, don't recalculate dimensions yet
+      this.stateManager.setRowHeight(rowIndex, newHeight);
+
+      // Use the renderer to draw the resize divider
+      this.renderer.renderResizeDivider(
+        rowResizeState.canvasSnapshot,
+        "row",
+        rowIndex,
+        newHeight
+      );
+
+      // Don't update the startY so we always compute the delta from the original position
+      // This prevents accumulation of rounding errors during resize
     }
   }
 
-  public resizeRowsForColumn(colIndex: number): void {
-    this.dimensionCalculator.autoResizeRowHeights(colIndex);
+  public resizeRowsForColumn(): void {
+    this.dimensionCalculator.autoResizeRowHeights();
     this.dimensionCalculator.calculateTotalSize(); // Recalculate totals
     this.dimensionCalculator.calculateVisibleRange(); // Update visible range
     // Update canvas size if needed
@@ -464,15 +510,33 @@ export class InteractionManager {
         )}`
       );
 
-      // Final auto-resize row heights if enabled (ensures the final column width is used)
-      if (this.options.autoResizeRowHeight) {
-        this.resizeRowsForColumn(columnResizeState.columnIndex!);
+      // Now perform the actual recalculations that were delayed during drag
+      this.dimensionCalculator.calculateTotalSize();
+
+      // Auto-resize row heights if enabled (ensures the final column width is used)
+      if (
+        this.options.autoResizeRowHeight &&
+        columnResizeState.columnIndex !== null
+      ) {
+        this.resizeRowsForColumn();
+      } else {
+        // If not auto-resizing rows, still need to update other dimensions
+        this.dimensionCalculator.calculateVisibleRange();
+        this.domManager.updateCanvasSize(
+          this.stateManager.getTotalContentWidth(),
+          this.stateManager.getTotalContentHeight()
+        );
+        // Final full redraw
+        this.renderer.draw();
       }
 
+      // Clean up resize state, including the snapshot reference and other properties
       this.stateManager.setResizeColumnState({
         isResizing: false,
         columnIndex: null,
         startX: null,
+        canvasSnapshot: undefined,
+        originalWidth: undefined,
       });
     }
     if (rowResizeState.isResizing) {
@@ -485,10 +549,24 @@ export class InteractionManager {
           rowResizeState.rowIndex!
         )}`
       );
+
+      // Now perform the actual recalculations that were delayed during drag
+      this.dimensionCalculator.calculateTotalSize();
+      this.dimensionCalculator.calculateVisibleRange();
+      this.domManager.updateCanvasSize(
+        this.stateManager.getTotalContentWidth(),
+        this.stateManager.getTotalContentHeight()
+      );
+      // Final full redraw
+      this.renderer.draw();
+
+      // Clean up resize state, including the snapshot reference and other properties
       this.stateManager.setResizeRowState({
         isResizing: false,
         rowIndex: null,
         startY: null,
+        canvasSnapshot: undefined,
+        originalHeight: undefined,
       });
     }
 
@@ -776,6 +854,8 @@ export class InteractionManager {
       return;
     }
 
+    const { verbose, autoResizeRowHeight } = this.options;
+
     // Now we know startCell and endRow are not null
     const startCell = dragState.startCell; // Assign to new const for type narrowing
     const endRow = dragState.endRow; // Assign to new const for type narrowing
@@ -804,7 +884,7 @@ export class InteractionManager {
       if (isDisabledCell) {
         log(
           "log",
-          this.options.verbose,
+          verbose,
           `Skipping fill for disabled cell ${row},${startCol}`
         );
         continue;
@@ -814,7 +894,7 @@ export class InteractionManager {
       if (targetSchema?.type !== sourceType) {
         log(
           "log",
-          this.options.verbose,
+          verbose,
           `Skipping fill for row ${row}: Type mismatch (Source: ${sourceType}, Target: ${targetSchema?.type})`
         );
         continue;
@@ -836,7 +916,11 @@ export class InteractionManager {
     }
 
     if (changed) {
-      this.renderer.draw();
+      if (autoResizeRowHeight) {
+        this.resizeRowsForColumn();
+      } else {
+        this.renderer.draw();
+      }
     }
 
     if (cellUpdates.length > 0) {
@@ -1198,14 +1282,13 @@ export class InteractionManager {
         affectedColumns,
         affectedRows.map((m) => oldRows.get(m))
       );
-    }
-    if (changed) {
       log(
         "log",
         this.options.verbose,
         `Pasted single value to range [${targetRange.start.row},${targetRange.start.col}] -> [${targetRange.end.row},${targetRange.end.col}]`
       );
     }
+
     return changed;
   }
 

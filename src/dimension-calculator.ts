@@ -52,7 +52,7 @@ export class DimensionCalculator {
    * Automatically resize row heights based on cell content
    * @param colIndex Optional column index to only resize rows based on that specific column
    */
-  public autoResizeRowHeights(colIndex = -1): void {
+  public autoResizeRowHeights(): void {
     if (!this.options.autoResizeRowHeight || !this.canvasContext) {
       return;
     }

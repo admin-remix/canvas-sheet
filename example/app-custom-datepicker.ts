@@ -77,7 +77,13 @@ function generateRandomData(numRows: number): DataRow[] {
         : new Date(Math.floor(Math.random() * 10000000000))
             .toISOString()
             .split("T")[0],
-    locationId: Math.random() < 0.5 ? null : Math.floor(Math.random() * 10) + 1,
+    locationId:
+      Math.random() < 0.5
+        ? null
+        : Array.from(
+            { length: Math.floor(Math.random() * 3) + 1 },
+            () => Math.floor(Math.random() * 10) + 1
+          ),
     isRestricted: Math.random() < 0.5,
     salary: Math.floor(Math.random() * 100000) + 50000,
     notes: `Notes for Person ${i + 1}`,

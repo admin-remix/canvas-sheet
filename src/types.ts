@@ -85,12 +85,16 @@ export interface ResizeColumnState {
   isResizing: boolean;
   columnIndex: number | null;
   startX: number | null;
+  canvasSnapshot?: HTMLCanvasElement;
+  originalWidth?: number;
 }
 
 export interface ResizeRowState {
   isResizing: boolean;
   rowIndex: number | null;
   startY: number | null;
+  canvasSnapshot?: HTMLCanvasElement;
+  originalHeight?: number;
 }
 
 export interface VisibleCell {
@@ -136,11 +140,16 @@ export interface SpreadsheetOptions {
   customHeaderBgColor?: string;
   headerBgColor?: string;
   selectedHeaderBgColor?: string;
+  resizeHeaderBgColor?: string;
+  resizeHeaderBgAlphaBlend?: GlobalCompositeOperation; // allow customizing the alpha blend mode
+  resizeRowBgColor?: string;
+  resizeRowBgAlphaBlend?: GlobalCompositeOperation; // allow customizing the alpha blend mode
   readonlyHeaderBgColor?: string;
   readonlyHeaderTextColor?: string;
   headerClipText?: boolean; // Clip text or adjust(squish) text width to fit the header
   headerTextAlign?: "left" | "center" | "right";
   gridLineColor?: string;
+  resizeDividerColor?: string; // Color for resize divider lines
   rowNumberBgColor?: string;
   selectedRowNumberBgColor?: string;
   disabledCellBgColor?: string;

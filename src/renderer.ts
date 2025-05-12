@@ -1193,4 +1193,102 @@ export class Renderer {
       height: fillHandleSize,
     };
   }
+
+  /**
+   * Renders a resize divider overlay for column or row resizing operations
+   * @param canvasSnapshot Canvas snapshot to use as background
+   * @param type Type of resize ('column' or 'row')
+   * @param index Index of the column or row being resized
+   * @param newSize New width or height of the column or row
+   */
+  public renderResizeDivider(
+    canvasSnapshot: HTMLCanvasElement,
+    type: "column" | "row",
+    index: number,
+    newSize: number
+  ): void {
+    const {
+      headerHeight,
+      rowNumberWidth,
+      highlightBorderColor,
+      resizeHeaderBgColor,
+      resizeHeaderBgAlphaBlend,
+      resizeRowBgColor,
+      resizeRowBgAlphaBlend,
+    } = this.options;
+
+    // Get scroll positions
+    const scrollLeft = this.stateManager.getScrollLeft();
+    const scrollTop = this.stateManager.getScrollTop();
+
+    // Clear the canvas
+    this.ctx.clearRect(0, 0, this.ctx.canvas.width, this.ctx.canvas.height);
+
+    // Draw the snapshot
+    this.ctx.drawImage(canvasSnapshot, 0, 0);
+
+    // Save context
+    this.ctx.save();
+
+    // Set styles for divider
+    this.ctx.strokeStyle = highlightBorderColor;
+    this.ctx.lineWidth = 2;
+
+    if (type === "column") {
+      // resize column
+      // Calculate column position
+      const columnLeft = this.dimensionCalculator.getColumnLeft(index);
+
+      // Convert to viewport coordinates
+      const dividerX = columnLeft + newSize - scrollLeft - 0.5;
+
+      // Draw the vertical divider line
+      this.ctx.beginPath();
+      this.ctx.moveTo(dividerX, 0);
+      this.ctx.lineTo(dividerX, this.ctx.canvas.height);
+      this.ctx.stroke();
+
+      if (resizeHeaderBgColor) {
+        if (resizeHeaderBgAlphaBlend) {
+          this.ctx.save();
+          this.ctx.globalCompositeOperation = resizeHeaderBgAlphaBlend;
+        }
+        // Add visual feedback in the header area
+        this.ctx.fillStyle = resizeHeaderBgColor; // Light blue with opacity
+        this.ctx.fillRect(columnLeft - scrollLeft, 0, newSize, headerHeight);
+        if (resizeHeaderBgAlphaBlend) {
+          this.ctx.restore();
+        }
+      }
+    } else {
+      // resize row
+      // Calculate row position
+      const rowTop = this.dimensionCalculator.getRowTop(index);
+
+      // Convert to viewport coordinates
+      const dividerY = rowTop + newSize - scrollTop - 0.5;
+
+      // Draw the horizontal divider line
+      this.ctx.beginPath();
+      this.ctx.moveTo(0, dividerY);
+      this.ctx.lineTo(this.ctx.canvas.width, dividerY);
+      this.ctx.stroke();
+
+      if (resizeRowBgColor) {
+        if (resizeRowBgAlphaBlend) {
+          this.ctx.save();
+          this.ctx.globalCompositeOperation = resizeRowBgAlphaBlend;
+        }
+        // Add visual feedback in the row number area
+        this.ctx.fillStyle = resizeRowBgColor;
+        this.ctx.fillRect(0, rowTop - scrollTop, rowNumberWidth, newSize);
+        if (resizeRowBgAlphaBlend) {
+          this.ctx.restore();
+        }
+      }
+    }
+
+    // Restore context
+    this.ctx.restore();
+  }
 }
