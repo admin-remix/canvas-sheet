@@ -353,8 +353,8 @@ export class DomManager {
     };
   }
 
-  public focusContainer(): void {
-    this.container.focus();
+  public focusContainer(preventScroll: boolean = true): void {
+    this.container.focus({ preventScroll });
   }
 
   public setCursor(cursorType: string): void {

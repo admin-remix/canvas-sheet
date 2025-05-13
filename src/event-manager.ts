@@ -336,8 +336,6 @@ export class EventManager {
     if (redrawNeeded) {
       this.renderer.draw();
     }
-    if (event.button === 2) {
-    }
   }
   private _handleCanvasContextMenu(event: MouseEvent): void {
     event.preventDefault();

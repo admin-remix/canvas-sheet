@@ -395,7 +395,7 @@ export class Spreadsheet {
   }
 
   public focus(): void {
-    this.domManager.focusContainer();
+    this.domManager.focusContainer(false);
   }
   public setValueFromCustomEditor({
     rowIndex,
