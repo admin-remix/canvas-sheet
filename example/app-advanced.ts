@@ -98,7 +98,7 @@ const schema: SpreadsheetSchema = {
   locationId: {
     type: "select",
     label: "Location",
-    // tooltip: "Select your location",
+    nullable: true,
     values: LOCATIONS,
     placeholder: "Select location",
   },

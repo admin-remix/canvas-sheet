@@ -41,6 +41,7 @@ const schema: SpreadsheetSchema = {
     type: "select",
     label: "Location",
     multiple: true,
+    nullable: true,
     wordWrap: true,
     values: [
       { id: 1, name: "New York" },
@@ -465,8 +466,14 @@ document.addEventListener("DOMContentLoaded", () => {
     const newRowIndex = spreadsheet?.addRow();
     updateRowSizeText((newRowIndex || 0) + 1);
   });
+  let newColumnCount = 0;
   document.getElementById("add-column")?.addEventListener("click", () => {
-    spreadsheet?.addColumn("new-column", { type: "text", label: "New Column" });
+    spreadsheet?.addColumn(`new-column-${newColumnCount}`, {
+      type: "text",
+      label: `New Column ${newColumnCount}`,
+      removable: true,
+    });
+    newColumnCount++;
   });
   document.getElementById("save-modal")?.addEventListener("click", () => {
     toggleModal(false);

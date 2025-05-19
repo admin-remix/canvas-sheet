@@ -513,6 +513,20 @@ export class StateManager {
     return this.visibleColEndIndex;
   }
 
+  public getVisibleRange(): {
+    visibleRowStart: number;
+    visibleRowEnd: number;
+    visibleColStart: number;
+    visibleColEnd: number;
+  } {
+    return {
+      visibleRowStart: this.visibleRowStartIndex,
+      visibleRowEnd: this.visibleRowEndIndex,
+      visibleColStart: this.visibleColStartIndex,
+      visibleColEnd: this.visibleColEndIndex,
+    };
+  }
+
   // --- Interaction State Management ---
   public getActiveCell(): CellCoords | null {
     return this.activeCell;

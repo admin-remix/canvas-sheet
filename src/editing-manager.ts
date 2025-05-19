@@ -720,7 +720,7 @@ export class EditingManager {
   private async _showDropdown(
     rowIndex: number,
     colKey: string,
-    schemaCol: ColumnSchema | undefined,
+    schemaCol: ColumnSchema,
     boundsX: number,
     boundsY: number,
     boundsWidth: number,
@@ -733,7 +733,7 @@ export class EditingManager {
     this.domManager.toggleDropdownLoader(false);
 
     // Determine if this is a multi-select dropdown
-    const isMultiSelect = schemaCol?.multiple === true;
+    const isMultiSelect = schemaCol.multiple === true;
     this.domManager.setDropdownMultiSelect(isMultiSelect);
 
     // Initialize selected items from current cell value
@@ -753,19 +753,20 @@ export class EditingManager {
       this.selectedDropdownItems.add(currentValue);
     }
 
-    const defaultValues = schemaCol?.nullable
-      ? [{ id: null, name: blankDropdownItemLabel }]
-      : [];
+    const defaultValues =
+      schemaCol.nullable && !schemaCol.multiple
+        ? [{ id: null, name: blankDropdownItemLabel }]
+        : [];
     let lazySearch = false;
     // Populate dropdown items based on type
-    if (schemaCol?.type === "boolean") {
+    if (schemaCol.type === "boolean") {
       this.dropdownItems = [
         { id: true, name: "True" },
         { id: false, name: "False" },
         ...defaultValues, // Option for clearing the value if nullable
       ];
     } else if (
-      schemaCol?.type === "select" &&
+      schemaCol.type === "select" &&
       (schemaCol.values || schemaCol.filterValues)
     ) {
       let valuesToAdd = schemaCol.values || [];
@@ -813,7 +814,7 @@ export class EditingManager {
       }
       this.dropdownItems = [...defaultValues, ...valuesToAdd];
     } else if (
-      schemaCol?.type === "select" &&
+      schemaCol.type === "select" &&
       schemaCol.lazySearch &&
       onLazySearch
     ) {
@@ -833,7 +834,7 @@ export class EditingManager {
       log(
         "warn",
         verbose,
-        `Dropdown requested for non-dropdown type: ${schemaCol?.type}`
+        `Dropdown requested for non-dropdown type: ${schemaCol.type}`
       );
       return;
     }
@@ -872,7 +873,7 @@ export class EditingManager {
       this.dropdown.style.overflow = "hidden"; // Hide overflow for the container
       this.dropdown.setAttribute("data-column", `${colKey}`);
       this.dropdownSearchInput.placeholder =
-        schemaCol?.placeholder || "Search...";
+        schemaCol.placeholder || "Search...";
     }
 
     this._adjustDropdown(wasSameColumn);

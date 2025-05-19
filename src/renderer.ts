@@ -447,10 +447,8 @@ export class Renderer {
     const schema = this.stateManager.getSchema();
     const rowHeights = this.stateManager.getRowHeights();
     const columnWidths = this.stateManager.getColumnWidths();
-    const visibleRowStart = this.stateManager.getVisibleRowStartIndex();
-    const visibleRowEnd = this.stateManager.getVisibleRowEndIndex();
-    const visibleColStart = this.stateManager.getVisibleColStartIndex();
-    const visibleColEnd = this.stateManager.getVisibleColEndIndex();
+    const { visibleRowStart, visibleRowEnd, visibleColStart, visibleColEnd } =
+      this.stateManager.getVisibleRange();
     const selectedRows = this.stateManager.getSelectedRows();
     const selectedColumn = this.stateManager.getSelectedColumn();
     const activeCell = this.stateManager.getActiveCell();

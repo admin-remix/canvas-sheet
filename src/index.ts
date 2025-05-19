@@ -68,9 +68,12 @@ export class Spreadsheet {
       this.dimensionCalculator,
       this.domManager
     );
-    this.interactionManager.bindCustomEvents((event: Event) => {
+    this.interactionManager.bindCustomEvents((event: CustomEvent) => {
       if (event.type === "resize") {
         this.onDataUpdate();
+        // bring any target bounds into view, which will trigger a scroll
+        if (event.detail)
+          this.interactionManager.bringBoundsIntoView(event.detail);
       }
     });
     this.editingManager = new EditingManager(
@@ -169,7 +172,7 @@ export class Spreadsheet {
   }): Promise<DataRow[]> {
     let chunks: DataRow[][] = [];
     {
-      const data = this.stateManager.getData();
+      const data = this.stateManager.getData(options?.raw ?? false);
       if (options?.raw) return Promise.resolve(data);
       // split the array into chunks of 1000
       chunks = chunkArray(data, 1000);

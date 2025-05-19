@@ -23,7 +23,7 @@ export class InteractionManager {
   private editingManager!: EditingManager; // Use definite assignment assertion
   private lastPasteHandledAt: Date | null = null; // used to prevent multiple pastes in a row
   private ignoreNextScrollTimeout: number | null = null;
-  private _customEventHandler: ((event: Event) => void) | null = null;
+  private _customEventHandler: ((event: CustomEvent) => void) | null = null;
 
   constructor(
     options: RequiredSpreadsheetOptions,
@@ -41,18 +41,58 @@ export class InteractionManager {
   }
 
   public bindCustomEvents(
-    customEventHandler: ((event: Event) => void) | null = null
+    customEventHandler: ((event: CustomEvent) => void) | null = null
   ): void {
     this._customEventHandler = customEventHandler;
   }
 
-  public triggerCustomEvent(eventName: "resize"): void {
-    this._customEventHandler?.call(this, new CustomEvent(eventName));
+  // optionally scroll a bounds into view
+  public triggerCustomEvent(
+    eventName: "resize",
+    focusBounds?: CellBounds | null
+  ): void {
+    this._customEventHandler?.call(
+      this,
+      new CustomEvent(eventName, { detail: focusBounds })
+    );
   }
 
   // Setter for circular dependency
   public setEditingManager(editingManager: EditingManager): void {
     this.editingManager = editingManager;
+  }
+
+  public findAdjacentCellByColumnIndex(colIndex: number): CellBounds | null {
+    // find which cell is visible before deletion
+    const { visibleRowEnd, visibleColStart, visibleColEnd } =
+      this.stateManager.getVisibleRange();
+    // find the visible cell which is adjacent to the deleted column
+    let adjacentColIndex = null;
+    if (colIndex > visibleColStart) {
+      // If selected column is not the leftmost visible column, use the column to its left
+      adjacentColIndex = colIndex - 1;
+    } else if (colIndex < visibleColEnd) {
+      // If selected column is the leftmost visible column, use the column to its right
+      adjacentColIndex = colIndex + 1;
+    }
+    if (adjacentColIndex !== null && visibleRowEnd !== null) {
+      return this.renderer.getCellBounds(visibleRowEnd, adjacentColIndex);
+    }
+    return null;
+  }
+  public findAdjacentCellByRowIndex(rowIndex: number): CellBounds | null {
+    const { visibleRowStart, visibleRowEnd, visibleColEnd } =
+      this.stateManager.getVisibleRange();
+    let adjacentRowIndex = null;
+    if (rowIndex > visibleRowStart) {
+      adjacentRowIndex = rowIndex - 1;
+    } else if (rowIndex < visibleRowEnd) {
+      adjacentRowIndex = rowIndex + 1;
+    }
+    if (adjacentRowIndex !== null && visibleColEnd !== null) {
+      return this.renderer.getCellBounds(adjacentRowIndex, visibleColEnd);
+    }
+    return null;
   }
 
   public canScrollMore(delta: number, vertical: boolean): boolean {

@@ -2,6 +2,7 @@ import {
   RequiredSpreadsheetOptions,
   CellCoords,
   ValidationError,
+  CellBounds,
 } from "./types";
 import { EditingManager } from "./editing-manager";
 import { InteractionManager } from "./interaction-manager";
@@ -615,6 +616,7 @@ export class EventManager {
     }
     let redrawNeeded = this.redrawOnKeyUp;
     let resizeNeeded = false;
+    let focusBoundsAfterResize: CellBounds | null = null;
     // reset the flag from key down event
     if (this.redrawOnKeyUp) this.redrawOnKeyUp = false;
 
@@ -650,7 +652,12 @@ export class EventManager {
     if (event.key === "Delete") {
       const selectedColumn = this.stateManager.getSelectedColumn();
       if (this.stateManager.getSelectedRows().size > 0) {
-        redrawNeeded = this.interactionManager.deleteSelectedRows();
+        // find the lowest row index of the selected rows
+        const selectedRows = this.stateManager.getSelectedRows();
+        const lowestRowIndex = Math.min(...Array.from(selectedRows.values()));
+        focusBoundsAfterResize =
+          this.interactionManager.findAdjacentCellByRowIndex(lowestRowIndex);
+        resizeNeeded = this.interactionManager.deleteSelectedRows();
         event.preventDefault();
         // deleteSelectedRows handles recalculations internally
       } else if (isActiveCellValid) {
@@ -701,6 +708,12 @@ export class EventManager {
           }
           return;
         } else {
+          if (this.stateManager.getColumns().length > 1) {
+            focusBoundsAfterResize =
+              this.interactionManager.findAdjacentCellByColumnIndex(
+                selectedColumn
+              );
+          }
           this.stateManager.removeColumn(selectedColumn);
           redrawNeeded = true;
           resizeNeeded = true;
@@ -763,7 +776,10 @@ export class EventManager {
 
     // Redraw if Delete on rows caused a state change
     if (resizeNeeded) {
-      this.interactionManager.triggerCustomEvent("resize");
+      this.interactionManager.triggerCustomEvent(
+        "resize",
+        focusBoundsAfterResize
+      );
       // no need to redraw here, resize will trigger a redraw
     } else if (redrawNeeded) {
       this.renderer.draw();
