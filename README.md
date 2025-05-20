@@ -233,13 +233,19 @@ const options = {
 
   // Custom date picker support
   customDatePicker: false,
-  // when a date field is opened
+  // when a custom date picker is opened
   onEditorOpen: (event: CellEventWithBounds) => void,
   // when user presses delete on a column header, does not delete the column
   // you have to call "removeColumnByIndex()" to delete the column
   onColumnDelete: (colIndex: number, schema: ColumnSchema) => void,
   // after rows are deleted
   onRowDeleted: (rows: DataRow[]) => void,
+  // when a column is deleted and the "onColumnDelete" callback is not implemented
+  onColumnDeleted: (colKey: string) => void,
+  // when a cell editor is opened
+  onEditorOpened: (event: EditorOpenedEvent) => void,
+  // when a cell editor is closed
+  onEditorClosed: (event: CellCoords) => void,
   // when a cell is selected
   onCellSelected: (event: CellEvent) => void,
   // when cells are updated

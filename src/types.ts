@@ -114,6 +114,7 @@ export interface CellEventWithSearch extends CellEvent {
 export type CellContextMenuEvent = CellEvent & Position;
 export type RowNumberContextMenuEvent = { rowIndex: number } & Position;
 export type ColumnHeaderContextMenuEvent = { colIndex: number } & Position;
+export type EditorOpenedEvent = CellCoords & { schema: ColumnSchema };
 
 export interface SpreadsheetOptions {
   defaultColumnWidth?: number;
@@ -179,6 +180,7 @@ export interface SpreadsheetOptions {
   onEditorOpen?: Nullable<(event: CellEventWithBounds) => void>;
   onRowDeleted?: Nullable<(rows: DataRow[]) => void>;
   onColumnDelete?: Nullable<(colIndex: number, schema: ColumnSchema) => void>;
+  onColumnDeleted?: Nullable<(colKey: string) => void>;
   onLazySearch?: Nullable<
     (event: CellEventWithSearch) => Promise<Nullable<SelectOption[]>>
   >;
@@ -187,6 +189,8 @@ export interface SpreadsheetOptions {
   onColumnHeaderContextMenu?: Nullable<
     (event: ColumnHeaderContextMenuEvent) => void
   >;
+  onEditorOpened?: Nullable<(event: EditorOpenedEvent) => void>;
+  onEditorClosed?: Nullable<(event: CellCoords) => void>;
 }
 
 export interface CellUpdateInput extends VisibleCell {

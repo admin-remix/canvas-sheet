@@ -191,7 +191,15 @@ export class EditingManager {
     }
 
     const schema = this.stateManager.getSchemaForColumn(colIndex);
-    if (schema?.readonly) {
+    if (!schema) {
+      log(
+        "warn",
+        verbose,
+        `Cannot activate editor: Cell ${rowIndex},${colIndex} schema not found.`
+      );
+      return;
+    }
+    if (schema.readonly) {
       log(
         "log",
         verbose,
@@ -205,13 +213,11 @@ export class EditingManager {
 
     const cellValue = rowData?.[colKey];
     const isCustomEditor =
-      schema?.type === "date" && customDatePicker && onEditorOpen
-        ? true
-        : false;
+      schema.type === "date" && customDatePicker && onEditorOpen ? true : false;
     this.stateManager.setActiveEditor({
       row: rowIndex,
       col: colIndex,
-      type: schema?.type,
+      type: schema.type,
       originalValue: cellValue,
       isCustomEditor,
     });
@@ -322,9 +328,18 @@ export class EditingManager {
         }
       }
     }
-
     // Redraw to hide the cell content under the editor
     this.renderer.draw();
+    // call the onEditorOpened callback
+    try {
+      this.options.onEditorOpened?.({
+        row: rowIndex,
+        col: colIndex,
+        schema,
+      });
+    } catch (error) {
+      log("error", verbose, `Error calling onEditorOpened: ${error}`);
+    }
   }
 
   public deactivateEditor(
@@ -471,6 +486,19 @@ export class EditingManager {
       } else {
         this.renderer.draw();
       }
+    }
+    // call the onEditorClosed callback
+    try {
+      this.options.onEditorClosed?.({
+        row,
+        col,
+      });
+    } catch (error) {
+      log(
+        "error",
+        this.options.verbose,
+        `Error calling onEditorClosed: ${error}`
+      );
     }
   }
 
@@ -889,6 +917,21 @@ export class EditingManager {
       ) as HTMLLIElement[]
     );
     this.renderer.draw();
+
+    // call the onEditorOpened callback
+    try {
+      this.options.onEditorOpened?.({
+        row: rowIndex,
+        col: colIndex,
+        schema: schemaCol,
+      });
+    } catch (error) {
+      log(
+        "error",
+        this.options.verbose,
+        `Error calling onEditorOpened: ${error}`
+      );
+    }
   }
 
   public hideDropdown(): void {

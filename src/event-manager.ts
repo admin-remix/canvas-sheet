@@ -714,9 +714,21 @@ export class EventManager {
                 selectedColumn
               );
           }
+          const columnToDelete = this.stateManager.getColumnKey(selectedColumn);
           this.stateManager.removeColumn(selectedColumn);
           redrawNeeded = true;
           resizeNeeded = true;
+
+          // call the onColumnDeleted callback
+          try {
+            this.options.onColumnDeleted?.(columnToDelete);
+          } catch (error) {
+            log(
+              "error",
+              this.options.verbose,
+              `Error calling onColumnDeleted: ${error}`
+            );
+          }
         }
         event.preventDefault();
       }

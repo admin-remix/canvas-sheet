@@ -64,10 +64,13 @@ export const DEFAULT_OPTIONS: RequiredSpreadsheetOptions = {
   onEditorOpen: null,
   onRowDeleted: null,
   onColumnDelete: null,
+  onColumnDeleted: null,
   onLazySearch: null,
   onCellContextMenu: null,
   onRowNumberContextMenu: null,
   onColumnHeaderContextMenu: null,
+  onEditorOpened: null,
+  onEditorClosed: null,
 };
 
 export const DISABLED_FIELD_PREFIX = "disabled:";

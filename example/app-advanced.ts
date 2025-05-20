@@ -11,6 +11,7 @@ import {
   RowNumberContextMenuEvent,
   ColumnHeaderContextMenuEvent,
   CellContextMenuEvent,
+  EditorOpenedEvent,
 } from "canvas-sheet";
 import "@/spreadsheet.css"; // basic styles
 
@@ -616,6 +617,18 @@ document.addEventListener("DOMContentLoaded", () => {
         }: CellContextMenuEvent) => {
           console.log("cell context menu", rowIndex, colKey, x, y);
           showContextMenu(x, y);
+        },
+        onEditorOpened: ({ schema }: EditorOpenedEvent) => {
+          if (schema.type === "text" && schema.multiline) {
+            document
+              .querySelector(".spreadsheet-container")
+              ?.classList.add("active-cell-editor");
+          }
+        },
+        onEditorClosed: () => {
+          document
+            .querySelector(".spreadsheet-container")
+            ?.classList.remove("active-cell-editor");
         },
         autoResizeRowHeight: true,
         lineHeight: 18, // 18 pixels
