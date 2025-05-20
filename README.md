@@ -108,7 +108,11 @@ const currentData = spreadsheet.getData();
 spreadsheet.setData(newData);
 
 // Update a single cell
-spreadsheet.updateCell(rowIndex, "fieldName", newValue);
+spreadsheet.updateCell({
+  rowIndex,
+  colKey: "fieldName",
+  value: newValue,
+});
 ```
 
 ### Cell Update and Selection Callbacks
@@ -127,13 +131,22 @@ const spreadsheet = new Spreadsheet("spreadsheet-container", schema, data, {
         row.data.email.endsWith("@sample.net")
       ) {
         // Set loading state on single cell
-        spreadsheet.updateCell(row.rowIndex, "loading:email", true);
+        spreadsheet.updateCell({
+          rowIndex: row.rowIndex,
+          colKey: "loading:email",
+          value: true,
+        });
 
         // Simulate async validation
         setTimeout(() => {
           // update multiple cells at once which is more efficient than updating one by one
           spreadsheet?.updateCells([
-            { rowIndex: row.rowIndex, colKey: "loading:email", value: null },
+            {
+              rowIndex: row.rowIndex,
+              colKey: "loading:email",
+              value: null,
+              remove: true, // Important: remove the field from the row object
+            },
             {
               rowIndex: row.rowIndex,
               colKey: "error:email",
@@ -255,7 +268,9 @@ const options = {
   // right click on a row number
   onRowNumberContextMenu: (event: RowNumberContextMenuEvent) => void,
   // right click on a column name
-  onColumnHeaderContextMenu: (event: ColumnHeaderContextMenuEvent) => void
+  onColumnHeaderContextMenu: (event: ColumnHeaderContextMenuEvent) => void,
+  // when column widths are changed by dragging the column dividers
+  onColumnWidthsChange: (widths: Record<string, number>) => void,
 };
 ```
 

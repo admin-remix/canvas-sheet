@@ -288,16 +288,21 @@ export class Spreadsheet {
     colKey,
     value,
     flashError,
+    remove,
   }: CellUpdateInput): void {
     let redrawNeeded = false;
     try {
-      const updated = this.stateManager.updateCell(
-        rowIndex,
-        colKey,
-        value,
-        true
-      );
-      if (!updated) return;
+      if (remove) {
+        this.stateManager.removeCellValue(rowIndex, colKey);
+      } else {
+        const updated = this.stateManager.updateCell(
+          rowIndex,
+          colKey,
+          value,
+          true
+        );
+        if (!updated) return;
+      }
       redrawNeeded = true;
     } catch (error: unknown) {
       if (error instanceof ValidationError) {
@@ -335,16 +340,20 @@ export class Spreadsheet {
     const cellsToFlashError: { row: number; col: number; error?: string }[] =
       [];
     const columns = this.stateManager.getColumns();
-    for (const { rowIndex, colKey, value, flashError } of inputs) {
+    for (const { rowIndex, colKey, value, flashError, remove } of inputs) {
       const colIndex = columns.indexOf(colKey);
       try {
-        const updated = this.stateManager.updateCell(
-          rowIndex,
-          colKey,
-          value,
-          true
-        );
-        if (!updated) continue;
+        if (remove) {
+          this.stateManager.removeCellValue(rowIndex, colKey);
+        } else {
+          const updated = this.stateManager.updateCell(
+            rowIndex,
+            colKey,
+            value,
+            true
+          );
+          if (!updated) continue;
+        }
         updatedRows.add(rowIndex);
         redrawNeeded = true;
         if (flashError && colIndex >= 0) {
@@ -395,6 +404,19 @@ export class Spreadsheet {
   }
   public getColumns(): string[] {
     return this.stateManager.getColumns().slice(); // Deep copy
+  }
+  // returns only updated widths
+  public getColumnWidths(): Record<string, number> {
+    return this.interactionManager.columnWidthMapByKeys();
+  }
+  public setColumnWidths(widths: Record<string, number>): void {
+    Object.entries(widths).forEach(([key, width]) => {
+      const colIndex = this.stateManager.getColumns().indexOf(key);
+      if (colIndex >= 0) {
+        this.stateManager.setColumnWidth(colIndex, width);
+      }
+    });
+    this.redraw();
   }
 
   public focus(): void {

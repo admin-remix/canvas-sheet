@@ -355,16 +355,6 @@ export class StateManager {
     return this.columnWidths;
   }
 
-  public setColumnWidths(widths: number[]): void {
-    // Store only non-default values in the map
-    this.columnWidths = new Map();
-    widths.forEach((width, index) => {
-      if (width !== this.options.defaultColumnWidth) {
-        this.columnWidths.set(index, width);
-      }
-    });
-  }
-
   /**
    * Gets the width for a specific column, using the default width if not specified
    */

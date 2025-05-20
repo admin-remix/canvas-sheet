@@ -191,11 +191,13 @@ export interface SpreadsheetOptions {
   >;
   onEditorOpened?: Nullable<(event: EditorOpenedEvent) => void>;
   onEditorClosed?: Nullable<(event: CellCoords) => void>;
+  onColumnWidthsChange?: Nullable<(widths: Record<string, number>) => void>;
 }
 
 export interface CellUpdateInput extends VisibleCell {
   value: any;
   flashError?: string;
+  remove?: boolean;
 }
 export interface CellUpdateEvent {
   rowIndex: number;

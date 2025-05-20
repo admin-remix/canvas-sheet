@@ -71,6 +71,7 @@ export const DEFAULT_OPTIONS: RequiredSpreadsheetOptions = {
   onColumnHeaderContextMenu: null,
   onEditorOpened: null,
   onEditorClosed: null,
+  onColumnWidthsChange: null,
 };
 
 export const DISABLED_FIELD_PREFIX = "disabled:";

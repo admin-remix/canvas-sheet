@@ -500,7 +500,7 @@ document.addEventListener("DOMContentLoaded", () => {
             if (
               columnKeys.includes("email") &&
               data.email &&
-              data.email.endsWith("@sample.net")
+              data.email.endsWith(".net")
             ) {
               // update single cell
               newUpdatedRows.push({
@@ -509,19 +509,33 @@ document.addEventListener("DOMContentLoaded", () => {
                 value: true,
               });
               setTimeout(() => {
+                const shouldError = data.email.endsWith("@sample.net");
                 // update multiple cells at once which is more efficient than updating one by one
                 spreadsheet?.updateCells([
-                  { rowIndex, colKey: "loading:email", value: null },
                   {
                     rowIndex,
-                    colKey: "error:email",
-                    value: `Account ${data.email} does not exist`,
+                    colKey: "loading:email",
+                    value: null,
+                    remove: true, // remove the loading state
                   },
+                  shouldError
+                    ? {
+                        rowIndex,
+                        colKey: "error:email",
+                        value: `Account ${data.email} does not exist`,
+                      }
+                    : {
+                        rowIndex,
+                        colKey: "error:email",
+                        value: null,
+                        remove: true, // remove the error state
+                      },
                 ]);
                 // also update our own error state display for the email column
                 if (
                   selectedCell?.row === rowIndex &&
-                  selectedCell.colKey === "email"
+                  selectedCell.colKey === "email" &&
+                  shouldError
                 ) {
                   document.getElementById(
                     "error-container"
@@ -630,6 +644,9 @@ document.addEventListener("DOMContentLoaded", () => {
             .querySelector(".spreadsheet-container")
             ?.classList.remove("active-cell-editor");
         },
+        onColumnWidthsChange: (widths: Record<string, number>) => {
+          console.log("column widths changed", widths);
+        },
         autoResizeRowHeight: true,
         lineHeight: 18, // 18 pixels
         verbose: true,
@@ -643,9 +660,10 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
       if (confirm("Load data from local storage?")) {
-        const { data, columns } = JSON.parse(localeStorageData) as {
+        const { data, columns, widths } = JSON.parse(localeStorageData) as {
           data: DataRow[];
           columns: string[];
+          widths: Record<string, number>;
         };
         const existingColumns = spreadsheet?.getColumns();
         const newColumns = columns.filter((c) => !existingColumns.includes(c));
@@ -673,6 +691,7 @@ document.addEventListener("DOMContentLoaded", () => {
           });
         }
         spreadsheet?.setData(data);
+        spreadsheet?.setColumnWidths(widths);
         return;
       }
       spreadsheet?.setData(sampleData);
@@ -729,7 +748,11 @@ document.addEventListener("DOMContentLoaded", () => {
       if (data?.length) {
         localStorage.setItem(
           "cs-example-backup",
-          JSON.stringify({ data, columns: spreadsheet?.getColumns() })
+          JSON.stringify({
+            data,
+            columns: spreadsheet?.getColumns(),
+            widths: spreadsheet?.getColumnWidths(),
+          })
         );
       }
     } catch (error) {

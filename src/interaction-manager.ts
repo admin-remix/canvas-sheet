@@ -535,6 +535,14 @@ export class InteractionManager {
     this.renderer.draw();
   }
 
+  public columnWidthMapByKeys(): Record<string, number> {
+    return Object.fromEntries(
+      Array.from(this.stateManager.getColumnWidths().entries()).map(
+        ([index, width]) => [this.stateManager.getColumnKey(index), width]
+      )
+    );
+  }
+
   public endResize(): void {
     const columnResizeState = this.stateManager.getResizeColumnState();
     const rowResizeState = this.stateManager.getResizeRowState();
@@ -578,6 +586,17 @@ export class InteractionManager {
         canvasSnapshot: undefined,
         originalWidth: undefined,
       });
+
+      try {
+        this.options.onColumnWidthsChange?.(this.columnWidthMapByKeys());
+      } catch (error) {
+        log(
+          "error",
+          this.options.verbose,
+          "Error calling onColumnWidthsChange",
+          error
+        );
+      }
     }
     if (rowResizeState.isResizing) {
       log(
