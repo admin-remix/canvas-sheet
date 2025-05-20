@@ -291,6 +291,12 @@ export class Spreadsheet {
     remove,
   }: CellUpdateInput): void {
     let redrawNeeded = false;
+    const colIndex = this.stateManager.getColumns().indexOf(colKey);
+    if (flashError && colIndex >= 0) {
+      this.renderer.setTemporaryErrors([
+        { row: rowIndex, col: colIndex, error: flashError },
+      ]);
+    }
     try {
       if (remove) {
         this.stateManager.removeCellValue(rowIndex, colKey);
@@ -316,12 +322,6 @@ export class Spreadsheet {
         log("warn", this.options.verbose, error);
       }
     }
-    const colIndex = this.stateManager.getColumns().indexOf(colKey);
-    if (flashError && colIndex >= 0) {
-      this.renderer.setTemporaryErrors([
-        { row: rowIndex, col: colIndex, error: flashError },
-      ]);
-    }
     if (redrawNeeded) {
       if (this.options.autoResizeRowHeight) {
         this.reCalculate();
@@ -343,6 +343,13 @@ export class Spreadsheet {
     for (const { rowIndex, colKey, value, flashError, remove } of inputs) {
       const colIndex = columns.indexOf(colKey);
       try {
+        if (flashError && colIndex >= 0) {
+          cellsToFlashError.push({
+            row: rowIndex,
+            col: colIndex,
+            error: flashError,
+          });
+        }
         if (remove) {
           this.stateManager.removeCellValue(rowIndex, colKey);
         } else {
@@ -356,13 +363,6 @@ export class Spreadsheet {
         }
         updatedRows.add(rowIndex);
         redrawNeeded = true;
-        if (flashError && colIndex >= 0) {
-          cellsToFlashError.push({
-            row: rowIndex,
-            col: colIndex,
-            error: flashError,
-          });
-        }
       } catch (error: unknown) {
         if (error instanceof ValidationError) {
           this.stateManager.updateCell(

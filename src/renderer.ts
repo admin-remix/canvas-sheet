@@ -228,7 +228,9 @@ export class Renderer {
 
       const colKey = columns[col];
       const schemaCol = schema[colKey];
-      const headerText = schemaCol?.label || colKey;
+      const headerText = `${schemaCol?.label || colKey}${
+        schemaCol?.required ? "*" : ""
+      }`;
       const isColumnSelected = selectedColumn === col;
 
       let customBgColor: string | null = null;
