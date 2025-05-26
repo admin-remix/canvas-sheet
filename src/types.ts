@@ -174,6 +174,7 @@ export interface SpreadsheetOptions {
   wrapText?: boolean;
   lineHeight?: number; // in pixels
   verbose?: boolean;
+  historyLimit?: number; // Maximum number of actions to keep in history
 
   onCellsUpdate?: Nullable<(rows: CellUpdateEvent[]) => void>;
   onCellSelected?: Nullable<(event: CellEvent) => void>;
@@ -207,7 +208,26 @@ export interface CellUpdateEvent {
 }
 
 // Required version of options for internal use
-export type RequiredSpreadsheetOptions = Required<SpreadsheetOptions>;
+export interface RequiredSpreadsheetOptions extends SpreadsheetOptions {
+  // Ensure required options are explicitly defined if not already
+  defaultColumnWidth: number;
+  defaultRowHeight: number;
+  headerHeight: number;
+  rowNumberWidth: number;
+  resizeHandleSize: number;
+  minColumnWidth: number;
+  minRowHeight: number;
+  maxColumnWidth: number;
+  maxRowHeight: number;
+  font: string;
+  // renderEmptyCells: boolean; // This was commented out in the instructions, so keeping it commented.
+  customDatePicker?: boolean;
+  autoResizeRowHeight: boolean;
+  lazySearchDebounceTime: number;
+  allowTabInTextarea: boolean;
+  blankDropdownItemLabel: string;
+  historyLimit: number; // Make it required here
+}
 
 export interface DropdownItem {
   id: any;

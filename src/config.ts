@@ -58,6 +58,7 @@ export const DEFAULT_OPTIONS: RequiredSpreadsheetOptions = {
   wrapText: false,
   lineHeight: 16, // in pixels
   verbose: false,
+  historyLimit: 50, // Default history limit, assuming 50 from instructions
 
   onCellsUpdate: null,
   onCellSelected: null,
